@@ -4,8 +4,9 @@ A self-hosted backend-as-a-service. Authentication, a dynamic database where a u
 PostgreSQL table, realtime subscriptions, functions, webhooks and messaging — with an admin console and a
 Flutter SDK.
 
-**Status:** Phase 0 complete — solution skeleton, system catalog, instance claim, projects API,
-console shell, Docker deployment. Phase 1 (Auth) is next; see [docs/handoff/](docs/handoff/).
+**Status:** Phase 1 complete — solution skeleton, system catalog, instance claim, projects API,
+console shell, Docker deployment, and full app-user auth (email+password, GitHub OAuth, teams,
+API keys, rate limiting). Phase 2 (Schema engine) is next; see [docs/handoff/](docs/handoff/).
 
 ## Stack
 
