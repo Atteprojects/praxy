@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
+    <ProjectReference Include="..\Praxy.Events\Praxy.Events.csproj" />
     <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
   </ItemGroup>
 
