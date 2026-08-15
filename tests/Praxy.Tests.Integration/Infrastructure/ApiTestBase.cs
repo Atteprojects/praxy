@@ -17,10 +17,13 @@ public abstract class ApiTestBase(PostgresContainerFixture pg) : IAsyncLifetime
 
     protected virtual IDictionary<string, string?>? ExtraSettings => null;
 
+    /// <summary>Test-only service overrides (fake email sender, fake OAuth provider, …).</summary>
+    protected virtual Action<Microsoft.Extensions.DependencyInjection.IServiceCollection>? TestServices => null;
+
     public async Task InitializeAsync()
     {
         ConnectionString = await Postgres.CreateFreshDatabaseAsync();
-        Factory = new PraxyApiFactory(ConnectionString, ExtraSettings);
+        Factory = new PraxyApiFactory(ConnectionString, ExtraSettings, TestServices);
         // No cookie jar: tests authenticate explicitly via X-Praxy-Session so that
         // "unauthenticated" requests are actually unauthenticated.
         Client = Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
