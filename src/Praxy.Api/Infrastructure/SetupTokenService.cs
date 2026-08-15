@@ -10,7 +10,8 @@ namespace Praxy.Api.Infrastructure;
 /// </summary>
 public sealed class SetupTokenService(IConfiguration config, ILogger<SetupTokenService> logger)
 {
-    private string? _token;
+    /// <summary>The active token, null unless generated. Never serialized into any response.</summary>
+    public string? Token { get; private set; }
 
     public bool Required =>
         !string.IsNullOrWhiteSpace(config["PRAXY_PUBLIC_URL"] ?? config["Praxy:PublicUrl"]);
@@ -20,19 +21,19 @@ public sealed class SetupTokenService(IConfiguration config, ILogger<SetupTokenS
     {
         if (!Required)
             return;
-        _token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+        Token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
         logger.LogWarning(
             "Instance is unclaimed and PRAXY_PUBLIC_URL is set. Claiming requires this setup token: {SetupToken}",
-            _token);
+            Token);
     }
 
     public bool Validate(string? candidate)
     {
         if (!Required)
             return true;
-        if (_token is null || string.IsNullOrEmpty(candidate))
+        if (Token is null || string.IsNullOrEmpty(candidate))
             return false;
         return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(candidate), Encoding.UTF8.GetBytes(_token));
+            Encoding.UTF8.GetBytes(candidate), Encoding.UTF8.GetBytes(Token));
     }
 }
