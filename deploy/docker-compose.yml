@@ -26,6 +26,8 @@ services:
         condition: service_healthy
     environment:
       ConnectionStrings__praxy: "Host=postgres;Port=5432;Database=praxy;Username=praxy;Password=${POSTGRES_PASSWORD}"
+      # Signs short-lived OAuth JWTs and encrypts provider tokens at rest.
+      PRAXY_SECRET_KEY: ${PRAXY_SECRET_KEY:-}
       # Set to your public origin to require the logged setup token for instance claim.
       PRAXY_PUBLIC_URL: ${PRAXY_PUBLIC_URL:-}
     ports:
