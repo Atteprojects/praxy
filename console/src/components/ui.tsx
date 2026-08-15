@@ -84,3 +84,179 @@ export function Kbd({ children }: { children: ReactNode }) {
     </kbd>
   );
 }
+
+const badgeTones = {
+  mint: "border-mint-400/30 bg-mint-400/10 text-mint-400",
+  amber: "border-amber-400/30 bg-amber-400/10 text-amber-400",
+  coral: "border-coral-400/30 bg-coral-400/10 text-coral-400",
+  ink: "border-ink-700 bg-ink-850 text-ink-400",
+  iris: "border-iris-500/30 bg-iris-500/10 text-iris-300",
+} as const;
+
+export function Badge({ tone = "ink", children }: { tone?: keyof typeof badgeTones; children: ReactNode }) {
+  return (
+    <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${badgeTones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+/** Modal shell: backdrop click and Escape close it; content stops propagation. */
+export function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-ink-950/70 p-4 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      role="dialog"
+      aria-modal
+    >
+      <div className="surface w-full max-w-md p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <button type="button" className="btn-ghost px-2 py-1 text-ink-500" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Toggle({
+  checked,
+  onChange,
+  label,
+  description,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  description?: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4 py-1">
+      <span>
+        <span className="block text-sm font-medium text-ink-100">{label}</span>
+        {description ? <span className="mt-0.5 block text-xs text-ink-500">{description}</span> : null}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? "bg-iris-500" : "bg-ink-700"}`}
+      >
+        <span
+          className={`absolute top-0.5 size-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4.5" : "translate-x-0.5"}`}
+        />
+      </button>
+    </label>
+  );
+}
+
+export function Tabs<T extends string>({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: readonly { id: T; label: string }[];
+  active: T;
+  onSelect: (tab: T) => void;
+}) {
+  return (
+    <div className="mb-6 flex gap-1 border-b border-ink-800" role="tablist">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={tab.id === active}
+          onClick={() => onSelect(tab.id)}
+          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab.id === active
+              ? "border-iris-400 text-ink-100"
+              : "border-transparent text-ink-500 hover:text-ink-300"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Data-table shell shared by every Phase 1 list screen. Wide content scrolls in-place. */
+export function DataTable({ headers, children }: { headers: string[]; children: ReactNode }) {
+  return (
+    <div className="surface overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-ink-800">
+            {headers.map((header) => (
+              <th key={header} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-ink-500">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-ink-800/60">{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Ghost empty state with the real headers — the table teaches its own shape. */
+export function EmptyState({
+  headers,
+  title,
+  action,
+}: {
+  headers: string[];
+  title: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="surface relative overflow-hidden">
+      <table className="w-full text-left text-sm" aria-hidden>
+        <thead>
+          <tr className="border-b border-ink-800">
+            {headers.map((header) => (
+              <th key={header} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-ink-500">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {[0, 1, 2].map((row) => (
+            <tr key={row} className="border-b border-ink-800/40">
+              {headers.map((header) => (
+                <td key={header} className="px-4 py-3.5">
+                  <div className="h-3 w-2/3 rounded bg-ink-850" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="absolute inset-0 top-11 grid place-items-center bg-ink-950/40">
+        <div className="text-center">
+          <p className="mb-3 text-sm text-ink-400">{title}</p>
+          {action}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 30 * 86400) return `${Math.floor(seconds / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString();
+}

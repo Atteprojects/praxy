@@ -1,11 +1,10 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useProject } from "../api/queries";
-import { FullPageSpinner, IdChip, Kbd } from "../components/ui";
-import { STR } from "../strings";
+import { FullPageSpinner } from "../components/ui";
 
 export function ProjectOverviewPage() {
-  const { projectId } = useParams({ from: "/shell/project/$projectId" });
+  const { projectId } = useParams({ strict: false }) as { projectId: string };
   const project = useProject(projectId, { pollWhileUnpinged: true });
 
   if (project.isPending) return <FullPageSpinner />;
@@ -14,33 +13,13 @@ export function ProjectOverviewPage() {
   const pinged = Boolean(project.data.lastPingAt);
 
   return (
-    <div className="flex min-h-dvh">
-      {/* Project sidebar — Phase 0 has only Overview; later services appear as the
-          capabilities endpoint turns their flags on. */}
-      <aside className="flex w-52 shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 px-3 py-4">
-        <Link to="/" className="btn-ghost mb-4 justify-start text-xs">
-          ← {STR.projects}
-        </Link>
-        <span className="mb-1 truncate px-3 text-sm font-semibold">{project.data.name}</span>
-        <span className="mb-6 px-3">
-          <IdChip id={project.data.id} />
-        </span>
-        <nav className="space-y-1">
-          <span className="flex items-center justify-between rounded-lg bg-ink-800 px-3 py-2 text-sm font-medium text-ink-100">
-            {STR.overview}
-            <Kbd>g o</Kbd>
-          </span>
-        </nav>
-      </aside>
+    <div>
+      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{project.data.name}</h1>
+      <p className="mb-8 text-sm text-ink-500">
+        Created {new Date(project.data.createdAt).toLocaleString()}
+      </p>
 
-      <main className="flex-1 px-8 py-10">
-        <h1 className="mb-1 text-2xl font-semibold tracking-tight">{project.data.name}</h1>
-        <p className="mb-8 text-sm text-ink-500">
-          Created {new Date(project.data.createdAt).toLocaleString()}
-        </p>
-
-        {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
-      </main>
+      {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
     </div>
   );
 }
@@ -87,8 +66,8 @@ function ConnectedCard({ lastPingAt }: { lastPingAt: string }) {
         <h2 className="text-lg font-medium">Connected</h2>
       </div>
       <p className="text-sm text-ink-400">
-        Last ping {new Date(lastPingAt).toLocaleString()}. Auth, databases and realtime arrive in
-        upcoming phases — this overview grows with them.
+        Last ping {new Date(lastPingAt).toLocaleString()}. Head to Auth to create your first
+        users and teams — databases and realtime arrive in upcoming phases.
       </p>
     </div>
   );

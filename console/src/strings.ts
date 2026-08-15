@@ -8,4 +8,8 @@ export const STR = {
   projects: "Projects",
   organization: "organization",
   overview: "Overview",
+  users: "Users",
+  teams: "Teams",
+  sessions: "Sessions",
+  memberships: "Memberships",
 } as const;

@@ -39,8 +39,13 @@ export function CommandPalette() {
         chordArmed.current = false;
         if (pendingChord.current) window.clearTimeout(pendingChord.current);
         if (e.key === "p") void navigate({ to: "/" });
-        if (e.key === "o" && currentProjectId)
-          void navigate({ to: "/project/$projectId", params: { projectId: currentProjectId } });
+        if (!currentProjectId) return;
+        const params = { projectId: currentProjectId };
+        if (e.key === "o") void navigate({ to: "/project/$projectId", params });
+        if (e.key === "u") void navigate({ to: "/project/$projectId/auth/users", params });
+        if (e.key === "t") void navigate({ to: "/project/$projectId/auth/teams", params });
+        if (e.key === "s") void navigate({ to: "/project/$projectId/auth/settings", params });
+        if (e.key === "k") void navigate({ to: "/project/$projectId/api-keys", params });
         return;
       }
       if (e.key === "g") {
@@ -86,14 +91,68 @@ export function CommandPalette() {
               Go to projects
             </PaletteItem>
             {currentProjectId ? (
-              <PaletteItem
-                onSelect={() =>
-                  run(() => void navigate({ to: "/project/$projectId", params: { projectId: currentProjectId } }))
-                }
-                shortcut="g o"
-              >
-                Go to overview
-              </PaletteItem>
+              <>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() => void navigate({ to: "/project/$projectId", params: { projectId: currentProjectId } }))
+                  }
+                  shortcut="g o"
+                >
+                  Go to overview
+                </PaletteItem>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() =>
+                      void navigate({ to: "/project/$projectId/auth/users", params: { projectId: currentProjectId } }),
+                    )
+                  }
+                  shortcut="g u"
+                >
+                  Go to users
+                </PaletteItem>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() =>
+                      void navigate({ to: "/project/$projectId/auth/teams", params: { projectId: currentProjectId } }),
+                    )
+                  }
+                  shortcut="g t"
+                >
+                  Go to teams
+                </PaletteItem>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() =>
+                      void navigate({
+                        to: "/project/$projectId/auth/settings",
+                        params: { projectId: currentProjectId },
+                      }),
+                    )
+                  }
+                  shortcut="g s"
+                >
+                  Go to auth settings
+                </PaletteItem>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() =>
+                      void navigate({ to: "/project/$projectId/api-keys", params: { projectId: currentProjectId } }),
+                    )
+                  }
+                  shortcut="g k"
+                >
+                  Go to API keys
+                </PaletteItem>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() =>
+                      void navigate({ to: "/project/$projectId/platforms", params: { projectId: currentProjectId } }),
+                    )
+                  }
+                >
+                  Go to platforms
+                </PaletteItem>
+              </>
             ) : null}
             {projects.data?.projects.map((project) => (
               <PaletteItem
