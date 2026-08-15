@@ -1,0 +1,68 @@
+# ---------- .NET ----------
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+artifacts/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.dll
+*.exe
+*.pdb
+*.cache
+project.lock.json
+project.fragment.lock.json
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+*.received.*
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# ---------- Node / console ----------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+.eslintcache
+.turbo/
+pnpm-debug.log*
+npm-debug.log*
+yarn-error.log*
+
+# ---------- Flutter / Dart ----------
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+
+# ---------- Secrets & local env ----------
+.env
+.env.*
+!.env.example
+*.pfx
+*.key
+*.pem
+appsettings.Development.local.json
+secrets.json
+
+# ---------- Docker / data ----------
+.docker-data/
+pgdata/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
