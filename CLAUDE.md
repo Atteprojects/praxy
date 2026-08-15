@@ -48,8 +48,14 @@ forward from later phases.
 
 Filled in as phases land — keep this section current.
 
-- Phase 0+: `docker compose -f deploy/docker-compose.yml up` · `dotnet test` · console: `npm run dev` in
-  `console/`
+- Self-host stack: `cd deploy && ./up.sh` (generates `.env` on first run; console at
+  `http://localhost:8080/console`)
+- Tests: `dotnet test` (integration needs Docker for Testcontainers)
+- Dev API: `dotnet run --project src/Praxy.Api` — port 5090, Scalar at `/scalar/v1`; expects local
+  Postgres `praxy/praxy/praxy` on 5432 (see README dev section)
+- Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
+- Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
+  from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)
 
 ## Session end — handoff protocol
 
