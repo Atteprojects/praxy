@@ -4,8 +4,10 @@ Phased build plan. **Each phase ends with a console the owner can click through*
 acceptance gate. Each phase is implemented in a fresh session; the handoff protocol is at the bottom.
 
 Fixed choices (owner's): .NET backend · Vite console · Flutter SDK first · features = Auth, Databases/Tables,
-Realtime, Messaging, Functions, Webhooks · minimal options to start (GitHub is the only OAuth provider;
-email+password and GitHub are the only sign-in methods until further notice).
+Realtime, Messaging, Functions, Webhooks · minimal options to start (Google is the only OAuth provider
+for app users; email+password and Google OAuth are the only app-user sign-in methods until further
+notice — platform/console operators are email+password only, with operator OAuth deferred to future
+multitenancy work).
 
 Read before implementing anything: [architecture.md](architecture.md), then the relevant
 [research/](research/) files. Version pins live in [research/dotnet-stack.md](research/dotnet-stack.md) —
@@ -52,7 +54,7 @@ loads in dev → `docker compose down && up` → still signed in, data intact.
 - Opaque sessions: 32-byte CSPRNG secret, SHA-256 at rest, constant-time compare, `praxy_session_<projectId>`
   cookie (httpOnly/Secure/Lax) or `X-Praxy-Session`. Per-user session cap 10, oldest evicted. 60s in-memory
   session cache invalidated via event bus.
-- **GitHub OAuth only** — token flow (callback carries userId + 60s-JWT-wrapped secret → exchanged at
+- **Google OAuth only** — token flow (callback carries userId + 60s-JWT-wrapped secret → exchanged at
   `POST /account/sessions/token`) + PKCE. Provider abstraction so Google etc. slot in later without API changes.
 - Email verification + password recovery via SMTP sender (config: host/port/user/pass/from). **Redirect URLs
   validated against the platform allowlist** — security-critical, see architecture.md threat model.
@@ -67,7 +69,7 @@ loads in dev → `docker compose down && up` → still signed in, data intact.
 - Session deletion publishes `sessions.delete` (Phase 4 uses it to kill live sockets; cache honors it now).
 
 **Console** — users table + create user, user detail (overview / sessions / memberships tabs), teams +
-members, auth settings (method toggles, GitHub credentials, session limits, password policy), API keys
+members, auth settings (method toggles, Google credentials, session limits, password policy), API keys
 (create/reveal-once/revoke), platforms screen with add-platform flow.
 
 **Owner test:** create user in console → sign in via curl/Scalar as that user → session appears on user
@@ -149,9 +151,9 @@ channel delivers only that row.
 
 `sdk/flutter/`: `praxy_core` (pure Dart) + `praxy_flutter` + example app. The ~20-method surface, sealed
 exceptions, `TableRef<T>`/`RowCodec<T>` typed rows, real `Stream` realtime with `liveList`, secure-storage
-sessions, GitHub OAuth via flutter_web_auth_2 (Android intent filter documented; iOS needs nothing — see
+sessions, Google OAuth via flutter_web_auth_2 (Android intent filter documented; iOS needs nothing — see
 [research/flutter-sdk.md](research/flutter-sdk.md), which is the full spec).
-**Owner test:** run the example app against local Praxy — sign up, GitHub sign-in, CRUD rows, watch a
+**Owner test:** run the example app against local Praxy — sign up, Google sign-in, CRUD rows, watch a
 realtime update arrive from the console, kill/restart app → still signed in.
 
 ## Phase 6 — Webhooks

@@ -130,9 +130,9 @@ export interface UserMembershipList {
 
 export interface AuthSettings {
   emailPassword: boolean;
-  githubEnabled: boolean;
-  githubClientId: string | null;
-  githubClientSecretSet: boolean;
+  googleEnabled: boolean;
+  googleClientId: string | null;
+  googleClientSecretSet: boolean;
   sessionLimit: number;
   passwordMinLength: number;
 }

@@ -35,12 +35,12 @@ public class CompactJwtTests
     [Fact]
     public void Roundtrip_preserves_claims()
     {
-        var token = CompactJwt.Encode(Key, new JsonObject { ["secret"] = "s3cret", ["provider"] = "github" },
+        var token = CompactJwt.Encode(Key, new JsonObject { ["secret"] = "s3cret", ["provider"] = "google" },
             TimeSpan.FromMinutes(1));
         var claims = CompactJwt.Decode(Key, token);
         Assert.NotNull(claims);
         Assert.Equal("s3cret", claims["secret"]!.GetValue<string>());
-        Assert.Equal("github", claims["provider"]!.GetValue<string>());
+        Assert.Equal("google", claims["provider"]!.GetValue<string>());
     }
 
     [Fact]

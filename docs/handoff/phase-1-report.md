@@ -1,5 +1,11 @@
 # Phase 1 — report
 
+> **Correction (post-Phase-2):** the OAuth provider described below as "GitHub" was renamed to Google
+> shortly after this phase shipped, per owner clarification — GitHub was meant for platform/console
+> operators (deferred to future multitenancy work), not app users. The provider abstraction, endpoints,
+> and flow described here are otherwise still accurate; only the provider identity (name, branding,
+> settings field names) changed. See `docs/roadmap.md` and `docs/architecture.md` for current truth.
+
 **Status: complete.** All roadmap items shipped; owner-test checklist run against the dev stack by
 the implementing session. 139 tests green (78 unit, 61 integration).
 

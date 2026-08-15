@@ -16,7 +16,7 @@ public sealed record ConsoleCreateTeamRequest(string Name);
 public sealed record ConsoleAddMemberRequest(string? Email, string? UserId, string[]? Roles);
 
 public sealed record UpdateAuthSettingsRequest(
-    bool? EmailPassword, bool? GithubEnabled, string? GithubClientId, string? GithubClientSecret,
+    bool? EmailPassword, bool? GoogleEnabled, string? GoogleClientId, string? GoogleClientSecret,
     int? SessionLimit, int? PasswordMinLength);
 
 public sealed record CreateApiKeyRequest(string Name, string[] Scopes, DateTimeOffset? ExpiresAt);
@@ -351,12 +351,12 @@ public static class ConsoleAuthAdminEndpoints
         var updated = current with
         {
             EmailPassword = req.EmailPassword ?? current.EmailPassword,
-            GitHubEnabled = req.GithubEnabled ?? current.GitHubEnabled,
-            GitHubClientId = req.GithubClientId ?? current.GitHubClientId,
+            GoogleEnabled = req.GoogleEnabled ?? current.GoogleEnabled,
+            GoogleClientId = req.GoogleClientId ?? current.GoogleClientId,
             // Secret is write-only: null means "keep", empty string means "clear".
-            GitHubClientSecret = req.GithubClientSecret switch
+            GoogleClientSecret = req.GoogleClientSecret switch
             {
-                null => current.GitHubClientSecret,
+                null => current.GoogleClientSecret,
                 "" => null,
                 var s => s,
             },

@@ -128,18 +128,18 @@ public abstract class AuthTestBase(PostgresContainerFixture pg) : ApiTestBase(pg
     }
 }
 
-/// <summary>Deterministic in-process stand-in for GitHub: no network, canned profile.</summary>
+/// <summary>Deterministic in-process stand-in for Google: no network, canned profile.</summary>
 public sealed class FakeOAuthProvider : IOAuthProvider
 {
-    public string Name => "github";
+    public string Name => "google";
 
     public OAuthProfile Profile { get; set; } =
-        new("gh-uid-1", "octo@example.com", EmailVerified: true, "Octo Cat");
+        new("google-uid-1", "ada@example.com", EmailVerified: true, "Ada Lovelace");
 
     public string? LastCodeVerifier { get; private set; }
 
     public string BuildAuthorizeUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
-        $"https://fake.github.test/authorize?client_id={Uri.EscapeDataString(clientId)}" +
+        $"https://fake.google.test/authorize?client_id={Uri.EscapeDataString(clientId)}" +
         $"&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={Uri.EscapeDataString(state)}" +
         $"&code_challenge={codeChallenge}";
 

@@ -12,9 +12,9 @@ public sealed record ProjectAuthSettings
     public const int MaxSessionLimit = 100;
 
     public bool EmailPassword { get; init; } = true;
-    public bool GitHubEnabled { get; init; }
-    public string? GitHubClientId { get; init; }
-    public string? GitHubClientSecret { get; init; }
+    public bool GoogleEnabled { get; init; }
+    public string? GoogleClientId { get; init; }
+    public string? GoogleClientSecret { get; init; }
 
     /// <summary>Per-user session cap; creating one past the cap evicts the oldest.</summary>
     public int SessionLimit { get; init; } = 10;
@@ -38,9 +38,9 @@ public sealed record ProjectAuthSettings
         return new ProjectAuthSettings
         {
             EmailPassword = GetBool(auth, "emailPassword") ?? true,
-            GitHubEnabled = GetBool(auth, "githubEnabled") ?? false,
-            GitHubClientId = GetString(auth, "githubClientId"),
-            GitHubClientSecret = GetString(auth, "githubClientSecret"),
+            GoogleEnabled = GetBool(auth, "googleEnabled") ?? false,
+            GoogleClientId = GetString(auth, "googleClientId"),
+            GoogleClientSecret = GetString(auth, "googleClientSecret"),
             SessionLimit = Math.Clamp(GetInt(auth, "sessionLimit") ?? 10, 1, MaxSessionLimit),
             PasswordMinLength = Math.Clamp(GetInt(auth, "passwordMinLength") ?? 8, 8, 128),
         };
@@ -62,9 +62,9 @@ public sealed record ProjectAuthSettings
         root["auth"] = new JsonObject
         {
             ["emailPassword"] = EmailPassword,
-            ["githubEnabled"] = GitHubEnabled,
-            ["githubClientId"] = GitHubClientId,
-            ["githubClientSecret"] = GitHubClientSecret,
+            ["googleEnabled"] = GoogleEnabled,
+            ["googleClientId"] = GoogleClientId,
+            ["googleClientSecret"] = GoogleClientSecret,
             ["sessionLimit"] = SessionLimit,
             ["passwordMinLength"] = PasswordMinLength,
         };

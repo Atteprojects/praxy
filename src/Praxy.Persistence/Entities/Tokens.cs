@@ -24,7 +24,7 @@ public class Identity
     public required string ProjectId { get; set; }
     public required Guid UserId { get; set; }
 
-    /// <summary>github (Google etc. slot in behind the same provider abstraction later).</summary>
+    /// <summary>google (other providers slot in behind the same provider abstraction later).</summary>
     public required string Provider { get; set; }
 
     public required string ProviderUid { get; set; }

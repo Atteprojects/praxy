@@ -73,12 +73,12 @@ public sealed record PlatformResponse(string Id, string Type, string Name, strin
         new(Ids.Wire(p.Id), p.Type, p.Name, p.Hostname, p.CreatedAt);
 }
 
-/// <summary>Auth settings as the console sees them. The GitHub client secret is write-only — never echoed.</summary>
+/// <summary>Auth settings as the console sees them. The Google client secret is write-only — never echoed.</summary>
 public sealed record AuthSettingsResponse(
-    bool EmailPassword, bool GithubEnabled, string? GithubClientId, bool GithubClientSecretSet,
+    bool EmailPassword, bool GoogleEnabled, string? GoogleClientId, bool GoogleClientSecretSet,
     int SessionLimit, int PasswordMinLength)
 {
     public static AuthSettingsResponse From(ProjectAuthSettings s) => new(
-        s.EmailPassword, s.GitHubEnabled, s.GitHubClientId,
-        !string.IsNullOrEmpty(s.GitHubClientSecret), s.SessionLimit, s.PasswordMinLength);
+        s.EmailPassword, s.GoogleEnabled, s.GoogleClientId,
+        !string.IsNullOrEmpty(s.GoogleClientSecret), s.SessionLimit, s.PasswordMinLength);
 }

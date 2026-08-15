@@ -1,5 +1,10 @@
 # Phase 2 — session prompt
 
+> **Correction (post-Phase-2):** where this prompt says "GitHub OAuth" for app users below, the actual
+> corrected scope is **Google OAuth** for app users — GitHub was meant for platform/console operators
+> (deferred to future multitenancy work), per owner clarification. See `docs/roadmap.md` and
+> `docs/architecture.md` for current truth.
+
 Paste everything below the line into a fresh session, from the repo root.
 
 ---

@@ -204,9 +204,9 @@ export function useUpdateAuthSettings(projectId: string) {
   return useMutation({
     mutationFn: (input: {
       emailPassword?: boolean;
-      githubEnabled?: boolean;
-      githubClientId?: string;
-      githubClientSecret?: string;
+      googleEnabled?: boolean;
+      googleClientId?: string;
+      googleClientSecret?: string;
       sessionLimit?: number;
       passwordMinLength?: number;
     }) => api<AuthSettings>(`${base(projectId)}/auth-settings`, { method: "PATCH", body: input }),

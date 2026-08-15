@@ -18,7 +18,9 @@ forward from later phases.
 
 - .NET 10 backend · Vite + React console (own modern design; simple Appwrite-like layout) · Flutter SDK first
 - PostgreSQL only — no second datastore
-- Auth: email+password and **GitHub OAuth only** until the owner says otherwise; minimal options everywhere
+- Auth: **app users** get email+password and **Google OAuth only** until the owner says otherwise;
+  platform/console operators are email+password only (operator OAuth is deferred to future
+  multitenancy work) — minimal options everywhere
 - Features: Auth, Databases/Tables, Realtime, Messaging, Functions, Webhooks
 - The owner click-tests the console at the end of every phase — **a phase without its console screens is not
   done**

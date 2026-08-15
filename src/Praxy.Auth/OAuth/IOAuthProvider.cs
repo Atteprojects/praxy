@@ -6,12 +6,13 @@ public sealed record OAuthTokenResult(string AccessToken, DateTimeOffset? Expire
 public sealed record OAuthProfile(string Uid, string? Email, bool EmailVerified, string? Name);
 
 /// <summary>
-/// One OAuth2 provider (authorization-code + PKCE). GitHub is the only implementation until
-/// the owner says otherwise; Google et al. slot in behind this interface with no API changes.
+/// One OAuth2 provider (authorization-code + PKCE). Google is the only implementation for app
+/// users until the owner says otherwise; other providers slot in behind this interface with no
+/// API changes.
 /// </summary>
 public interface IOAuthProvider
 {
-    /// <summary>Lowercase wire name — appears in routes (<c>/sessions/oauth2/github</c>) and session provider fields.</summary>
+    /// <summary>Lowercase wire name — appears in routes (<c>/sessions/oauth2/google</c>) and session provider fields.</summary>
     string Name { get; }
 
     string BuildAuthorizeUrl(string clientId, string redirectUri, string state, string codeChallenge);

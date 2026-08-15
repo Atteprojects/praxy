@@ -11,7 +11,9 @@ they postdate this document. Key revisions since first draft:
 - Organizations modeled fully from Phase 0 (owner/member only), hidden in UI until needed. Console users and
   app users are separate namespaces; **the console is a reserved project with a hard data-plane guard**.
 - Instance claim: first account wins; setup token required when `PRAXY_PUBLIC_URL` is set.
-- Auth v1 narrowed by owner decision: email+password + **GitHub OAuth only** (token flow + PKCE). Sessions
+- Auth v1 narrowed by owner decision: email+password + **Google OAuth only** (app users; token flow +
+  PKCE). Platform/console operators are email+password only — operator OAuth is deferred to future
+  multitenancy work. Sessions
   auto-created on signup; per-user session cap (10, oldest evicted). Redirect URLs validated against the
   platform allowlist. Session revocation kills live WebSockets.
 - Wire formats adopted from Appwrite where battle-tested (permission grammar, query DSL JSON, event grammar,
@@ -272,7 +274,7 @@ a database round trip.
 **Transport:** httpOnly, Secure, SameSite=Lax cookie for browsers; `X-Praxy-Session` header for native SDKs.
 
 **v1 methods:** email + password, magic URL, email OTP, anonymous sessions, JWT for server-to-server, OAuth2 with
-Google and GitHub behind a provider abstraction. Phone OTP waits for Messaging. TOTP MFA is phase 2 — but put the
+Google behind a provider abstraction. Phone OTP waits for Messaging. TOTP MFA is phase 2 — but put the
 `mfa_verified` flag on `sessions` now so it isn't a migration later.
 
 Magic URL and email verification need outbound email in v1: a small SMTP sender with configurable host, plus templates.
@@ -399,7 +401,7 @@ Being a self-hosted product means these are features:
 |---|---|---|
 | **M0 — Foundations** | Solution skeleton, Docker Compose, EF migrations for the system catalog, config, logging, health, error envelope, OpenAPI, Testcontainers integration harness | 1–2 weeks |
 | **M1 — Projects & keys** | Project CRUD, schema provisioning, API key auth middleware, project context resolution, platform allowlist | 1 week |
-| **M2 — Auth** | Users, password auth, sessions, cookies, account endpoints, teams and memberships, role resolution, magic URL and email OTP, SMTP sender, Google and GitHub OAuth, rate limits | 2–3 weeks |
+| **M2 — Auth** | Users, password auth, sessions, cookies, account endpoints, teams and memberships, role resolution, magic URL and email OTP, SMTP sender, Google OAuth, rate limits | 2–3 weeks |
 | **M3 — Tables engine** | Databases, tables, columns, indexes, DDL job runner, physical naming, row CRUD, permission model, query compiler, pagination, validation | 3–4 weeks |
 | **M4 — Realtime** | WebSocket endpoint, ticket auth, channel registry, permission-filtered fan-out, backpressure, heartbeats | 1–2 weeks |
 | **M5 — Console** | The admin SPA, all v1 screens | 3–4 weeks |

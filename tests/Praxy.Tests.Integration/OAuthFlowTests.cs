@@ -23,8 +23,12 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         await AddPlatformAsync(operatorToken, projectId, "app.example.com");
         var patch = await Client.SendAsync(Authed(
             HttpMethod.Patch, $"/v1/console/projects/{projectId}/auth-settings", operatorToken,
-            new { githubEnabled = true, githubClientId = "cid", githubClientSecret = "csecret" }));
+            new { googleEnabled = true, googleClientId = "cid", googleClientSecret = "csecret" }));
+        var body = await ReadJson(patch);
         Assert.Equal(200, (int)patch.StatusCode);
+        // The field is literally "google*", not just "some provider toggle" — catches a half-finished rename.
+        Assert.True(body.GetProperty("googleEnabled").GetBoolean());
+        Assert.Equal("cid", body.GetProperty("googleClientId").GetString());
         return (projectId, operatorToken);
     }
 
@@ -41,7 +45,7 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 
         // Start: 302 to the provider with state + PKCE, state cookie set.
         var start = await Client.GetAsync(
-            $"/v1/account/sessions/oauth2/github?project={projectId}" +
+            $"/v1/account/sessions/oauth2/google?project={projectId}" +
             "&success=https%3A%2F%2Fapp.example.com%2Fok&failure=https%3A%2F%2Fapp.example.com%2Ffail");
         Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
         var authorize = QueryOf(start.Headers.Location!.ToString());
@@ -53,7 +57,7 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 
         // Callback: provider redirects back with the code; we land on success with userId + wrapped secret.
         var callback = new HttpRequestMessage(HttpMethod.Get,
-            $"/v1/account/sessions/oauth2/callback/github/{projectId}?code=good-code&state={authorize["state"]}");
+            $"/v1/account/sessions/oauth2/callback/google/{projectId}?code=good-code&state={authorize["state"]}");
         callback.Headers.Add("Cookie", stateCookie);
         var callbackResponse = await Client.SendAsync(callback);
         Assert.Equal(HttpStatusCode.Redirect, callbackResponse.StatusCode);
@@ -72,8 +76,8 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
             body: new { userId = result["userId"], secret = result["secret"] }));
         var session = await ReadJson(exchange);
         Assert.Equal(201, (int)exchange.StatusCode);
-        Assert.Equal("github", session.GetProperty("session").GetProperty("provider").GetString());
-        Assert.Equal("octo@example.com", session.GetProperty("user").GetProperty("email").GetString());
+        Assert.Equal("google", session.GetProperty("session").GetProperty("provider").GetString());
+        Assert.Equal("ada@example.com", session.GetProperty("user").GetProperty("email").GetString());
         Assert.True(session.GetProperty("user").GetProperty("emailVerified").GetBoolean());
 
         // The one-time token is consumed — replay fails.
@@ -91,13 +95,13 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         for (var i = 0; i < 2; i++)
         {
             var start = await Client.GetAsync(
-                $"/v1/account/sessions/oauth2/github?project={projectId}" +
+                $"/v1/account/sessions/oauth2/google?project={projectId}" +
                 "&success=https%3A%2F%2Fapp.example.com%2Fok&failure=https%3A%2F%2Fapp.example.com%2Ffail");
             var authorize = QueryOf(start.Headers.Location!.ToString());
             var stateCookie = start.Headers.GetValues("Set-Cookie")
                 .Single(c => c.StartsWith($"praxy_oauth_{projectId}=", StringComparison.Ordinal)).Split(';')[0];
             var callback = new HttpRequestMessage(HttpMethod.Get,
-                $"/v1/account/sessions/oauth2/callback/github/{projectId}?code=good-code&state={authorize["state"]}");
+                $"/v1/account/sessions/oauth2/callback/google/{projectId}?code=good-code&state={authorize["state"]}");
             callback.Headers.Add("Cookie", stateCookie);
             await Client.SendAsync(callback);
         }
@@ -112,14 +116,14 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     {
         var (projectId, _) = await SetupOAuthProjectAsync();
         var start = await Client.GetAsync(
-            $"/v1/account/sessions/oauth2/github?project={projectId}" +
+            $"/v1/account/sessions/oauth2/google?project={projectId}" +
             "&success=https%3A%2F%2Fapp.example.com%2Fok&failure=https%3A%2F%2Fapp.example.com%2Ffail");
         var authorize = QueryOf(start.Headers.Location!.ToString());
         var stateCookie = start.Headers.GetValues("Set-Cookie")
             .Single(c => c.StartsWith($"praxy_oauth_{projectId}=", StringComparison.Ordinal)).Split(';')[0];
 
         var callback = new HttpRequestMessage(HttpMethod.Get,
-            $"/v1/account/sessions/oauth2/callback/github/{projectId}?code=bad-code&state={authorize["state"]}");
+            $"/v1/account/sessions/oauth2/callback/google/{projectId}?code=bad-code&state={authorize["state"]}");
         callback.Headers.Add("Cookie", stateCookie);
         var response = await Client.SendAsync(callback);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
@@ -133,13 +137,13 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     {
         var (projectId, _) = await SetupOAuthProjectAsync();
         var start = await Client.GetAsync(
-            $"/v1/account/sessions/oauth2/github?project={projectId}" +
+            $"/v1/account/sessions/oauth2/google?project={projectId}" +
             "&success=https%3A%2F%2Fapp.example.com%2Fok&failure=https%3A%2F%2Fapp.example.com%2Ffail");
         var stateCookie = start.Headers.GetValues("Set-Cookie")
             .Single(c => c.StartsWith($"praxy_oauth_{projectId}=", StringComparison.Ordinal)).Split(';')[0];
 
         var callback = new HttpRequestMessage(HttpMethod.Get,
-            $"/v1/account/sessions/oauth2/callback/github/{projectId}?code=good-code&state=forged-state");
+            $"/v1/account/sessions/oauth2/callback/google/{projectId}?code=good-code&state=forged-state");
         callback.Headers.Add("Cookie", stateCookie);
         var response = await Client.SendAsync(callback);
         await AssertError(response, 401, "user_invalid_token");
@@ -151,19 +155,19 @@ public class OAuthFlowTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         var (operatorToken, projectId) = await SetupProjectAsync();
         await AddPlatformAsync(operatorToken, projectId, "app.example.com");
 
-        // GitHub not enabled for the project.
+        // Google not enabled for the project.
         var disabled = await Client.GetAsync(
-            $"/v1/account/sessions/oauth2/github?project={projectId}" +
+            $"/v1/account/sessions/oauth2/google?project={projectId}" +
             "&success=https%3A%2F%2Fapp.example.com%2Fok&failure=https%3A%2F%2Fapp.example.com%2Ffail");
         await AssertError(disabled, 400, "project_provider_disabled");
 
         await Client.SendAsync(Authed(
             HttpMethod.Patch, $"/v1/console/projects/{projectId}/auth-settings", operatorToken,
-            new { githubEnabled = true, githubClientId = "cid", githubClientSecret = "csecret" }));
+            new { googleEnabled = true, googleClientId = "cid", googleClientSecret = "csecret" }));
 
         // Success URL on an unregistered host: the redirect allowlist is the phishing guard.
         var badRedirect = await Client.GetAsync(
-            $"/v1/account/sessions/oauth2/github?project={projectId}" +
+            $"/v1/account/sessions/oauth2/google?project={projectId}" +
             "&success=https%3A%2F%2Fevil.example.net%2Fok&failure=https%3A%2F%2Fapp.example.com%2Ffail");
         await AssertError(badRedirect, 400, "general_argument_invalid");
     }

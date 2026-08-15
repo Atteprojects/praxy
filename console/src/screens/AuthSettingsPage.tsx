@@ -5,8 +5,8 @@ import { ApiError } from "../api/client";
 import { ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
 
 /**
- * Method toggles, GitHub credentials, session limit, password policy. Minimal options by
- * design — email+password and GitHub are the only methods until the owner says otherwise.
+ * Method toggles, Google credentials, session limit, password policy. Minimal options by
+ * design — email+password and Google are the only methods until the owner says otherwise.
  */
 export function AuthSettingsPage() {
   const { projectId } = useParams({ strict: false }) as { projectId: string };
@@ -14,9 +14,9 @@ export function AuthSettingsPage() {
   const update = useUpdateAuthSettings(projectId);
 
   const [emailPassword, setEmailPassword] = useState(true);
-  const [githubEnabled, setGithubEnabled] = useState(false);
-  const [githubClientId, setGithubClientId] = useState("");
-  const [githubClientSecret, setGithubClientSecret] = useState("");
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState("");
+  const [googleClientSecret, setGoogleClientSecret] = useState("");
   const [sessionLimit, setSessionLimit] = useState(10);
   const [passwordMinLength, setPasswordMinLength] = useState(8);
   const [saved, setSaved] = useState(false);
@@ -24,8 +24,8 @@ export function AuthSettingsPage() {
   useEffect(() => {
     if (settings.data) {
       setEmailPassword(settings.data.emailPassword);
-      setGithubEnabled(settings.data.githubEnabled);
-      setGithubClientId(settings.data.githubClientId ?? "");
+      setGoogleEnabled(settings.data.googleEnabled);
+      setGoogleClientId(settings.data.googleClientId ?? "");
       setSessionLimit(settings.data.sessionLimit);
       setPasswordMinLength(settings.data.passwordMinLength);
     }
@@ -35,19 +35,19 @@ export function AuthSettingsPage() {
   if (settings.isError) throw settings.error;
 
   const error = update.error instanceof ApiError ? update.error : null;
-  const callbackUrl = `${window.location.origin}/v1/account/sessions/oauth2/callback/github/${projectId}`;
+  const callbackUrl = `${window.location.origin}/v1/account/sessions/oauth2/callback/google/${projectId}`;
 
   async function onSave() {
     await update.mutateAsync({
       emailPassword,
-      githubEnabled,
-      githubClientId,
+      googleEnabled,
+      googleClientId,
       // Empty input = keep the stored secret; the API treats null as keep, "" as clear.
-      githubClientSecret: githubClientSecret || undefined,
+      googleClientSecret: googleClientSecret || undefined,
       sessionLimit,
       passwordMinLength,
     });
-    setGithubClientSecret("");
+    setGoogleClientSecret("");
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -68,24 +68,24 @@ export function AuthSettingsPage() {
             />
             <div className="pt-2">
               <Toggle
-                checked={githubEnabled}
-                onChange={setGithubEnabled}
-                label="GitHub OAuth"
-                description="Sign in with GitHub via the token flow with PKCE."
+                checked={googleEnabled}
+                onChange={setGoogleEnabled}
+                label="Google OAuth"
+                description="Sign in with Google via the token flow with PKCE."
               />
-              {githubEnabled ? (
+              {googleEnabled ? (
                 <div className="mt-4 space-y-4 border-l-2 border-ink-800 pl-4">
                   <Field label="Client ID">
                     <input
                       className="input-base"
-                      value={githubClientId}
-                      onChange={(e) => setGithubClientId(e.target.value)}
-                      placeholder="Iv1.abc123…"
+                      value={googleClientId}
+                      onChange={(e) => setGoogleClientId(e.target.value)}
+                      placeholder="1234567890-abc123.apps.googleusercontent.com"
                     />
                   </Field>
                   <Field
                     label={
-                      settings.data.githubClientSecretSet
+                      settings.data.googleClientSecretSet
                         ? "Client secret (stored — enter a value to replace)"
                         : "Client secret"
                     }
@@ -93,14 +93,14 @@ export function AuthSettingsPage() {
                     <input
                       className="input-base"
                       type="password"
-                      value={githubClientSecret}
-                      onChange={(e) => setGithubClientSecret(e.target.value)}
-                      placeholder={settings.data.githubClientSecretSet ? "••••••••" : "ghp_…"}
+                      value={googleClientSecret}
+                      onChange={(e) => setGoogleClientSecret(e.target.value)}
+                      placeholder={settings.data.googleClientSecretSet ? "••••••••" : "GOCSPX-…"}
                     />
                   </Field>
                   <div>
                     <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
-                      Authorization callback URL (paste into the GitHub OAuth app)
+                      Authorization callback URL (paste into the Google OAuth client's Authorized redirect URIs)
                     </span>
                     <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2 font-mono text-xs text-ink-300">
                       {callbackUrl}

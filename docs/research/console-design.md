@@ -94,7 +94,7 @@ Progress circle in the sidebar until dismissed or complete.
 state), settings shell.
 **Phase 1 (Auth):** users table (`ID · Name · Identifiers · Status · Labels · Joined · Last activity`), user
 detail (overview / sessions / memberships / identities tabs), teams + members, auth settings (method toggles,
-GitHub OAuth config, session limits, password policy), API keys.
+Google OAuth config, session limits, password policy), API keys.
 **Phase 2 (Schema):** databases list, table sub-sidebar, Columns screen (spreadsheet), column create/edit
 sheet, index create sheet, Indexes screen, table settings (permissions matrix + row-security switch + danger
 zone).

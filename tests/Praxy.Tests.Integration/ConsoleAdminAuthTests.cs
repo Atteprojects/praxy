@@ -109,14 +109,14 @@ public class ConsoleAdminAuthTests(PostgresContainerFixture pg) : AuthTestBase(p
 
         var patch = await ReadJson(await Client.SendAsync(Authed(
             HttpMethod.Patch, $"/v1/console/projects/{projectId}/auth-settings", operatorToken,
-            new { githubEnabled = true, githubClientId = "cid", githubClientSecret = "super-secret" })));
-        Assert.True(patch.GetProperty("githubClientSecretSet").GetBoolean());
-        Assert.False(patch.TryGetProperty("githubClientSecret", out _));
+            new { googleEnabled = true, googleClientId = "cid", googleClientSecret = "super-secret" })));
+        Assert.True(patch.GetProperty("googleClientSecretSet").GetBoolean());
+        Assert.False(patch.TryGetProperty("googleClientSecret", out _));
 
         var get = await ReadJson(await Client.SendAsync(Authed(
             HttpMethod.Get, $"/v1/console/projects/{projectId}/auth-settings", operatorToken)));
-        Assert.True(get.GetProperty("githubClientSecretSet").GetBoolean());
-        Assert.False(get.TryGetProperty("githubClientSecret", out _));
+        Assert.True(get.GetProperty("googleClientSecretSet").GetBoolean());
+        Assert.False(get.TryGetProperty("googleClientSecret", out _));
     }
 
     [Fact]

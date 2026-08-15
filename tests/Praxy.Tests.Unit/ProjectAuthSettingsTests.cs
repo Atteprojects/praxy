@@ -14,7 +14,7 @@ public class ProjectAuthSettingsTests
     {
         var settings = ProjectAuthSettings.Parse(json);
         Assert.True(settings.EmailPassword);
-        Assert.False(settings.GitHubEnabled);
+        Assert.False(settings.GoogleEnabled);
         Assert.Equal(10, settings.SessionLimit);
         Assert.Equal(8, settings.PasswordMinLength);
     }
@@ -25,9 +25,9 @@ public class ProjectAuthSettingsTests
         var updated = new ProjectAuthSettings
         {
             EmailPassword = false,
-            GitHubEnabled = true,
-            GitHubClientId = "cid",
-            GitHubClientSecret = "csecret",
+            GoogleEnabled = true,
+            GoogleClientId = "cid",
+            GoogleClientSecret = "csecret",
             SessionLimit = 3,
             PasswordMinLength = 12,
         };

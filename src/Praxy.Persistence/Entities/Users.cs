@@ -27,7 +27,7 @@ public class Session
     /// <summary>SHA-256 of the 32-byte CSPRNG secret. The secret itself is never stored.</summary>
     public required string SecretHash { get; set; }
 
-    /// <summary>email | github | token ...</summary>
+    /// <summary>email | google | token ...</summary>
     public required string Provider { get; set; }
 
     public string? Ip { get; set; }

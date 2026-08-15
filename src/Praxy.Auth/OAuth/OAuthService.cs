@@ -126,17 +126,17 @@ public sealed class OAuthService(PraxyDb db, AppAuthService auth, IOAuthProvider
     private IOAuthProvider GetProvider(string providerName) =>
         providers.Get(providerName)
         ?? throw PraxyException.ArgumentInvalid($"Unknown OAuth provider '{providerName}'.",
-            new Dictionary<string, string[]> { ["provider"] = ["Supported providers: github."] });
+            new Dictionary<string, string[]> { ["provider"] = ["Supported providers: google."] });
 
     private static (string ClientId, string ClientSecret) RequireProviderSettings(Project project, string providerName)
     {
-        // Only GitHub exists today; per-provider settings generalize when a second provider lands.
+        // Only Google exists today; per-provider settings generalize when a second provider lands.
         var settings = ProjectAuthSettings.Parse(project.Settings);
-        if (providerName != "github" || !settings.GitHubEnabled ||
-            string.IsNullOrEmpty(settings.GitHubClientId) || string.IsNullOrEmpty(settings.GitHubClientSecret))
+        if (providerName != "google" || !settings.GoogleEnabled ||
+            string.IsNullOrEmpty(settings.GoogleClientId) || string.IsNullOrEmpty(settings.GoogleClientSecret))
             throw new PraxyException(400, ErrorTypes.ProjectProviderDisabled,
                 $"The {providerName} provider is not enabled for this project.");
-        return (settings.GitHubClientId, settings.GitHubClientSecret);
+        return (settings.GoogleClientId, settings.GoogleClientSecret);
     }
 
     /// <summary>

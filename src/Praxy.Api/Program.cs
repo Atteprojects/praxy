@@ -61,8 +61,8 @@ try
     else
         builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 
-    builder.Services.AddHttpClient<GitHubOAuthProvider>();
-    builder.Services.AddTransient<IOAuthProvider>(sp => sp.GetRequiredService<GitHubOAuthProvider>());
+    builder.Services.AddHttpClient<GoogleOAuthProvider>();
+    builder.Services.AddTransient<IOAuthProvider>(sp => sp.GetRequiredService<GoogleOAuthProvider>());
     builder.Services.AddScoped<IOAuthProviderRegistry, OAuthProviderRegistry>();
 
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
