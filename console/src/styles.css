@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* Praxy design tokens — our own language: deep neutral surfaces, iris accent. */
+@theme {
+  --color-ink-950: oklch(0.145 0.012 265);
+  --color-ink-900: oklch(0.185 0.012 265);
+  --color-ink-850: oklch(0.215 0.012 265);
+  --color-ink-800: oklch(0.25 0.012 265);
+  --color-ink-700: oklch(0.32 0.012 265);
+  --color-ink-500: oklch(0.52 0.014 265);
+  --color-ink-400: oklch(0.64 0.014 265);
+  --color-ink-300: oklch(0.76 0.012 265);
+  --color-ink-100: oklch(0.93 0.006 265);
+
+  --color-iris-600: oklch(0.51 0.21 278);
+  --color-iris-500: oklch(0.58 0.2 278);
+  --color-iris-400: oklch(0.67 0.17 278);
+  --color-iris-300: oklch(0.78 0.12 278);
+
+  --color-mint-400: oklch(0.79 0.15 165);
+  --color-amber-400: oklch(0.82 0.14 85);
+  --color-coral-400: oklch(0.7 0.17 25);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 font-sans antialiased;
+}
+
+/* Scrollbars that match the surface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-700) transparent;
+}
+
+@utility surface {
+  @apply bg-ink-900 border border-ink-800 rounded-xl;
+}
+
+@utility input-base {
+  @apply w-full rounded-lg bg-ink-950 border border-ink-700 px-3 py-2 text-sm text-ink-100
+    placeholder:text-ink-500 outline-none focus:border-iris-500 focus:ring-2 focus:ring-iris-500/30
+    transition-colors;
+}
+
+@utility btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-iris-500 px-4 py-2 text-sm
+    font-medium text-white hover:bg-iris-400 active:bg-iris-600 disabled:opacity-50
+    disabled:pointer-events-none transition-colors cursor-pointer;
+}
+
+@utility btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+    text-ink-300 hover:bg-ink-800 hover:text-ink-100 transition-colors cursor-pointer;
+}
+
+@keyframes ping-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-ping-pulse {
+  animation: ping-pulse 1.6s ease-in-out infinite;
+}
