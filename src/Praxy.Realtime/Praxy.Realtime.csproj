@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
+    <ProjectReference Include="..\Praxy.Events\Praxy.Events.csproj" />
+  </ItemGroup>
+
+</Project>

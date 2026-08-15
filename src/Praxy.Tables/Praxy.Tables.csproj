@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
+    <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

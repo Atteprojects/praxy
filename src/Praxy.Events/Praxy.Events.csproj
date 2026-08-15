@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
+  </ItemGroup>
+
+</Project>
