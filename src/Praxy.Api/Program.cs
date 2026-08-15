@@ -63,6 +63,11 @@ try
     app.UseDefaultFiles();
     app.UseStaticFiles();
 
+    // Explicit and *after* static files: otherwise WebApplication auto-prepends routing,
+    // the /console/{*path} fallback endpoint matches first, and the static middleware
+    // (which yields to matched endpoints) never serves the console assets.
+    app.UseRouting();
+
     if (app.Environment.IsDevelopment())
     {
         // Dev-only: the OpenAPI document and Scalar UI disclose the full API surface.

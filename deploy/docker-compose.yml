@@ -1,0 +1,35 @@
+name: praxy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: praxy
+      POSTGRES_USER: praxy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing .env — run ./up.sh once to generate secrets}
+    volumes:
+      - praxy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U praxy -d praxy"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__praxy: "Host=postgres;Port=5432;Database=praxy;Username=praxy;Password=${POSTGRES_PASSWORD}"
+      # Set to your public origin to require the logged setup token for instance claim.
+      PRAXY_PUBLIC_URL: ${PRAXY_PUBLIC_URL:-}
+    ports:
+      - "${PRAXY_PORT:-8080}:8080"
+
+volumes:
+  praxy-pgdata:
