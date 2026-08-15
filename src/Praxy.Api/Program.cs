@@ -1,8 +1,11 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Praxy.Api.Endpoints;
 using Praxy.Api.Infrastructure;
 using Praxy.Auth;
+using Praxy.Auth.OAuth;
 using Praxy.Core.Errors;
 using Praxy.Events;
 using Praxy.Persistence;
@@ -38,6 +41,80 @@ try
     builder.Services.AddSingleton<SetupTokenService>();
     builder.Services.AddScoped<ConsoleAuthService>();
 
+    // ---- Phase 1: app-user auth ----
+    builder.Services.AddSingleton(new InstanceKey(
+        builder.Configuration["PRAXY_SECRET_KEY"] ?? builder.Configuration["Praxy:SecretKey"]));
+    builder.Services.AddSingleton<ISessionCache>(sp => new InMemorySessionCache(
+        sp.GetRequiredService<IEventBus>(),
+        TimeSpan.FromSeconds(builder.Configuration.GetValue("Praxy:Auth:SessionCacheSeconds", 60))));
+    builder.Services.AddScoped<AppAuthService>();
+    builder.Services.AddScoped<TeamsService>();
+    builder.Services.AddScoped<OAuthService>();
+    builder.Services.AddScoped<ApiKeyService>();
+    builder.Services.AddScoped<IRoleResolver, RoleResolver>();
+
+    var smtp = new SmtpOptions();
+    builder.Configuration.GetSection("Praxy:Smtp").Bind(smtp);
+    builder.Services.AddSingleton(smtp);
+    if (smtp.Configured)
+        builder.Services.AddSingleton<IEmailSender>(new SmtpEmailSender(smtp));
+    else
+        builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
+
+    builder.Services.AddHttpClient<GitHubOAuthProvider>();
+    builder.Services.AddTransient<IOAuthProvider>(sp => sp.GetRequiredService<GitHubOAuthProvider>());
+    builder.Services.AddScoped<IOAuthProviderRegistry, OAuthProviderRegistry>();
+
+    // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
+    // source address alone never carves out someone else's budget. Limits are configurable and
+    // loud when tripped: 429 (NOT the 503 default), Retry-After, RateLimit-*.
+    var rateLimits = new Dictionary<string, (int PermitLimit, int WindowSeconds)>
+    {
+        ["auth"] = (
+            builder.Configuration.GetValue("Praxy:RateLimits:Auth:PermitLimit", 10),
+            builder.Configuration.GetValue("Praxy:RateLimits:Auth:WindowSeconds", 60)),
+        ["auth-email"] = (
+            builder.Configuration.GetValue("Praxy:RateLimits:AuthEmail:PermitLimit", 5),
+            builder.Configuration.GetValue("Praxy:RateLimits:AuthEmail:WindowSeconds", 600)),
+    };
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (rejected, ct) =>
+        {
+            var http = rejected.HttpContext;
+            var policy = http.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+            var limits = policy is not null && rateLimits.TryGetValue(policy, out var found)
+                ? found
+                : rateLimits["auth"];
+            var retryAfter = rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var window)
+                ? Math.Max(1, (int)Math.Ceiling(window.TotalSeconds))
+                : limits.WindowSeconds;
+
+            http.Response.Headers.RetryAfter = retryAfter.ToString();
+            http.Response.Headers["RateLimit-Limit"] = limits.PermitLimit.ToString();
+            http.Response.Headers["RateLimit-Remaining"] = "0";
+            http.Response.Headers["RateLimit-Reset"] = retryAfter.ToString();
+            await http.Response.WriteAsJsonAsync(ErrorEnvelope.Create(
+                http, StatusCodes.Status429TooManyRequests, ErrorTypes.GeneralRateLimitExceeded,
+                "Rate limit exceeded. Try again later."), ct);
+        };
+
+        static string PartitionKey(HttpContext http) =>
+            $"{http.Request.Headers[DataPlaneEndpoints.ProjectHeader].FirstOrDefault() ?? http.Request.Query["project"].FirstOrDefault() ?? "-"}" +
+            $"|{http.Connection.RemoteIpAddress?.ToString() ?? "-"}";
+
+        foreach (var (name, limits) in rateLimits)
+            options.AddPolicy(name, http => RateLimitPartition.GetFixedWindowLimiter(
+                PartitionKey(http),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = limits.PermitLimit,
+                    Window = TimeSpan.FromSeconds(limits.WindowSeconds),
+                    QueueLimit = 0,
+                }));
+    });
+
     builder.Services.ConfigureHttpJsonOptions(o =>
         o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
 
@@ -57,8 +134,16 @@ try
             app.Services.GetRequiredService<SetupTokenService>().GenerateAndAnnounce();
     }
 
+    var instanceKey = app.Services.GetRequiredService<InstanceKey>();
+    if (instanceKey.Ephemeral)
+        Log.Warning(
+            "PRAXY_SECRET_KEY is not set — using an ephemeral instance key. OAuth logins in " +
+            "flight and encrypted provider tokens will not survive a restart. Set it in .env for production.");
+
     app.UseMiddleware<RequestIdMiddleware>();
     app.UseMiddleware<ErrorHandlingMiddleware>();
+    // After the error middleware so an unknown origin gets the public 403 envelope.
+    app.UseMiddleware<PlatformCorsMiddleware>();
 
     app.UseDefaultFiles();
     app.UseStaticFiles();
@@ -67,6 +152,9 @@ try
     // the /console/{*path} fallback endpoint matches first, and the static middleware
     // (which yields to matched endpoints) never serves the console assets.
     app.UseRouting();
+
+    // Must follow UseRouting so per-endpoint policies resolve.
+    app.UseRateLimiter();
 
     if (app.Environment.IsDevelopment())
     {
@@ -81,6 +169,10 @@ try
     ConsoleAuthEndpoints.Map(app);
     ProjectEndpoints.Map(app);
     DataPlaneEndpoints.Map(app);
+    AccountEndpoints.Map(app);
+    TeamEndpoints.Map(app);
+    UsersServerEndpoints.Map(app);
+    ConsoleAuthAdminEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.
