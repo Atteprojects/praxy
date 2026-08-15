@@ -20,6 +20,10 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<Team> Teams => Set<Team>();
+    public DbSet<Membership> Memberships => Set<Membership>();
+    public DbSet<Token> Tokens => Set<Token>();
+    public DbSet<Identity> Identities => Set<Identity>();
     public DbSet<SchemaJob> SchemaJobs => Set<SchemaJob>();
     public DbSet<OutboxEvent> Events => Set<OutboxEvent>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
@@ -88,6 +92,42 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Ip).HasMaxLength(64);
             e.Property(x => x.UserAgent).HasMaxLength(512);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.UserId);
+        });
+
+        b.Entity<Team>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Prefs).HasColumnType("jsonb");
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ProjectId);
+        });
+
+        b.Entity<Membership>(e =>
+        {
+            e.Property(x => x.SecretHash).HasMaxLength(64);
+            e.HasOne<Team>().WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TeamId, x.UserId }).IsUnique();
+            e.HasIndex(x => x.UserId);
+        });
+
+        b.Entity<Token>(e =>
+        {
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.SecretHash).HasMaxLength(64);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.UserId, x.Type });
+        });
+
+        b.Entity<Identity>(e =>
+        {
+            e.Property(x => x.Provider).HasMaxLength(32);
+            e.Property(x => x.ProviderUid).HasMaxLength(256);
+            e.Property(x => x.ProviderEmail).HasMaxLength(320);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Provider, x.ProviderUid }).IsUnique();
             e.HasIndex(x => x.UserId);
         });
 
