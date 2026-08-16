@@ -11,6 +11,10 @@ import { AuthSettingsPage } from "./screens/AuthSettingsPage";
 import { ColumnsPage } from "./screens/ColumnsPage";
 import { DatabaseIndexPage, DatabaseLayout } from "./screens/DatabaseLayout";
 import { DatabasesPage } from "./screens/DatabasesPage";
+import { FunctionDeploymentsPage } from "./screens/FunctionDeploymentsPage";
+import { FunctionExecutionsPage } from "./screens/FunctionExecutionsPage";
+import { FunctionSettingsPage } from "./screens/FunctionSettingsPage";
+import { FunctionsPage } from "./screens/FunctionsPage";
 import { IndexesPage } from "./screens/IndexesPage";
 import { LoginPage } from "./screens/LoginPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
@@ -162,6 +166,30 @@ const webhookDeliveriesRoute = createRoute({
   component: WebhookDeliveriesPage,
 });
 
+const functionsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "functions",
+  component: FunctionsPage,
+});
+
+const functionDeploymentsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "functions/$functionId",
+  component: FunctionDeploymentsPage,
+});
+
+const functionExecutionsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "functions/$functionId/executions",
+  component: FunctionExecutionsPage,
+});
+
+const functionSettingsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "functions/$functionId/settings",
+  component: FunctionSettingsPage,
+});
+
 const apiKeysRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "api-keys",
@@ -192,6 +220,10 @@ const routeTree = rootRoute.addChildren([
       realtimeRoute,
       webhooksRoute,
       webhookDeliveriesRoute,
+      functionsRoute,
+      functionDeploymentsRoute,
+      functionExecutionsRoute,
+      functionSettingsRoute,
       apiKeysRoute,
       platformsRoute,
     ]),

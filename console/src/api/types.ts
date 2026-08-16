@@ -356,3 +356,85 @@ export interface WebhookDeliveryDetail {
   payload: unknown;
   attempts: WebhookDeliveryAttempt[];
 }
+
+// ---- Phase 7: functions ----
+
+export const FUNCTION_RUNTIMES = ["dart", "node"] as const;
+export type FunctionRuntime = (typeof FUNCTION_RUNTIMES)[number];
+
+export interface PraxyFunction {
+  id: string;
+  key: string;
+  name: string;
+  runtime: FunctionRuntime;
+  entrypoint: string;
+  timeoutSeconds: number;
+  enabled: boolean;
+  events: string[];
+  schedule: string | null;
+  nextScheduledRunAt: string | null;
+  activeDeploymentId: string | null;
+  isWarm: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FunctionList {
+  total: number;
+  functions: PraxyFunction[];
+}
+
+export interface FunctionEnvVar {
+  key: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FunctionEnvVarList {
+  total: number;
+  vars: FunctionEnvVar[];
+}
+
+export type FunctionDeploymentStatus = "queued" | "building" | "ready" | "failed";
+
+export interface FunctionDeployment {
+  id: string;
+  status: FunctionDeploymentStatus;
+  sourceSizeBytes: number;
+  buildLog: string;
+  error: string | null;
+  imageTag: string | null;
+  createdAt: string;
+  updatedAt: string;
+  activatedAt: string | null;
+}
+
+export interface FunctionDeploymentList {
+  total: number;
+  deployments: FunctionDeployment[];
+}
+
+export type FunctionExecutionStatus = "waiting" | "processing" | "completed" | "failed";
+
+export interface FunctionExecution {
+  id: string;
+  trigger: "http" | "event" | "schedule";
+  async: boolean;
+  status: FunctionExecutionStatus;
+  method: string;
+  path: string;
+  statusCode: number | null;
+  responseBody: string | null;
+  logs: string;
+  errors: string | null;
+  durationMs: number | null;
+  coldStart: boolean;
+  triggeredBy: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface FunctionExecutionList {
+  total: number;
+  executions: FunctionExecution[];
+}
