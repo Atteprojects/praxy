@@ -17,6 +17,10 @@ import { FunctionSettingsPage } from "./screens/FunctionSettingsPage";
 import { FunctionsPage } from "./screens/FunctionsPage";
 import { IndexesPage } from "./screens/IndexesPage";
 import { LoginPage } from "./screens/LoginPage";
+import { MessagesPage } from "./screens/MessagesPage";
+import { MessagingProvidersPage } from "./screens/MessagingProvidersPage";
+import { MessagingTemplatesPage } from "./screens/MessagingTemplatesPage";
+import { MessagingTopicsPage } from "./screens/MessagingTopicsPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectListPage } from "./screens/ProjectListPage";
@@ -25,6 +29,7 @@ import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
 import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
+import { TopicSubscribersPage } from "./screens/TopicSubscribersPage";
 import { UserDetailPage } from "./screens/UserDetailPage";
 import { UsersPage } from "./screens/UsersPage";
 import { WebhookDeliveriesPage } from "./screens/WebhookDeliveriesPage";
@@ -190,6 +195,36 @@ const functionSettingsRoute = createRoute({
   component: FunctionSettingsPage,
 });
 
+const messagesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "messaging",
+  component: MessagesPage,
+});
+
+const messagingTopicsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "messaging/topics",
+  component: MessagingTopicsPage,
+});
+
+const messagingTopicSubscribersRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "messaging/topics/$topicId",
+  component: TopicSubscribersPage,
+});
+
+const messagingTemplatesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "messaging/templates",
+  component: MessagingTemplatesPage,
+});
+
+const messagingProvidersRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "messaging/providers",
+  component: MessagingProvidersPage,
+});
+
 const apiKeysRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "api-keys",
@@ -224,6 +259,11 @@ const routeTree = rootRoute.addChildren([
       functionDeploymentsRoute,
       functionExecutionsRoute,
       functionSettingsRoute,
+      messagesRoute,
+      messagingTopicsRoute,
+      messagingTopicSubscribersRoute,
+      messagingTemplatesRoute,
+      messagingProvidersRoute,
       apiKeysRoute,
       platformsRoute,
     ]),

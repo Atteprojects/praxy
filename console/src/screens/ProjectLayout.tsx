@@ -77,6 +77,12 @@ export function ProjectLayout() {
             </NavEntry>
           ) : null}
 
+          {features.messaging ? (
+            <NavEntry to="/project/$projectId/messaging" projectId={projectId} kbd="g m">
+              Messaging
+            </NavEntry>
+          ) : null}
+
           {features.auth ? (
             <>
               <SectionLabel>Manage</SectionLabel>

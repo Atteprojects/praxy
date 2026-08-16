@@ -438,3 +438,102 @@ export interface FunctionExecutionList {
   total: number;
   executions: FunctionExecution[];
 }
+
+// ---- Phase 8: messaging ----
+
+export interface MessagingProvider {
+  id: string;
+  type: string;
+  name: string;
+  enabled: boolean;
+  isDefault: boolean;
+  host: string;
+  port: number;
+  username: string | null;
+  from: string;
+  useTls: boolean;
+  hasSecret: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingProviderList {
+  total: number;
+  providers: MessagingProvider[];
+}
+
+export interface MessagingTopic {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  subscriberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessagingTopicList {
+  total: number;
+  topics: MessagingTopic[];
+}
+
+export interface MessagingSubscriber {
+  id: string;
+  userId: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface MessagingSubscriberList {
+  total: number;
+  subscribers: MessagingSubscriber[];
+}
+
+export const AUTH_TEMPLATE_KEYS = ["verification", "recovery", "invitation"] as const;
+export type AuthTemplateKey = (typeof AUTH_TEMPLATE_KEYS)[number];
+
+export interface MessagingTemplate {
+  key: AuthTemplateKey;
+  subject: string;
+  body: string;
+  overridden: boolean;
+}
+
+export interface MessagingTemplateList {
+  templates: MessagingTemplate[];
+}
+
+export type MessageStatus = "processing" | "completed";
+
+export interface PraxyMessage {
+  id: string;
+  type: string;
+  subject: string;
+  body: string;
+  status: MessageStatus;
+  topicIds: string[];
+  userIds: string[];
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface MessageList {
+  total: number;
+  messages: PraxyMessage[];
+}
+
+export type MessageTargetStatus = "queued" | "sending" | "sent" | "failed";
+
+export interface MessageTarget {
+  id: string;
+  identifier: string;
+  status: MessageTargetStatus;
+  error: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+export interface MessageDetail {
+  message: PraxyMessage;
+  targets: MessageTarget[];
+}
