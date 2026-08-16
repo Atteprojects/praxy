@@ -4,15 +4,17 @@ A self-hosted backend-as-a-service. Authentication, a dynamic database where a u
 PostgreSQL table, realtime subscriptions, functions, webhooks and messaging — with an admin console and a
 Flutter SDK.
 
-**Status:** Phase 5 complete — solution skeleton, system catalog, instance claim, projects API, full
+**Status:** Phase 6 complete — solution skeleton, system catalog, instance claim, projects API, full
 app-user auth (email+password, Google OAuth, teams, API keys, rate limiting), the dynamic schema engine
 (databases → tables → columns → indexes, synchronous DDL, an async job runner with real cancel/retry,
 table-level permission storage), the data plane (row CRUD, the 24-method query DSL, keyset
 pagination, table- and row-level permission filtering, a catalog cache, and an outbox), realtime
 (a WebSocket endpoint, message-mode protocol, permission-filtered fan-out, and a console inspector),
-and a native Flutter/Dart SDK (`praxy_core`/`praxy_flutter`/`praxy_codegen`, secure-storage sessions,
-Google OAuth, a real `Stream`-based realtime client with `liveList`, an example app). Phase 6
-(Webhooks) is next; see [docs/handoff/](docs/handoff/).
+a native Flutter/Dart SDK (`praxy_core`/`praxy_flutter`/`praxy_codegen`, secure-storage sessions,
+Google OAuth, a real `Stream`-based realtime client with `liveList`, an example app), and webhooks
+(an outbox-consuming dispatcher and delivery worker, HMAC-SHA256 signed deliveries with full-jitter
+retry/backoff and auto-disable, a connect-time SSRF guard, and a console delivery log with redeliver).
+Phase 7 (Functions) is next; see [docs/handoff/](docs/handoff/).
 
 ## Stack
 
