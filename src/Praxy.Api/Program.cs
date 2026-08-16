@@ -8,6 +8,7 @@ using Praxy.Auth;
 using Praxy.Auth.OAuth;
 using Praxy.Core.Errors;
 using Praxy.Events;
+using Praxy.Functions;
 using Praxy.Persistence;
 using Praxy.Realtime;
 using Praxy.Tables;
@@ -55,6 +56,7 @@ try
     builder.Services.AddScoped<OAuthService>();
     builder.Services.AddScoped<ApiKeyService>();
     builder.Services.AddScoped<IRoleResolver, RoleResolver>();
+    builder.Services.AddScoped<AccountJwtService>();
 
     var smtp = new SmtpOptions();
     builder.Configuration.GetSection("Praxy:Smtp").Bind(smtp);
@@ -118,6 +120,38 @@ try
         });
     builder.Services.AddHostedService<WebhookOutboxDispatcher>();
     builder.Services.AddHostedService<WebhookDeliveryWorker>();
+
+    // ---- Phase 7: functions ----
+    var functionsOptions = new FunctionsOptions(
+        DockerEndpoint: builder.Configuration["Praxy:Functions:DockerEndpoint"]
+            ?? Environment.GetEnvironmentVariable("DOCKER_HOST") ?? "unix:///var/run/docker.sock",
+        DartBaseImage: builder.Configuration["Praxy:Functions:DartBaseImage"] ?? "dart:stable",
+        NodeBaseImage: builder.Configuration["Praxy:Functions:NodeBaseImage"] ?? "node:22-alpine",
+        BuildPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:BuildPollIntervalSeconds", 2),
+        ExecutionPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:ExecutionPollIntervalSeconds", 2),
+        SchedulePollIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:SchedulePollIntervalSeconds", 5),
+        BuildTimeoutSeconds: builder.Configuration.GetValue("Praxy:Functions:BuildTimeoutSeconds", 600),
+        ColdStartTimeoutSeconds: builder.Configuration.GetValue("Praxy:Functions:ColdStartTimeoutSeconds", 60),
+        MaxSyncTimeoutSeconds: builder.Configuration.GetValue("Praxy:Functions:MaxSyncTimeoutSeconds", 30),
+        WarmPoolSize: builder.Configuration.GetValue("Praxy:Functions:WarmPoolSize", 10),
+        MaxIdleSeconds: builder.Configuration.GetValue("Praxy:Functions:MaxIdleSeconds", 300),
+        PoolSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:PoolSweepIntervalSeconds", 30),
+        MemoryLimitMb: builder.Configuration.GetValue("Praxy:Functions:MemoryLimitMb", 256L),
+        CpuLimit: builder.Configuration.GetValue("Praxy:Functions:CpuLimit", 1.0),
+        MaxResponseCaptureBytes: builder.Configuration.GetValue("Praxy:Functions:MaxResponseCaptureBytes", 65536),
+        MaxSourceBytes: builder.Configuration.GetValue("Praxy:Functions:MaxSourceBytes", 26_214_400L));
+    builder.Services.AddSingleton(functionsOptions);
+    builder.Services.AddSingleton<DockerExecutor>();
+    builder.Services.AddSingleton<WarmPool>();
+    builder.Services.AddSingleton<FunctionBuildSignal>();
+    builder.Services.AddSingleton<FunctionExecutionSignal>();
+    builder.Services.AddScoped<FunctionsService>();
+    builder.Services.AddScoped<FunctionExecutionService>();
+    builder.Services.AddHostedService<FunctionBuildWorker>();
+    builder.Services.AddHostedService<FunctionExecutionWorker>();
+    builder.Services.AddHostedService<FunctionEventDispatcher>();
+    builder.Services.AddHostedService<FunctionScheduler>();
+    builder.Services.AddHostedService<FunctionPoolSweeper>();
 
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
     // source address alone never carves out someone else's budget. Limits are configurable and
@@ -237,6 +271,7 @@ try
     ConsoleRowEndpoints.Map(app);
     RealtimeEndpoints.Map(app);
     WebhookEndpoints.Map(app);
+    FunctionEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.

@@ -67,6 +67,19 @@ public static class ErrorTypes
     public const string WebhookDeliveryNotFound = "webhook_delivery_not_found";
     public const string WebhookInvalidRedeliverState = "webhook_invalid_redeliver_state";
 
+    public const string FunctionNotFound = "function_not_found";
+    public const string FunctionAlreadyExists = "function_already_exists";
+    public const string FunctionInvalid = "function_invalid";
+    public const string FunctionDisabled = "function_disabled";
+    public const string FunctionEnvVarNotFound = "function_env_var_not_found";
+    public const string FunctionDeploymentNotFound = "function_deployment_not_found";
+    public const string FunctionInvalidDeploymentState = "function_invalid_deployment_state";
+    public const string FunctionInvalidSource = "function_invalid_source";
+    public const string FunctionNoActiveDeployment = "function_no_active_deployment";
+    public const string FunctionExecutionNotFound = "function_execution_not_found";
+    public const string FunctionExecutionTimeout = "function_execution_timeout";
+    public const string FunctionExecutionFailed = "function_execution_failed";
+
     /// <summary>Every registered type. The unit test asserting <c>^[a-z0-9_]+$</c> walks this list.</summary>
     public static readonly IReadOnlyList<string> All =
     [
@@ -122,5 +135,17 @@ public static class ErrorTypes
         WebhookNotFound,
         WebhookDeliveryNotFound,
         WebhookInvalidRedeliverState,
+        FunctionNotFound,
+        FunctionAlreadyExists,
+        FunctionInvalid,
+        FunctionDisabled,
+        FunctionEnvVarNotFound,
+        FunctionDeploymentNotFound,
+        FunctionInvalidDeploymentState,
+        FunctionInvalidSource,
+        FunctionNoActiveDeployment,
+        FunctionExecutionNotFound,
+        FunctionExecutionTimeout,
+        FunctionExecutionFailed,
     ];
 }

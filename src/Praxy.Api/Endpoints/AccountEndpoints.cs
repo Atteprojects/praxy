@@ -30,6 +30,8 @@ public sealed record SendRecoveryRequest(string Email, string Url);
 
 public sealed record ConfirmRecoveryRequest(string UserId, string Secret, string Password);
 
+public sealed record CreateJwtRequest(int? DurationSeconds);
+
 /// <summary>
 /// The app-user account surface (<c>/v1/account</c>) — what SDKs call on behalf of the
 /// signed-in (or signing-in) end user. Console operators have their own endpoints.
@@ -56,6 +58,12 @@ public static class AccountEndpoints
 
         // The role-resolution debug endpoint: what the permission engine will see for this caller.
         account.MapGet("/roles", Roles);
+
+        // Server-to-server: a short-lived, stateless JWT the caller can hand to another process
+        // (a Phase 7 function invocation, a backend job) to act as this user without sharing the
+        // session secret itself. Requires a real session to mint — see AccountJwtService's remarks
+        // on why the minted JWT itself then satisfies less than a full session does.
+        account.MapPost("/jwts", CreateJwt);
 
         account.MapPost("/verification", SendVerification).RequireRateLimiting("auth-email");
         account.MapPut("/verification", ConfirmVerification).RequireRateLimiting("auth");
@@ -160,11 +168,23 @@ public static class AccountEndpoints
             principal = principal switch
             {
                 RequestPrincipal.AppUser => "user",
+                RequestPrincipal.JwtUser => "user",
                 RequestPrincipal.Key => "key",
                 _ => "guest",
             },
             scopes = principal is RequestPrincipal.Key(var key) ? key.Scopes : null,
         });
+    }
+
+    private static IResult CreateJwt(CreateJwtRequest req, HttpContext http, AccountJwtService jwts)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var user = AppPrincipalFilter.RequireUser(http).User;
+
+        var maxSeconds = (int)AccountJwtService.DefaultLifetime.TotalSeconds;
+        var seconds = req.DurationSeconds is { } d ? Math.Clamp(d, 1, maxSeconds) : maxSeconds;
+        var jwt = jwts.Mint(project.Id, user.Id, TimeSpan.FromSeconds(seconds));
+        return Results.Ok(new { jwt });
     }
 
     // ---- account updates ---------------------------------------------------------------------

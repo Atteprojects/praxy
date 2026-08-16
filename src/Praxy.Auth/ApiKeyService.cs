@@ -15,9 +15,10 @@ public static class ApiKeyScopes
     public const string TeamsWrite = "teams.write";
     public const string DatabasesRead = "databases.read";
     public const string DatabasesWrite = "databases.write";
+    public const string FunctionsExecute = "functions.execute";
 
     public static readonly IReadOnlyList<string> All =
-        [UsersRead, UsersWrite, TeamsRead, TeamsWrite, DatabasesRead, DatabasesWrite];
+        [UsersRead, UsersWrite, TeamsRead, TeamsWrite, DatabasesRead, DatabasesWrite, FunctionsExecute];
 }
 
 /// <summary>

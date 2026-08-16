@@ -21,5 +21,17 @@ public class OutboxEvent
     /// the dispatcher's <c>FOR UPDATE SKIP LOCKED</c> claim query filters on this being null, the
     /// same shape <c>SchemaJobRunner</c> uses for <c>schema_jobs.status = 'queued'</c>.
     /// </summary>
-    public DateTimeOffset? DispatchedAt { get; set; }
+    /// <remarks>
+    /// Originally named <c>DispatchedAt</c> (singular, implicitly "the one consumer"). Phase 7 adds a
+    /// second independent consumer (<see cref="FunctionsDispatchedAt"/>) — sharing one claim column
+    /// between two consumers would mean whichever dispatcher claims a row first silently hides it
+    /// from the other, so each consumer now gets its own nullable timestamp rather than a shared one.
+    /// </remarks>
+    public DateTimeOffset? WebhooksDispatchedAt { get; set; }
+
+    /// <summary>
+    /// Same shape as <see cref="WebhooksDispatchedAt"/>, claimed independently by
+    /// <c>Praxy.Functions.FunctionEventDispatcher</c> for event-triggered function executions.
+    /// </summary>
+    public DateTimeOffset? FunctionsDispatchedAt { get; set; }
 }

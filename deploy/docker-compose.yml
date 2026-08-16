@@ -32,6 +32,15 @@ services:
       PRAXY_PUBLIC_URL: ${PRAXY_PUBLIC_URL:-}
     ports:
       - "${PRAXY_PORT:-8080}:8080"
+    volumes:
+      # Docker-outside-of-Docker for Phase 7 Functions: the api container builds and runs function
+      # containers as siblings via the host's own Docker daemon. This is effectively root-equivalent
+      # access to the host — anyone who can reach the api process can, in principle, control every
+      # other container and the host filesystem through the socket. There is no sandboxed
+      # alternative in this release; if that tradeoff is unacceptable for your deployment, comment
+      # this line out (Functions will be unusable — every build/invoke call fails closed — but the
+      # rest of Praxy is unaffected).
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   praxy-pgdata:

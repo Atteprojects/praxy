@@ -35,6 +35,11 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<WebhookSubscription> WebhookSubscriptions => Set<WebhookSubscription>();
     public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
     public DbSet<WebhookDeliveryAttempt> WebhookDeliveryAttempts => Set<WebhookDeliveryAttempt>();
+    public DbSet<FunctionDef> Functions => Set<FunctionDef>();
+    public DbSet<FunctionEnvVar> FunctionEnvVars => Set<FunctionEnvVar>();
+    public DbSet<FunctionDeployment> FunctionDeployments => Set<FunctionDeployment>();
+    public DbSet<FunctionDeploymentSource> FunctionDeploymentSources => Set<FunctionDeploymentSource>();
+    public DbSet<FunctionExecution> FunctionExecutions => Set<FunctionExecution>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -207,8 +212,9 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Type).HasMaxLength(256);
             e.Property(x => x.Payload).HasColumnType("jsonb");
             e.HasIndex(x => x.CreatedAt);
-            // The webhook dispatcher's claim query: un-dispatched events, oldest first.
-            e.HasIndex(x => x.DispatchedAt);
+            // Each consumer claims independently — see the remarks on WebhooksDispatchedAt.
+            e.HasIndex(x => x.WebhooksDispatchedAt);
+            e.HasIndex(x => x.FunctionsDispatchedAt);
         });
 
         b.Entity<AuditLogEntry>(e =>
@@ -252,6 +258,68 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Error).HasMaxLength(2048);
             e.HasOne<WebhookDelivery>().WithMany().HasForeignKey(x => x.DeliveryId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => x.DeliveryId);
+        });
+
+        b.Entity<FunctionDef>(e =>
+        {
+            e.ToTable("functions");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Runtime).HasMaxLength(16);
+            e.Property(x => x.Entrypoint).HasMaxLength(256);
+            e.Property(x => x.Schedule).HasMaxLength(64);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
+            // FunctionScheduler's claim query: due, enabled, scheduled functions.
+            e.HasIndex(x => x.NextScheduledRunAt);
+        });
+
+        b.Entity<FunctionEnvVar>(e =>
+        {
+            e.ToTable("function_env_vars");
+            e.Property(x => x.Key).HasMaxLength(256);
+            e.Property(x => x.ProtectedValue).HasMaxLength(8192);
+            e.HasOne<FunctionDef>().WithMany().HasForeignKey(x => x.FunctionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.FunctionId, x.Key }).IsUnique();
+        });
+
+        b.Entity<FunctionDeployment>(e =>
+        {
+            e.ToTable("function_deployments");
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Error).HasMaxLength(4096);
+            e.Property(x => x.ImageTag).HasMaxLength(256);
+            e.HasOne<FunctionDef>().WithMany().HasForeignKey(x => x.FunctionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.FunctionId);
+            // FunctionBuildWorker's claim query: queued builds, oldest first.
+            e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<FunctionDeploymentSource>(e =>
+        {
+            e.ToTable("function_deployment_sources");
+            e.HasKey(x => x.DeploymentId);
+            e.Property(x => x.Tar).HasColumnType("bytea");
+            e.HasOne<FunctionDeployment>().WithOne().HasForeignKey<FunctionDeploymentSource>(x => x.DeploymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<FunctionExecution>(e =>
+        {
+            e.ToTable("function_executions");
+            e.Property(x => x.Trigger).HasMaxLength(16);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Method).HasMaxLength(16);
+            e.Property(x => x.Path).HasMaxLength(2048);
+            e.Property(x => x.Errors).HasMaxLength(65536);
+            // "event:<type>" carries a full event type string (up to three 32-char hex ids plus
+            // separators) — comfortably longer than the 128 a user:<id>/schedule/console/key/guest
+            // value would need alone.
+            e.Property(x => x.TriggeredBy).HasMaxLength(300);
+            e.HasOne<FunctionDef>().WithMany().HasForeignKey(x => x.FunctionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.FunctionId);
+            // FunctionExecutionWorker's claim query: waiting async executions, oldest first.
+            e.HasIndex(x => x.Status);
         });
     }
 }

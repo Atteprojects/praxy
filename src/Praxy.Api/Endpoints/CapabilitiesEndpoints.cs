@@ -22,7 +22,7 @@ public static class CapabilitiesEndpoints
                     databases = true,
                     realtime = true,
                     messaging = false,
-                    functions = false,
+                    functions = true,
                     webhooks = true,
                 },
             }));

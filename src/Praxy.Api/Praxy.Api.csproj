@@ -19,6 +19,7 @@
     <ProjectReference Include="..\Praxy.Tables\Praxy.Tables.csproj" />
     <ProjectReference Include="..\Praxy.Realtime\Praxy.Realtime.csproj" />
     <ProjectReference Include="..\Praxy.Webhooks\Praxy.Webhooks.csproj" />
+    <ProjectReference Include="..\Praxy.Functions\Praxy.Functions.csproj" />
   </ItemGroup>
 
 </Project>

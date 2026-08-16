@@ -9,22 +9,30 @@ using Praxy.Persistence;
 using Praxy.Persistence.Entities;
 using Praxy.Realtime;
 
-namespace Praxy.Webhooks;
+namespace Praxy.Functions;
 
 /// <summary>
-/// The outbox consumer: claims un-dispatched <c>praxy.events</c> rows with <c>FOR UPDATE SKIP
-/// LOCKED</c> (mirrors <c>SchemaJobRunner</c>'s claim shape) and expands each into one
-/// <see cref="WebhookDelivery"/> row per enabled subscription whose pattern matches — reusing
-/// <see cref="ChannelGrammar.ExpandEventNames"/>, the same wildcard expansion realtime's fan-out
-/// already computes, rather than a second matcher. The claim, the delivery-row inserts and the
-/// dispatched-at stamp share one transaction, so a crash mid-dispatch leaves the event exactly as
-/// "not yet dispatched" — at-least-once, never a partial fan-out.
+/// The outbox consumer for event-triggered functions — same claim shape as
+/// <c>Praxy.Webhooks.WebhookOutboxDispatcher</c>, reusing <see cref="ChannelGrammar.ExpandEventNames"/>
+/// verbatim for pattern matching, but claiming independently via <c>OutboxEvent.FunctionsDispatchedAt</c>
+/// rather than the webhook dispatcher's <c>WebhooksDispatchedAt</c> — two consumers of one outbox
+/// row need two claim markers, or whichever claims first hides the row from the other (see the
+/// remarks on <c>OutboxEvent.WebhooksDispatchedAt</c>). Unlike webhooks, there is no retry/backoff
+/// fan-out table: a matching function gets exactly one <see cref="FunctionExecution"/> row directly —
+/// event triggers are best-effort, same as realtime.
 /// </summary>
-public sealed class WebhookOutboxDispatcher(
+/// <remarks>
+/// Scope boundary carried over from Phase 6 (see docs/handoff/phase-6-report.md): <c>praxy.events</c>
+/// is written only by row writes (<c>RowsService.WriteOutboxAsync</c>). A function subscribed to a
+/// non-row event pattern (e.g. <c>users.*.create</c>) will never fire — that event never reaches the
+/// outbox in the first place. The console's trigger picker only offers row-event presets for the
+/// same reason webhooks' event picker does.
+/// </remarks>
+public sealed class FunctionEventDispatcher(
     IServiceScopeFactory scopeFactory,
-    WebhookDeliverySignal deliverySignal,
-    WebhookOptions options,
-    ILogger<WebhookOutboxDispatcher> logger) : BackgroundService
+    FunctionExecutionSignal signal,
+    FunctionsOptions options,
+    ILogger<FunctionEventDispatcher> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -37,7 +45,7 @@ public sealed class WebhookOutboxDispatcher(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "Webhook outbox dispatch failed; backing off");
+                logger.LogError(ex, "Function event dispatch failed; backing off");
                 dispatched = false;
             }
 
@@ -45,7 +53,7 @@ public sealed class WebhookOutboxDispatcher(
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(options.DispatchPollIntervalSeconds), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(options.ExecutionPollIntervalSeconds), stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -55,7 +63,6 @@ public sealed class WebhookOutboxDispatcher(
         }
     }
 
-    /// <returns>False when there was nothing to dispatch (the caller should back off before polling again).</returns>
     private async Task<bool> DispatchNextAsync(CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
@@ -68,7 +75,7 @@ public sealed class WebhookOutboxDispatcher(
         const string claimSql = """
             SELECT id, project_id, type, payload, created_at
             FROM praxy.events
-            WHERE webhooks_dispatched_at IS NULL
+            WHERE functions_dispatched_at IS NULL
             ORDER BY created_at
             FOR UPDATE SKIP LOCKED
             LIMIT 1
@@ -97,35 +104,36 @@ public sealed class WebhookOutboxDispatcher(
             return false;
         }
 
-        var subscriptions = await db.WebhookSubscriptions
-            .Where(w => w.ProjectId == claimed.ProjectId && w.Enabled)
+        var functions = await db.Functions
+            .Where(f => f.ProjectId == claimed.ProjectId && f.Enabled)
             .ToListAsync(ct);
 
-        var matched = 0;
-        if (subscriptions.Count > 0)
+        var triggered = 0;
+        if (functions.Count > 0)
         {
             var expanded = ChannelGrammar.ExpandEventNames(claimed.Type).ToHashSet();
-            var now = DateTimeOffset.UtcNow;
-            foreach (var subscription in subscriptions)
+            foreach (var fn in functions)
             {
-                if (!subscription.Events.Any(expanded.Contains))
+                if (fn.Events.Length == 0 || !fn.Events.Any(expanded.Contains))
                     continue;
-                matched++;
-                db.WebhookDeliveries.Add(new WebhookDelivery
+                triggered++;
+                db.FunctionExecutions.Add(new FunctionExecution
                 {
                     Id = Ids.NewUuid(),
-                    SubscriptionId = subscription.Id,
+                    FunctionId = fn.Id,
                     ProjectId = claimed.ProjectId,
-                    EventId = claimed.Id,
-                    EventType = claimed.Type,
-                    Payload = claimed.Payload,
-                    NextAttemptAt = now,
+                    Trigger = "event",
+                    Async = true,
+                    Method = "POST",
+                    Path = "/",
+                    RequestBody = claimed.Payload,
+                    TriggeredBy = $"event:{claimed.Type}",
                 });
             }
         }
 
         await using (var markCmd = new NpgsqlCommand(
-            "UPDATE praxy.events SET webhooks_dispatched_at = now() WHERE id = @id", conn, dbTx))
+            "UPDATE praxy.events SET functions_dispatched_at = now() WHERE id = @id", conn, dbTx))
         {
             markCmd.Parameters.AddWithValue("id", claimed.Id);
             await markCmd.ExecuteNonQueryAsync(ct);
@@ -134,8 +142,8 @@ public sealed class WebhookOutboxDispatcher(
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
-        if (matched > 0)
-            deliverySignal.Notify();
+        if (triggered > 0)
+            signal.Notify();
         return true;
     }
 }

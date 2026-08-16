@@ -10,7 +10,7 @@ namespace Praxy.Api.Infrastructure;
 /// or <c>X-Praxy-Session</c>), or a guest. A bad explicit key is a hard 401; a stale session
 /// degrades to guest so public endpoints keep working.
 /// </summary>
-public sealed class AppPrincipalFilter(AppAuthService auth, ApiKeyService keys) : IEndpointFilter
+public sealed class AppPrincipalFilter(AppAuthService auth, ApiKeyService keys, AccountJwtService jwts) : IEndpointFilter
 {
     public const string KeyHeader = "X-Praxy-Key";
     public const string SessionHeader = "X-Praxy-Session";
@@ -36,9 +36,21 @@ public sealed class AppPrincipalFilter(AppAuthService auth, ApiKeyService keys) 
                                ?? http.Request.Cookies[AppSessionCookie.Name(project.Id)];
             if (!string.IsNullOrEmpty(sessionToken))
             {
-                var resolved = await auth.ResolveSessionAsync(project.Id, sessionToken, http.RequestAborted);
-                if (resolved is not null)
-                    principal = new RequestPrincipal.AppUser(resolved.User, resolved.Session);
+                // A JWT (three dot-separated segments) is a scoped account JWT, not an opaque
+                // session secret — same "count the dots" marker OAuthService.UnwrapExchangeSecret
+                // uses to tell its two secret shapes apart.
+                if (sessionToken.Count(c => c == '.') == 2)
+                {
+                    var jwtUser = await jwts.VerifyAsync(project.Id, sessionToken, http.RequestAborted);
+                    if (jwtUser is not null)
+                        principal = new RequestPrincipal.JwtUser(jwtUser);
+                }
+                else
+                {
+                    var resolved = await auth.ResolveSessionAsync(project.Id, sessionToken, http.RequestAborted);
+                    if (resolved is not null)
+                        principal = new RequestPrincipal.AppUser(resolved.User, resolved.Session);
+                }
             }
         }
 
