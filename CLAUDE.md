@@ -54,7 +54,13 @@ Filled in as phases land — keep this section current.
   `http://localhost:8080/console`)
 - Tests: `dotnet test` (integration needs Docker for Testcontainers)
 - Dev API: `dotnet run --project src/Praxy.Api` — port 5090, Scalar at `/scalar/v1`; expects local
-  Postgres `praxy/praxy/praxy` on 5432 (see README dev section)
+  Postgres `praxy/praxy/praxy` on 5432 (see README dev section). Since Phase 7, also needs a reachable
+  Docker daemon at runtime (not just for tests) — Functions builds/runs containers via
+  `/var/run/docker.sock` by default (override with `Praxy:Functions:DockerEndpoint` or `DOCKER_HOST`).
+  Self-host (`deploy/docker-compose.yml`) mounts the host socket into the api container for this —
+  root-equivalent host access from inside that container; the compose file documents the tradeoff and
+  the escape hatch inline. Tunable via `Praxy:Functions:*` (base images, timeouts, warm pool size,
+  upload size cap — see `docs/handoff/phase-7-report.md`'s Commands section for the full list).
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)

@@ -289,6 +289,75 @@ Phase 6 stores `WebhookSubscription.Secret` in plaintext (reveal-once at the API
 as API keys, just not hash-only at rest) and flags this as the natural target once a project-key
 encryption layer exists for OAuth tokens too — one mechanism, two consumers, not two bespoke ones.
 
+**Correction (Phase 7): that project-key encryption layer already existed — this section's claim
+that it didn't was wrong.** `Praxy.Auth.InstanceKey` (built in Phase 1 to sign the short-lived OAuth
+JWTs) also carries an AES-256-GCM `Encrypt`/`Decrypt` pair keyed by `PRAXY_SECRET_KEY`, and
+`OAuthService.ResolveUserAsync` was *already* calling `key.Encrypt(token.AccessToken)` into
+`Identity.AccessTokenEnc` before this paragraph was written — a grep miss, not a design gap. Phase 7
+needed exactly this ("env vars encrypted at rest" for `FunctionEnvVar.ProtectedValue`) and found it
+already live, so it reuses `InstanceKey` rather than standing up `Microsoft.AspNetCore.DataProtection`
+as this section originally proposed. One mechanism, now two consumers (OAuth provider tokens,
+function env vars) — the outcome this paragraph predicted, just via the layer that was already there.
+Lesson for future phases: grep for the actual call sites (`key.Encrypt`/`key.Decrypt`) before
+concluding a mechanism doesn't exist, the way this section should have the first time.
+
+## Docker executor and the open-runtimes contract (Phase 7)
+
+**`Docker.DotNet.Enhanced` 4.3.3 — confirmed still current**, and its API shape differs from the
+historical `Docker.DotNet` idiom worth knowing before writing code from memory: there is no
+`DockerClientConfiguration` class in this version. Construction is a builder:
+`new DockerClientBuilder().WithEndpoint(new Uri("unix:///var/run/docker.sock")).Build()`. Verified via
+reflection against the installed `net10.0` package assets (`Docker.DotNet.Enhanced` ships a `net10.0`
+target), not the package's own docs, which are thin.
+
+**`IImageOperations.BuildImageFromDockerfileAsync`'s two overloads are not interchangeable, and the
+"correct-looking" one has a real bug.** The `IProgress<JSONMessage>`-callback overload is the one the
+library itself documents as "waits for the build to complete" — but it was observed to hang
+indefinitely (not honoring the passed `CancellationToken`) on some failed builds against this Docker
+Engine version (28.1.1), intermittently — reproduced, then fixed, not theorized. The fix: use the
+`Task<Stream> BuildImageFromDockerfileAsync(Stream, ImageBuildParameters, CancellationToken)` overload
+instead (marked `[Obsolete]` with the message "does not wait for build to complete" — true only for
+callers who don't read the returned stream) and parse the newline-delimited JSON yourself with a plain
+`StreamReader.ReadLineAsync(ct)` loop, watching for `{"stream":...}`/`{"status":...}`/`{"error":...}`
+keys per line. That `ReadLineAsync` call is the only thing that can block, and it actually respects
+cancellation — `Praxy.Functions.DockerExecutor.BuildImageAsync` is the implementation, with a scoped
+`#pragma warning disable CS0618` around the one call site (this project's `TreatWarningsAsErrors` would
+otherwise refuse the intentional obsolete-overload use).
+
+**`System.Formats.Tar` (BCL, .NET 7+, no package) is a real tar reader/writer** —
+`TarWriter`/`TarReader`/`PaxTarEntry` — used both to read an uploaded deployment's tar and to write the
+combined build-context tar (uploaded files + generated Dockerfile + generated runtime wrapper) that
+gets streamed into `BuildImageFromDockerfileAsync`. One real gotcha found by testing an actual macOS
+upload end to end, not by reasoning about it: **macOS's `bsdtar` embeds a PAX extended attribute
+(`com.apple.provenance`) that the Linux side of the Docker daemon's context extraction rejects
+outright** (`lsetxattr ... operation not supported`, surfacing as a build failure before the
+Dockerfile's first instruction ever runs). Forwarding the `TarEntry` objects `TarReader` returns
+straight into the output `TarWriter` propagates this. The fix: re-emit a fresh minimal
+`PaxTarEntry(entry.EntryType, entry.Name) { Mode = entry.Mode, DataStream = entry.DataStream }` per
+file instead, dropping every attribute the entry doesn't strictly need — robust against this and
+whatever the next platform-specific tar quirk turns out to be, since Praxy's own build context never
+depends on anything beyond name/mode/contents.
+
+**`Cronos` 0.13.0 — confirmed current and actively maintained** (HangfireIO, the same team behind
+Hangfire's own scheduler), chosen over hand-rolling cron math for `FunctionScheduler`'s next-occurrence
+calculation. UTC-only usage here (`CronExpression.Parse(schedule).GetNextOccurrence(DateTimeOffset.UtcNow,
+TimeZoneInfo.Utc)`) sidesteps the DST-transition ambiguity the package's own docs warn about for local
+`DateTime` — deliberate, not an oversight.
+
+**The open-runtimes wire contract is adopted only where it's actually public.** The executor↔runtime
+contract this phase's roadmap line references has two genuinely documented parts — the
+`x-open-runtimes-secret` header (must match the container's `OPEN_RUNTIMES_SECRET` env var) and the
+build-phase/start-phase split — both adopted verbatim (`Praxy.Functions.RuntimeTemplates.SecretHeader`,
+the constant literal `"x-open-runtimes-secret"`). Everything else open-runtimes' own reference
+implementation does internally (its exact request/response envelope, its per-language SDK surface) is
+not publicly specified anywhere reachable in this research pass, and replicating it faithfully would
+be a project of its own — so Praxy's runtime wrapper (`RuntimeTemplates.DartWrapper`/`NodeWrapper`)
+defines its own minimal envelope (`{method, path, body, headers}` in, `{statusCode, body, headers,
+logs, errors}` out) and its own per-language function signature (Dart: `Future<Map<String, dynamic>>
+main(Map<String, dynamic> context)`; Node: `module.exports = async (context) => ({statusCode, body,
+headers})`). Documented here so the divergence is a decision on record, not something the next phase
+discovers by diffing against upstream.
+
 ## Other notes
 
 - **OpenAPI UI only in Development.** It discloses the full API surface.
