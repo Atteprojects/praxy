@@ -19,7 +19,7 @@ public static class CapabilitiesEndpoints
                 features = new
                 {
                     auth = true,
-                    databases = false,
+                    databases = true,
                     realtime = false,
                     messaging = false,
                     functions = false,

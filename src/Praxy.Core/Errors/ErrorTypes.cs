@@ -41,6 +41,23 @@ public static class ErrorTypes
     public const string ProjectAuthMethodDisabled = "project_auth_method_disabled";
     public const string ProjectProviderDisabled = "project_provider_disabled";
 
+    public const string DatabaseNotFound = "database_not_found";
+    public const string DatabaseAlreadyExists = "database_already_exists";
+    public const string TableNotFound = "table_not_found";
+    public const string TableAlreadyExists = "table_already_exists";
+    public const string ColumnNotFound = "column_not_found";
+    public const string ColumnAlreadyExists = "column_already_exists";
+    public const string ColumnInvalid = "column_invalid";
+    public const string IndexNotFound = "index_not_found";
+    public const string IndexAlreadyExists = "index_already_exists";
+    public const string IndexInvalid = "index_invalid";
+    public const string IndexDependency = "index_dependency";
+    public const string SchemaJobNotFound = "schema_job_not_found";
+    public const string SchemaJobInvalidState = "schema_job_invalid_state";
+    public const string RowSizeExceeded = "row_size_exceeded";
+    public const string GeneralForceRequired = "general_force_required";
+    public const string GeneralResourceLimitExceeded = "general_resource_limit_exceeded";
+
     /// <summary>Every registered type. The unit test asserting <c>^[a-z0-9_]+$</c> walks this list.</summary>
     public static readonly IReadOnlyList<string> All =
     [
@@ -73,5 +90,21 @@ public static class ErrorTypes
         ProjectReserved,
         ProjectAuthMethodDisabled,
         ProjectProviderDisabled,
+        DatabaseNotFound,
+        DatabaseAlreadyExists,
+        TableNotFound,
+        TableAlreadyExists,
+        ColumnNotFound,
+        ColumnAlreadyExists,
+        ColumnInvalid,
+        IndexNotFound,
+        IndexAlreadyExists,
+        IndexInvalid,
+        IndexDependency,
+        SchemaJobNotFound,
+        SchemaJobInvalidState,
+        RowSizeExceeded,
+        GeneralForceRequired,
+        GeneralResourceLimitExceeded,
     ];
 }

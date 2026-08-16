@@ -13,8 +13,11 @@ public static class ApiKeyScopes
     public const string UsersWrite = "users.write";
     public const string TeamsRead = "teams.read";
     public const string TeamsWrite = "teams.write";
+    public const string DatabasesRead = "databases.read";
+    public const string DatabasesWrite = "databases.write";
 
-    public static readonly IReadOnlyList<string> All = [UsersRead, UsersWrite, TeamsRead, TeamsWrite];
+    public static readonly IReadOnlyList<string> All =
+        [UsersRead, UsersWrite, TeamsRead, TeamsWrite, DatabasesRead, DatabasesWrite];
 }
 
 /// <summary>

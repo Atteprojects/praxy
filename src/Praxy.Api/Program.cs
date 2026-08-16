@@ -9,6 +9,7 @@ using Praxy.Auth.OAuth;
 using Praxy.Core.Errors;
 using Praxy.Events;
 using Praxy.Persistence;
+using Praxy.Tables;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -64,6 +65,18 @@ try
     builder.Services.AddHttpClient<GoogleOAuthProvider>();
     builder.Services.AddTransient<IOAuthProvider>(sp => sp.GetRequiredService<GoogleOAuthProvider>());
     builder.Services.AddScoped<IOAuthProviderRegistry, OAuthProviderRegistry>();
+
+    // ---- Phase 2: schema engine ----
+    builder.Services.AddScoped<DatabasesService>();
+    builder.Services.AddScoped<TablesService>();
+    builder.Services.AddScoped<ColumnsService>();
+    builder.Services.AddScoped<IndexesService>();
+    builder.Services.AddScoped<SchemaJobsService>();
+    builder.Services.AddSingleton<SchemaJobSignal>();
+    builder.Services.AddSingleton(new SchemaJobRunnerOptions(
+        PollIntervalSeconds: builder.Configuration.GetValue("Praxy:Tables:SchemaJobs:PollIntervalSeconds", 2),
+        IndexBuildTimeoutSeconds: builder.Configuration.GetValue("Praxy:Tables:SchemaJobs:IndexBuildTimeoutSeconds", 1800)));
+    builder.Services.AddHostedService<SchemaJobRunner>();
 
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
     // source address alone never carves out someone else's budget. Limits are configurable and
@@ -173,6 +186,8 @@ try
     TeamEndpoints.Map(app);
     UsersServerEndpoints.Map(app);
     ConsoleAuthAdminEndpoints.Map(app);
+    DatabaseEndpoints.Map(app);
+    ConsoleDatabaseEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.
