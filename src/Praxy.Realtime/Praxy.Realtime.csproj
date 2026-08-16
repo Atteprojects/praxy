@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
     <ProjectReference Include="..\Praxy.Events\Praxy.Events.csproj" />
   </ItemGroup>

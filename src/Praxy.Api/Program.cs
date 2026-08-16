@@ -9,6 +9,7 @@ using Praxy.Auth.OAuth;
 using Praxy.Core.Errors;
 using Praxy.Events;
 using Praxy.Persistence;
+using Praxy.Realtime;
 using Praxy.Tables;
 using Scalar.AspNetCore;
 using Serilog;
@@ -81,6 +82,13 @@ try
 
     // ---- Phase 3: data plane ----
     builder.Services.AddScoped<RowsService>();
+
+    // ---- Phase 4: realtime ----
+    builder.Services.AddSingleton<ConnectionRegistry>();
+    builder.Services.AddSingleton<TicketStore>();
+    builder.Services.AddSingleton(new RealtimeOptions(
+        MaxConnectionsPerProject: builder.Configuration.GetValue("Praxy:Realtime:MaxConnectionsPerProject", 1000)));
+    builder.Services.AddHostedService<RealtimeHub>();
 
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
     // source address alone never carves out someone else's budget. Limits are configurable and
@@ -173,6 +181,10 @@ try
     // Must follow UseRouting so per-endpoint policies resolve.
     app.UseRateLimiter();
 
+    // dotnet-stack.md's verified WebSocket shape: native ping/pong dead-peer detection via
+    // KeepAliveInterval/KeepAliveTimeout, configured per-accept in RealtimeEndpoints.
+    app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
+
     if (app.Environment.IsDevelopment())
     {
         // Dev-only: the OpenAPI document and Scalar UI disclose the full API surface.
@@ -194,6 +206,7 @@ try
     ConsoleDatabaseEndpoints.Map(app);
     RowEndpoints.Map(app);
     ConsoleRowEndpoints.Map(app);
+    RealtimeEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.
