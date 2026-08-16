@@ -74,9 +74,9 @@ public class ApiKeyTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         var (operatorToken, projectId) = await SetupProjectAsync();
         var response = await Client.SendAsync(Authed(
             HttpMethod.Post, $"/v1/console/projects/{projectId}/keys", operatorToken,
-            new { name = "bad", scopes = new[] { "users.read", "databases.write" } }));
+            new { name = "bad", scopes = new[] { "users.read", "bogus.scope" } }));
         var body = await AssertError(response, 400, "general_argument_invalid");
-        Assert.Contains("databases.write", body.GetProperty("fields").GetProperty("scopes")[0].GetString());
+        Assert.Contains("bogus.scope", body.GetProperty("fields").GetProperty("scopes")[0].GetString());
     }
 
     [Fact]
