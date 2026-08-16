@@ -80,6 +80,16 @@ public static class ErrorTypes
     public const string FunctionExecutionTimeout = "function_execution_timeout";
     public const string FunctionExecutionFailed = "function_execution_failed";
 
+    public const string MessagingProviderNotFound = "messaging_provider_not_found";
+    public const string MessagingProviderInvalid = "messaging_provider_invalid";
+    public const string MessagingTopicNotFound = "messaging_topic_not_found";
+    public const string MessagingTopicAlreadyExists = "messaging_topic_already_exists";
+    public const string MessagingSubscriberAlreadyExists = "messaging_subscriber_already_exists";
+    public const string MessagingSubscriberNotFound = "messaging_subscriber_not_found";
+    public const string MessagingMessageNotFound = "messaging_message_not_found";
+    public const string MessagingMessageInvalid = "messaging_message_invalid";
+    public const string MessagingTemplateInvalid = "messaging_template_invalid";
+
     /// <summary>Every registered type. The unit test asserting <c>^[a-z0-9_]+$</c> walks this list.</summary>
     public static readonly IReadOnlyList<string> All =
     [
@@ -147,5 +157,14 @@ public static class ErrorTypes
         FunctionExecutionNotFound,
         FunctionExecutionTimeout,
         FunctionExecutionFailed,
+        MessagingProviderNotFound,
+        MessagingProviderInvalid,
+        MessagingTopicNotFound,
+        MessagingTopicAlreadyExists,
+        MessagingSubscriberAlreadyExists,
+        MessagingSubscriberNotFound,
+        MessagingMessageNotFound,
+        MessagingMessageInvalid,
+        MessagingTemplateInvalid,
     ];
 }

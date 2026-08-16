@@ -16,7 +16,7 @@ public sealed record AppSession(Session Session, string Token, User User);
 /// and password recovery. Console operators never pass through here.
 /// </summary>
 public sealed class AppAuthService(
-    PraxyDb db, IPasswordHasher hasher, ISessionCache cache, IEventBus bus, IEmailSender email)
+    PraxyDb db, IPasswordHasher hasher, ISessionCache cache, IEventBus bus, IAuthEmailSender email)
 {
     public static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(365);
     public static readonly TimeSpan VerificationTokenLifetime = TimeSpan.FromHours(1);
@@ -269,12 +269,12 @@ public sealed class AppAuthService(
             throw PraxyException.ArgumentInvalid("This email address is already verified.");
 
         var secret = await CreateTokenAsync(user, "verification", VerificationTokenLifetime, ct);
-        await email.SendAsync(new EmailMessage(
-            user.Email,
-            $"Verify your email for {project.Name}",
-            $"Follow this link to verify your email address:\n\n{AppendTokenParams(url, user.Id, secret)}\n\n" +
-            $"The link expires in {VerificationTokenLifetime.TotalMinutes:0} minutes. " +
-            "If you did not request this, you can ignore this message."), ct);
+        await email.SendAsync(project, AuthEmailTemplateKeys.Verification, user.Email, new Dictionary<string, string>
+        {
+            ["url"] = AppendTokenParams(url, user.Id, secret),
+            ["project"] = project.Name,
+            ["expiryMinutes"] = VerificationTokenLifetime.TotalMinutes.ToString("0"),
+        }, ct);
     }
 
     public async Task<User> ConfirmVerificationAsync(Project project, Guid userId, string secret, CancellationToken ct = default)
@@ -305,12 +305,12 @@ public sealed class AppAuthService(
             return;
 
         var secret = await CreateTokenAsync(user, "recovery", RecoveryTokenLifetime, ct);
-        await email.SendAsync(new EmailMessage(
-            user.Email,
-            $"Reset your password for {project.Name}",
-            $"Follow this link to reset your password:\n\n{AppendTokenParams(url, user.Id, secret)}\n\n" +
-            $"The link expires in {RecoveryTokenLifetime.TotalMinutes:0} minutes. " +
-            "If you did not request this, you can ignore this message."), ct);
+        await email.SendAsync(project, AuthEmailTemplateKeys.Recovery, user.Email, new Dictionary<string, string>
+        {
+            ["url"] = AppendTokenParams(url, user.Id, secret),
+            ["project"] = project.Name,
+            ["expiryMinutes"] = RecoveryTokenLifetime.TotalMinutes.ToString("0"),
+        }, ct);
     }
 
     /// <summary>Resets the password and revokes every session — recovery implies the account was at risk.</summary>

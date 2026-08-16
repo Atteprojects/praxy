@@ -40,6 +40,13 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<FunctionDeployment> FunctionDeployments => Set<FunctionDeployment>();
     public DbSet<FunctionDeploymentSource> FunctionDeploymentSources => Set<FunctionDeploymentSource>();
     public DbSet<FunctionExecution> FunctionExecutions => Set<FunctionExecution>();
+    public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
+    public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
+    public DbSet<MessagingTarget> MessagingTargets => Set<MessagingTarget>();
+    public DbSet<MessagingSubscriber> MessagingSubscribers => Set<MessagingSubscriber>();
+    public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageTarget> MessageTargets => Set<MessageTarget>();
+    public DbSet<MessagingTemplate> MessagingTemplates => Set<MessagingTemplate>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -320,6 +327,80 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.HasIndex(x => x.FunctionId);
             // FunctionExecutionWorker's claim query: waiting async executions, oldest first.
             e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<MessagingProvider>(e =>
+        {
+            e.ToTable("messaging_providers");
+            e.Property(x => x.Type).HasMaxLength(16);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Config).HasColumnType("jsonb");
+            e.Property(x => x.ProtectedSecret).HasMaxLength(2048);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            // EmailProviderResolver's lookup: the enabled default provider of a given type.
+            e.HasIndex(x => new { x.ProjectId, x.Type, x.Enabled, x.IsDefault });
+        });
+
+        b.Entity<MessagingTopic>(e =>
+        {
+            e.ToTable("messaging_topics");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Description).HasMaxLength(1024);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
+        });
+
+        b.Entity<MessagingTarget>(e =>
+        {
+            e.ToTable("messaging_targets");
+            e.Property(x => x.Type).HasMaxLength(16);
+            e.Property(x => x.Identifier).HasMaxLength(320);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.UserId, x.Type }).IsUnique();
+        });
+
+        b.Entity<MessagingSubscriber>(e =>
+        {
+            e.ToTable("messaging_subscribers");
+            e.HasOne<MessagingTopic>().WithMany().HasForeignKey(x => x.TopicId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<MessagingTarget>().WithMany().HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TopicId, x.TargetId }).IsUnique();
+        });
+
+        b.Entity<Message>(e =>
+        {
+            e.ToTable("messages");
+            e.Property(x => x.Type).HasMaxLength(16);
+            e.Property(x => x.Subject).HasMaxLength(998);
+            e.Property(x => x.Body).HasMaxLength(65536);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ProjectId);
+        });
+
+        b.Entity<MessageTarget>(e =>
+        {
+            e.ToTable("message_targets");
+            e.Property(x => x.Identifier).HasMaxLength(320);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Error).HasMaxLength(2048);
+            e.HasOne<Message>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.MessageId);
+            // MessageSendWorker's claim query: queued targets, oldest first.
+            e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<MessagingTemplate>(e =>
+        {
+            e.ToTable("messaging_templates");
+            e.Property(x => x.Channel).HasMaxLength(16);
+            e.Property(x => x.Key).HasMaxLength(32);
+            e.Property(x => x.Subject).HasMaxLength(998);
+            e.Property(x => x.Body).HasMaxLength(65536);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Channel, x.Key }).IsUnique();
         });
     }
 }

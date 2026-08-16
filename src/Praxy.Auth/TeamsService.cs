@@ -14,7 +14,7 @@ public sealed record MembershipWithUser(Membership Membership, User User);
 /// emails an invitation, a server/console call adds the member directly, and acceptance
 /// auto-creates a session for the invitee.
 /// </summary>
-public sealed class TeamsService(PraxyDb db, AppAuthService auth, IEventBus bus, IEmailSender email)
+public sealed class TeamsService(PraxyDb db, AppAuthService auth, IEventBus bus, IAuthEmailSender email)
 {
     public async Task<Team> CreateTeamAsync(
         Project project, User? creator, string name, string[] creatorRoles, CancellationToken ct = default)
@@ -117,11 +117,12 @@ public sealed class TeamsService(PraxyDb db, AppAuthService auth, IEventBus bus,
         var separator = url.Contains('?') ? '&' : '?';
         var link = $"{url}{separator}teamId={Ids.Wire(team.Id)}&membershipId={Ids.Wire(membership.Id)}" +
                    $"&userId={Ids.Wire(user.Id)}&secret={Uri.EscapeDataString(secret)}";
-        await email.SendAsync(new EmailMessage(
-            user.Email,
-            $"You have been invited to join {team.Name}",
-            $"Follow this link to join the team \"{team.Name}\" on {project.Name}:\n\n{link}\n\n" +
-            "If you did not expect this invitation, you can ignore this message."), ct);
+        await email.SendAsync(project, AuthEmailTemplateKeys.Invitation, user.Email, new Dictionary<string, string>
+        {
+            ["url"] = link,
+            ["teamName"] = team.Name,
+            ["project"] = project.Name,
+        }, ct);
 
         await PublishMembershipAsync(project.Id, team.Id, membership, user.Id, "create", ct);
         return new MembershipWithUser(membership, user);

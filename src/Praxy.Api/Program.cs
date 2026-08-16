@@ -9,6 +9,7 @@ using Praxy.Auth.OAuth;
 using Praxy.Core.Errors;
 using Praxy.Events;
 using Praxy.Functions;
+using Praxy.Messaging;
 using Praxy.Persistence;
 using Praxy.Realtime;
 using Praxy.Tables;
@@ -153,6 +154,23 @@ try
     builder.Services.AddHostedService<FunctionScheduler>();
     builder.Services.AddHostedService<FunctionPoolSweeper>();
 
+    // ---- Phase 8: messaging ----
+    var messagingOptions = new MessagingOptions(
+        SendPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Messaging:SendPollIntervalSeconds", 2),
+        MaxSubjectLength: builder.Configuration.GetValue("Praxy:Messaging:MaxSubjectLength", 998),
+        MaxBodyLength: builder.Configuration.GetValue("Praxy:Messaging:MaxBodyLength", 65536),
+        MaxTargetsPerMessage: builder.Configuration.GetValue("Praxy:Messaging:MaxTargetsPerMessage", 10_000));
+    builder.Services.AddSingleton(messagingOptions);
+    builder.Services.AddScoped<MessagingProvidersService>();
+    builder.Services.AddScoped<EmailProviderResolver>();
+    builder.Services.AddScoped<MessagingTargetsService>();
+    builder.Services.AddScoped<MessagingTopicsService>();
+    builder.Services.AddScoped<MessagingTemplatesService>();
+    builder.Services.AddScoped<IAuthEmailSender, AuthEmailBridge>();
+    builder.Services.AddSingleton<MessageSendSignal>();
+    builder.Services.AddScoped<MessagesService>();
+    builder.Services.AddHostedService<MessageSendWorker>();
+
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
     // source address alone never carves out someone else's budget. Limits are configurable and
     // loud when tripped: 429 (NOT the 503 default), Retry-After, RateLimit-*.
@@ -272,6 +290,7 @@ try
     RealtimeEndpoints.Map(app);
     WebhookEndpoints.Map(app);
     FunctionEndpoints.Map(app);
+    MessagingEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.

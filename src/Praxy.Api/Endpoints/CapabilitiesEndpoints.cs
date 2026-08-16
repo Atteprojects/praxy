@@ -21,7 +21,7 @@ public static class CapabilitiesEndpoints
                     auth = true,
                     databases = true,
                     realtime = true,
-                    messaging = false,
+                    messaging = true,
                     functions = true,
                     webhooks = true,
                 },
