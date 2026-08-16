@@ -19,6 +19,7 @@ public sealed class ConnectionRegistry
     private readonly ConcurrentDictionary<Guid, Connection> _byId = new();
     private readonly ConcurrentDictionary<IndexKey, ConcurrentDictionary<SubKey, Connection>> _roleIndex = new();
     private readonly ConcurrentDictionary<(string ProjectId, string Channel), ConcurrentDictionary<SubKey, Connection>> _bypassIndex = new();
+    private readonly ConcurrentDictionary<(string ProjectId, string Prefix), ConcurrentDictionary<SubKey, Connection>> _bypassPrefixIndex = new();
     private readonly ConcurrentDictionary<string, int> _projectCounts = new();
 
     public int CountForProject(string projectId) => _projectCounts.GetValueOrDefault(projectId);
@@ -49,6 +50,10 @@ public sealed class ConnectionRegistry
         foreach (var (channel, subscriptionId) in connection.BypassIndexEntries)
             RemoveBypassEntry(connection, channel, subscriptionId);
         connection.BypassIndexEntries.Clear();
+
+        foreach (var (prefix, subscriptionId) in connection.BypassPrefixEntries)
+            RemoveBypassPrefixEntry(connection, prefix, subscriptionId);
+        connection.BypassPrefixEntries.Clear();
     }
 
     /// <summary>
@@ -61,9 +66,18 @@ public sealed class ConnectionRegistry
         if (connection.Bypass)
         {
             var desired = new HashSet<(string Channel, string SubscriptionId)>();
+            var desiredPrefixes = new HashSet<(string Prefix, string SubscriptionId)>();
             foreach (var (subscriptionId, channels) in connection.Subscriptions)
                 foreach (var channel in channels)
-                    desired.Add((channel, subscriptionId));
+                {
+                    // "<resource>.*" is a bypass-only firehose (the console inspector can't know
+                    // every table's concrete channel string up front) — never honored for a
+                    // non-bypass connection, which would defeat deny-by-default.
+                    if (channel.EndsWith(".*", StringComparison.Ordinal))
+                        desiredPrefixes.Add((channel[..^2], subscriptionId));
+                    else
+                        desired.Add((channel, subscriptionId));
+                }
 
             foreach (var entry in connection.BypassIndexEntries)
                 if (!desired.Contains(entry))
@@ -72,8 +86,17 @@ public sealed class ConnectionRegistry
                 if (!connection.BypassIndexEntries.Contains(entry))
                     _bypassIndex.GetOrAdd((connection.ProjectId, entry.Channel), static _ => new())[new SubKey(connection.Id, entry.SubscriptionId)] = connection;
 
+            foreach (var entry in connection.BypassPrefixEntries)
+                if (!desiredPrefixes.Contains(entry))
+                    RemoveBypassPrefixEntry(connection, entry.Prefix, entry.SubscriptionId);
+            foreach (var entry in desiredPrefixes)
+                if (!connection.BypassPrefixEntries.Contains(entry))
+                    _bypassPrefixIndex.GetOrAdd((connection.ProjectId, entry.Prefix), static _ => new())[new SubKey(connection.Id, entry.SubscriptionId)] = connection;
+
             connection.BypassIndexEntries.Clear();
             connection.BypassIndexEntries.UnionWith(desired);
+            connection.BypassPrefixEntries.Clear();
+            connection.BypassPrefixEntries.UnionWith(desiredPrefixes);
             return;
         }
 
@@ -114,6 +137,16 @@ public sealed class ConnectionRegistry
             _bypassIndex.TryRemove(key, out _);
     }
 
+    private void RemoveBypassPrefixEntry(Connection connection, string prefix, string subscriptionId)
+    {
+        var key = (connection.ProjectId, prefix);
+        if (!_bypassPrefixIndex.TryGetValue(key, out var set))
+            return;
+        set.TryRemove(new SubKey(connection.Id, subscriptionId), out _);
+        if (set.IsEmpty)
+            _bypassPrefixIndex.TryRemove(key, out _);
+    }
+
     /// <summary>
     /// Every connection this event fans out to: a hash-lookup intersection against
     /// <paramref name="evt"/>'s precomputed roles (never a re-check), plus bypass connections —
@@ -144,6 +177,14 @@ public sealed class ConnectionRegistry
                 foreach (var (subKey, conn) in bypassSet)
                     Add(conn, subKey.SubscriptionId);
         }
+
+        // Bypass firehose subscriptions ("databases.*") match on the event's own top-level
+        // resource word, independent of which concrete channels it derives.
+        var dot = evt.Type.IndexOf('.');
+        var topLevel = dot < 0 ? evt.Type : evt.Type[..dot];
+        if (_bypassPrefixIndex.TryGetValue((evt.ProjectId, topLevel), out var prefixSet))
+            foreach (var (subKey, conn) in prefixSet)
+                Add(conn, subKey.SubscriptionId);
 
         return [.. perConnection.Values.Select(e => (e.Connection, e.Subscriptions.ToArray()))];
     }

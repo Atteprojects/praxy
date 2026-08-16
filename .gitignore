@@ -1,6 +1,7 @@
 # ---------- .NET ----------
 bin/
 obj/
+src/Praxy.Api/wwwroot/
 *.user
 *.suo
 *.userosscache

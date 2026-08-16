@@ -35,6 +35,9 @@ public sealed class Connection
     internal HashSet<(string Role, string Channel, string SubscriptionId)> IndexEntries { get; } = [];
     internal HashSet<(string Channel, string SubscriptionId)> BypassIndexEntries { get; } = [];
 
+    /// <summary>Bypass-only: subscriptions to a <c>"&lt;resource&gt;.*"</c> firehose channel (e.g. <c>databases.*</c> for the console's realtime inspector, which cannot know every table's channel string up front). Owner-thread-only.</summary>
+    internal HashSet<(string Prefix, string SubscriptionId)> BypassPrefixEntries { get; } = [];
+
     public Channel<ReadOnlyMemory<byte>> Outbound { get; } = System.Threading.Channels.Channel.CreateBounded<ReadOnlyMemory<byte>>(
         new BoundedChannelOptions(256) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true, SingleWriter = false });
 

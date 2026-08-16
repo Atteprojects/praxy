@@ -17,6 +17,7 @@ import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectListPage } from "./screens/ProjectListPage";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
+import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
 import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
@@ -141,6 +142,12 @@ const tableSettingsRoute = createRoute({
   component: TableSettingsPage,
 });
 
+const realtimeRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "realtime",
+  component: RealtimeInspectorPage,
+});
+
 const apiKeysRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "api-keys",
@@ -168,6 +175,7 @@ const routeTree = rootRoute.addChildren([
       databaseLayoutRoute.addChildren([
         databaseIndexRoute, tableRowsRoute, tableColumnsRoute, tableIndexesRoute, tableSettingsRoute,
       ]),
+      realtimeRoute,
       apiKeysRoute,
       platformsRoute,
     ]),

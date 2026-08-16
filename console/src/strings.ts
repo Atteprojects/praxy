@@ -23,4 +23,6 @@ export const STR = {
   rowSecurity: "Row security",
   rows: "Rows",
   row: "row",
+  realtime: "Realtime",
+  connections: "Connections",
 } as const;

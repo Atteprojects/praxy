@@ -11,6 +11,7 @@ export default defineConfig({
       "/v1": {
         target: "http://localhost:5090",
         changeOrigin: false,
+        ws: true, // the realtime inspector's WebSocket connection needs the upgrade proxied too
       },
     },
   },

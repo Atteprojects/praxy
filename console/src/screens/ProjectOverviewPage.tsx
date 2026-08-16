@@ -1,6 +1,6 @@
-import { useParams } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useProject } from "../api/queries";
+import { useConnectionCount, useProject } from "../api/queries";
 import { FullPageSpinner } from "../components/ui";
 
 export function ProjectOverviewPage() {
@@ -20,7 +20,28 @@ export function ProjectOverviewPage() {
       </p>
 
       {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
+      <ConnectionsTile projectId={project.data.id} />
     </div>
+  );
+}
+
+/** The realtime inspector's cheapest possible advertisement: a live count, updating on its own. */
+function ConnectionsTile({ projectId }: { projectId: string }) {
+  const connections = useConnectionCount(projectId);
+  return (
+    <Link
+      to="/project/$projectId/realtime"
+      params={{ projectId }}
+      className="surface mt-4 flex max-w-2xl items-center justify-between p-6 transition-colors hover:border-ink-600"
+    >
+      <div>
+        <h2 className="text-lg font-medium">Realtime</h2>
+        <p className="mt-0.5 text-sm text-ink-400">Live WebSocket connections on this project.</p>
+      </div>
+      <span className="text-3xl font-semibold tabular-nums text-ink-100">
+        {connections.data?.count ?? "—"}
+      </span>
+    </Link>
   );
 }
 
@@ -67,7 +88,8 @@ function ConnectedCard({ lastPingAt }: { lastPingAt: string }) {
       </div>
       <p className="text-sm text-ink-400">
         Last ping {new Date(lastPingAt).toLocaleString()}. Head to Auth to create your first
-        users and teams — databases and realtime arrive in upcoming phases.
+        users and teams, or Databases to model your data — messaging, functions and webhooks
+        arrive in upcoming phases.
       </p>
     </div>
   );

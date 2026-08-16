@@ -79,6 +79,35 @@ public class ConnectionRegistryTests
     }
 
     [Fact]
+    public void A_bypass_connection_subscribed_to_the_firehose_channel_sees_every_row_event()
+    {
+        var registry = new ConnectionRegistry();
+        var inspector = NewConnection(bypass: true);
+        registry.TryRegister(inspector, maxConnectionsPerProject: 10);
+        Subscribe(registry, inspector, "firehose", "databases.*");
+
+        var matches = registry.Match(RowEvent("databases.db.tables.t.rows.row1.create", "team:some-team-nobody-has"),
+            ["databases.db.tables.t.rows", "databases.db.tables.t.rows.row1", "databases.db.tables.t.rows.create"]);
+
+        var match = Assert.Single(matches);
+        Assert.Equal(["firehose"], match.MatchedSubscriptions);
+    }
+
+    [Fact]
+    public void A_non_bypass_connection_cannot_use_the_firehose_channel_to_skip_permissions()
+    {
+        var registry = new ConnectionRegistry();
+        var conn = NewConnection(["users"]);
+        registry.TryRegister(conn, maxConnectionsPerProject: 10);
+        Subscribe(registry, conn, "s1", "databases.*");
+
+        var matches = registry.Match(RowEvent("databases.db.tables.t.rows.row1.create", "team:some-team-nobody-has"),
+            ["databases.db.tables.t.rows", "databases.db.tables.t.rows.row1", "databases.db.tables.t.rows.create"]);
+
+        Assert.Empty(matches);
+    }
+
+    [Fact]
     public void Unsubscribe_removes_the_connection_from_future_matches()
     {
         var registry = new ConnectionRegistry();

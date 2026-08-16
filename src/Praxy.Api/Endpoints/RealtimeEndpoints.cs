@@ -31,6 +31,18 @@ public static class RealtimeEndpoints
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
             .AddEndpointFilter<AppPrincipalFilter>();
         ticket.MapPost("/ticket", CreateTicket);
+
+        // The realtime inspector's live connection count (project overview stat tile).
+        api.MapGroup("/v1/console/projects/{projectId}")
+            .AddEndpointFilter<RequireOperatorFilter>()
+            .AddEndpointFilter<ConsoleProjectFilter>()
+            .MapGet("/realtime/connections", GetConnectionCount);
+    }
+
+    private static IResult GetConnectionCount(HttpContext http, ConnectionRegistry registry)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        return Results.Ok(new { count = registry.CountForProject(project.Id) });
     }
 
     // ---- ticket mint ----------------------------------------------------------------------------

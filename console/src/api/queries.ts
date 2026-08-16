@@ -47,6 +47,15 @@ export function useProject(projectId: string, options: { pollWhileUnpinged?: boo
   });
 }
 
+/** Live connection count for the project overview's stat tile — polled, not pushed, since it's a cheap number and not worth its own WS subscription. */
+export function useConnectionCount(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "realtime", "connections"],
+    queryFn: () => api<{ count: number }>(`/console/projects/${projectId}/realtime/connections`),
+    refetchInterval: 5_000,
+  });
+}
+
 /**
  * Seed the account cache from the response rather than refetching: navigating into the
  * authed shell must never race a stale `null` account (which would bounce back to /login).

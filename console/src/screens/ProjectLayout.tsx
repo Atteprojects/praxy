@@ -57,6 +57,12 @@ export function ProjectLayout() {
             </NavEntry>
           ) : null}
 
+          {features.realtime ? (
+            <NavEntry to="/project/$projectId/realtime" projectId={projectId} kbd="g r">
+              {STR.realtime}
+            </NavEntry>
+          ) : null}
+
           {features.auth ? (
             <>
               <SectionLabel>Manage</SectionLabel>
