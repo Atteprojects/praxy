@@ -1,0 +1,20 @@
+name: praxy_codegen
+description: >
+  On-demand codegen for Praxy: emits typed Col<T> column constants for a table into
+  a committed Dart file. Not a build_runner builder — run it by hand when your
+  schema changes, review the diff like any other source file.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  args: ^2.6.0
+  http: ^1.6.0
+  path: ^1.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

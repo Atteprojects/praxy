@@ -1,0 +1,5 @@
+# Workspace-root artifacts (each member package has its own .gitignore for
+# its own .dart_tool/build — this covers the ones `dart pub`/`flutter test`
+# write at the workspace root itself).
+.dart_tool/
+build/

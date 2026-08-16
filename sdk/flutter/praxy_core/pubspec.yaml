@@ -1,0 +1,17 @@
+name: praxy_core
+description: >
+  Pure-Dart core of the Praxy SDK — client, typed queries, permissions, sessions,
+  and the account/tables surface. package:http only; no Flutter dependency.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  http: ^1.6.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

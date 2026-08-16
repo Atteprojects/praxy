@@ -1,0 +1,14 @@
+name: praxy_flutter_sdk_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+# Dart native pub workspaces (stable since Dart 3.6) — one lockfile, `praxy_flutter`
+# resolves its `praxy_core` dependency to the local sibling automatically. No melos:
+# this repo has no per-package versioning/publishing story yet that would need it.
+workspace:
+  - praxy_core
+  - praxy_flutter
+  - praxy_codegen
+  - example

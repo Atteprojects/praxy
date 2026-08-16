@@ -1,0 +1,27 @@
+name: praxy_flutter
+description: >
+  Flutter layer of the Praxy SDK — secure-storage sessions, the realtime WebSocket
+  client (rows<T>, account, connection, liveList), and Google OAuth via
+  flutter_web_auth_2. Depends on praxy_core for everything platform-independent.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  praxy_core: ^0.1.0
+  flutter_secure_storage: ^11.0.0
+  flutter_web_auth_2: ^5.1.0
+  web_socket_channel: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
