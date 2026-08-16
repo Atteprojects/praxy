@@ -22,8 +22,8 @@ export function DatabaseLayout() {
   const sorted = [...tables.data.tables].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="flex gap-8">
-      <aside className="w-56 shrink-0">
+    <div className="flex min-h-dvh gap-8">
+      <aside className="sticky top-14 max-h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto">
         <Link to="/project/$projectId/databases" params={{ projectId }} className="btn-ghost mb-3 -ml-3 text-xs">
           ← {STR.databases}
         </Link>

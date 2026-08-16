@@ -22,7 +22,7 @@ export function ProjectLayout() {
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="flex w-52 shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 px-3 py-4">
+      <aside className="sticky top-14 flex max-h-[calc(100dvh-3.5rem)] w-52 shrink-0 flex-col overflow-y-auto border-r border-ink-800 bg-ink-900/50 px-3 py-4">
         <Link to="/" className="btn-ghost mb-4 justify-start text-xs">
           ← {STR.projects}
         </Link>
