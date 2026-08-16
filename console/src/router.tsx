@@ -23,6 +23,8 @@ import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
 import { UserDetailPage } from "./screens/UserDetailPage";
 import { UsersPage } from "./screens/UsersPage";
+import { WebhookDeliveriesPage } from "./screens/WebhookDeliveriesPage";
+import { WebhooksPage } from "./screens/WebhooksPage";
 
 const rootRoute = createRootRoute({
   component: Outlet,
@@ -148,6 +150,18 @@ const realtimeRoute = createRoute({
   component: RealtimeInspectorPage,
 });
 
+const webhooksRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "webhooks",
+  component: WebhooksPage,
+});
+
+const webhookDeliveriesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "webhooks/$webhookId",
+  component: WebhookDeliveriesPage,
+});
+
 const apiKeysRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "api-keys",
@@ -176,6 +190,8 @@ const routeTree = rootRoute.addChildren([
         databaseIndexRoute, tableRowsRoute, tableColumnsRoute, tableIndexesRoute, tableSettingsRoute,
       ]),
       realtimeRoute,
+      webhooksRoute,
+      webhookDeliveriesRoute,
       apiKeysRoute,
       platformsRoute,
     ]),

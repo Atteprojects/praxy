@@ -296,3 +296,63 @@ export interface QueryFilter {
   attribute?: string;
   values?: unknown[];
 }
+
+// ---- Phase 6: webhooks ----
+
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  disabledReason: string | null;
+  consecutiveFailures: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebhookList {
+  total: number;
+  webhooks: Webhook[];
+}
+
+export interface CreatedWebhook {
+  webhook: Webhook;
+  secret: string;
+}
+
+export type WebhookDeliveryStatus = "queued" | "delivering" | "succeeded" | "failed";
+
+export interface WebhookDelivery {
+  id: string;
+  eventId: string;
+  eventType: string;
+  status: WebhookDeliveryStatus;
+  attempts: number;
+  nextAttemptAt: string;
+  lastAttemptAt: string | null;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  redeliveredFromId: string | null;
+  createdAt: string;
+}
+
+export interface WebhookDeliveryList {
+  total: number;
+  deliveries: WebhookDelivery[];
+}
+
+export interface WebhookDeliveryAttempt {
+  attemptNumber: number;
+  startedAt: string;
+  durationMs: number;
+  statusCode: number | null;
+  responseBody: string | null;
+  error: string | null;
+}
+
+export interface WebhookDeliveryDetail {
+  delivery: WebhookDelivery;
+  payload: unknown;
+  attempts: WebhookDeliveryAttempt[];
+}

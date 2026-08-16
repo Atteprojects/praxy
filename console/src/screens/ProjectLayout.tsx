@@ -63,6 +63,12 @@ export function ProjectLayout() {
             </NavEntry>
           ) : null}
 
+          {features.webhooks ? (
+            <NavEntry to="/project/$projectId/webhooks" projectId={projectId} kbd="g w">
+              Webhooks
+            </NavEntry>
+          ) : null}
+
           {features.auth ? (
             <>
               <SectionLabel>Manage</SectionLabel>
