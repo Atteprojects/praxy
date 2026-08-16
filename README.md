@@ -4,12 +4,13 @@ A self-hosted backend-as-a-service. Authentication, a dynamic database where a u
 PostgreSQL table, realtime subscriptions, functions, webhooks and messaging — with an admin console and a
 Flutter SDK.
 
-**Status:** Phase 3 complete — solution skeleton, system catalog, instance claim, projects API, full
+**Status:** Phase 4 complete — solution skeleton, system catalog, instance claim, projects API, full
 app-user auth (email+password, Google OAuth, teams, API keys, rate limiting), the dynamic schema engine
 (databases → tables → columns → indexes, synchronous DDL, an async job runner with real cancel/retry,
-table-level permission storage), and the data plane (row CRUD, the 24-method query DSL, keyset
-pagination, table- and row-level permission filtering, a catalog cache, and an outbox). Phase 4
-(Realtime) is next; see [docs/handoff/](docs/handoff/).
+table-level permission storage), the data plane (row CRUD, the 24-method query DSL, keyset
+pagination, table- and row-level permission filtering, a catalog cache, and an outbox), and realtime
+(a WebSocket endpoint, message-mode protocol, permission-filtered fan-out, and a console inspector).
+Phase 5 (Flutter SDK) is next; see [docs/handoff/](docs/handoff/).
 
 ## Stack
 
