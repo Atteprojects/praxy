@@ -58,6 +58,15 @@ Filled in as phases land — keep this section current.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)
+- Flutter SDK: `cd sdk/flutter && dart pub get` (native pub workspace, no melos — resolves
+  `praxy_core`/`praxy_flutter`/`praxy_codegen`/`example` together) · tests:
+  `dart test praxy_core praxy_codegen && flutter test praxy_flutter example` · analyze the whole
+  workspace: `dart analyze .` · run the example: `flutter run --dart-define=PRAXY_ENDPOINT=...
+  --dart-define=PRAXY_PROJECT_ID=<id> --dart-define=PRAXY_DATABASE_ID=<id>
+  --dart-define=PRAXY_TABLE_ID=<id>` from `sdk/flutter/example` (ids are real generated ids, not
+  keys — create the database/table via the console first) · codegen:
+  `dart run praxy_codegen --endpoint ... --project <id> --api-key <key> --database <key>
+  --table <key> --output lib/db/x_columns.dart` from `sdk/flutter/praxy_codegen`
 
 ## Session end — handoff protocol
 

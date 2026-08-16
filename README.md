@@ -4,13 +4,15 @@ A self-hosted backend-as-a-service. Authentication, a dynamic database where a u
 PostgreSQL table, realtime subscriptions, functions, webhooks and messaging — with an admin console and a
 Flutter SDK.
 
-**Status:** Phase 4 complete — solution skeleton, system catalog, instance claim, projects API, full
+**Status:** Phase 5 complete — solution skeleton, system catalog, instance claim, projects API, full
 app-user auth (email+password, Google OAuth, teams, API keys, rate limiting), the dynamic schema engine
 (databases → tables → columns → indexes, synchronous DDL, an async job runner with real cancel/retry,
 table-level permission storage), the data plane (row CRUD, the 24-method query DSL, keyset
-pagination, table- and row-level permission filtering, a catalog cache, and an outbox), and realtime
-(a WebSocket endpoint, message-mode protocol, permission-filtered fan-out, and a console inspector).
-Phase 5 (Flutter SDK) is next; see [docs/handoff/](docs/handoff/).
+pagination, table- and row-level permission filtering, a catalog cache, and an outbox), realtime
+(a WebSocket endpoint, message-mode protocol, permission-filtered fan-out, and a console inspector),
+and a native Flutter/Dart SDK (`praxy_core`/`praxy_flutter`/`praxy_codegen`, secure-storage sessions,
+Google OAuth, a real `Stream`-based realtime client with `liveList`, an example app). Phase 6
+(Webhooks) is next; see [docs/handoff/](docs/handoff/).
 
 ## Stack
 
@@ -61,4 +63,7 @@ docker run -d --name praxy-dev-pg -e POSTGRES_USER=praxy -e POSTGRES_PASSWORD=pr
 dotnet run --project src/Praxy.Api                       # API on :5090 (Scalar at /scalar/v1)
 npm run dev --prefix console                             # console on :5173, /v1 proxied
 dotnet test                                              # unit + Testcontainers integration
+
+cd sdk/flutter && dart pub get                           # Flutter SDK — native pub workspace
+dart test praxy_core praxy_codegen && flutter test praxy_flutter example
 ```
