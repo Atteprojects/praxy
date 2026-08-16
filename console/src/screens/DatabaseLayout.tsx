@@ -23,28 +23,30 @@ export function DatabaseLayout() {
 
   return (
     <div className="flex min-h-dvh gap-8">
-      <aside className="sticky top-14 max-h-[calc(100dvh-3.5rem)] w-56 shrink-0 overflow-y-auto">
-        <Link to="/project/$projectId/databases" params={{ projectId }} className="btn-ghost mb-3 -ml-3 text-xs">
+      <aside className="sticky top-14 flex max-h-[calc(100dvh-3.5rem)] w-56 shrink-0 flex-col">
+        <Link to="/project/$projectId/databases" params={{ projectId }} className="btn-ghost mb-3 -ml-3 shrink-0 text-xs">
           ← {STR.databases}
         </Link>
-        <div className="mb-4">
+        <div className="mb-4 shrink-0">
           <span className="block truncate text-sm font-semibold text-ink-100">{database.data.name}</span>
           <span className="mt-1 block">
             <IdChip id={database.data.id} />
           </span>
         </div>
 
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex shrink-0 items-center justify-between">
           <span className="text-[11px] font-medium tracking-widest text-ink-500 uppercase">{STR.tables}</span>
           <button type="button" className="btn-ghost px-1.5 py-1 text-xs" onClick={() => setCreating(true)}>
             + Create
           </button>
         </div>
 
+        {/* Only this list scrolls internally when it outgrows the sidebar — the back link,
+            database name and "+ Create" row above stay put, same as the page header does. */}
         {sorted.length === 0 ? (
           <p className="px-1 py-2 text-xs text-ink-500">No tables yet.</p>
         ) : (
-          <nav className="space-y-0.5">
+          <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
             {sorted.map((table) => (
               <Link
                 key={table.id}

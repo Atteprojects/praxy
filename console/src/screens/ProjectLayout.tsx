@@ -22,16 +22,18 @@ export function ProjectLayout() {
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="sticky top-14 flex max-h-[calc(100dvh-3.5rem)] w-52 shrink-0 flex-col overflow-y-auto border-r border-ink-800 bg-ink-900/50 px-3 py-4">
-        <Link to="/" className="btn-ghost mb-4 justify-start text-xs">
+      <aside className="sticky top-14 flex max-h-[calc(100dvh-3.5rem)] w-52 shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 px-3 py-4">
+        <Link to="/" className="btn-ghost mb-4 shrink-0 justify-start text-xs">
           ← {STR.projects}
         </Link>
-        <span className="mb-1 truncate px-3 text-sm font-semibold">{project.data.name}</span>
-        <span className="mb-6 px-3">
+        <span className="mb-1 shrink-0 truncate px-3 text-sm font-semibold">{project.data.name}</span>
+        <span className="mb-6 shrink-0 px-3">
           <IdChip id={project.data.id} />
         </span>
 
-        <nav className="space-y-1">
+        {/* Only the nav list scrolls internally if it outgrows the sidebar — the back link,
+            project name and id above stay put. */}
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
           <NavEntry to="/project/$projectId" projectId={projectId} exact kbd="g o">
             {STR.overview}
           </NavEntry>
