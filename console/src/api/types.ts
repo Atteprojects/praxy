@@ -168,3 +168,105 @@ export interface PlatformList {
   total: number;
   platforms: Platform[];
 }
+
+// ---- Phase 2: schema engine ----
+
+export interface Database {
+  id: string;
+  key: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface DatabaseList {
+  total: number;
+  databases: Database[];
+}
+
+export interface TableSchema {
+  id: string;
+  databaseId: string;
+  key: string;
+  name: string;
+  rowSecurity: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TableList {
+  total: number;
+  tables: TableSchema[];
+}
+
+export const COLUMN_TYPES = [
+  "string", "integer", "float", "boolean", "datetime", "email", "url", "ip", "enum",
+] as const;
+export type ColumnType = (typeof COLUMN_TYPES)[number];
+
+export interface ColumnSchema {
+  id: string;
+  tableId: string;
+  key: string;
+  type: ColumnType;
+  required: boolean;
+  array: boolean;
+  size: number | null;
+  default: unknown;
+  elements: string[] | null;
+  status: "available" | "processing" | "failed";
+  error: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ColumnList {
+  total: number;
+  columns: ColumnSchema[];
+}
+
+export const INDEX_TYPES = ["key", "unique", "fulltext"] as const;
+export type IndexType = (typeof INDEX_TYPES)[number];
+
+export interface IndexSchema {
+  id: string;
+  tableId: string;
+  key: string;
+  type: IndexType;
+  columns: string[];
+  orders: string[];
+  status: "available" | "processing" | "failed";
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IndexList {
+  total: number;
+  indexes: IndexSchema[];
+}
+
+export interface TablePermissions {
+  rowSecurity: boolean;
+  permissions: string[];
+}
+
+export interface SchemaJob {
+  id: string;
+  databaseId: string;
+  tableId: string | null;
+  indexId: string | null;
+  kind: string;
+  status: "queued" | "processing" | "available" | "failed" | "cancelled";
+  attempts: number;
+  error: string | null;
+  startedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchemaJobList {
+  total: number;
+  jobs: SchemaJob[];
+}

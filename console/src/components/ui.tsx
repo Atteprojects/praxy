@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export function Logo({ size = 22 }: { size?: number }) {
   return (
@@ -122,6 +122,56 @@ export function Modal({ onClose, title, children }: { onClose: () => void; title
       </div>
     </div>
   );
+}
+
+/** Side sheet: same backdrop/escape semantics as Modal, anchored to the right edge instead of centered. */
+export function Sheet({
+  onClose,
+  title,
+  children,
+  footer,
+}: {
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-40 flex justify-end bg-ink-950/70 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      role="dialog"
+      aria-modal
+    >
+      <div className="flex h-full w-full max-w-md flex-col border-l border-ink-800 bg-ink-900 shadow-2xl shadow-black/50">
+        <div className="flex items-center justify-between border-b border-ink-800 px-6 py-4">
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <button type="button" className="btn-ghost px-2 py-1 text-ink-500" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {footer ? <div className="border-t border-ink-800 px-6 py-4">{footer}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+/** Live "Xs"/"Xm Ys" elapsed readout, ticking once a second while `active`. */
+export function useElapsed(since: string | null | undefined, active: boolean): string {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+
+  if (!since) return "0s";
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
 }
 
 export function Toggle({

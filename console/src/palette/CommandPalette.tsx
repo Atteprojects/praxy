@@ -46,6 +46,7 @@ export function CommandPalette() {
         if (e.key === "t") void navigate({ to: "/project/$projectId/auth/teams", params });
         if (e.key === "s") void navigate({ to: "/project/$projectId/auth/settings", params });
         if (e.key === "k") void navigate({ to: "/project/$projectId/api-keys", params });
+        if (e.key === "d") void navigate({ to: "/project/$projectId/databases", params });
         return;
       }
       if (e.key === "g") {
@@ -142,6 +143,16 @@ export function CommandPalette() {
                   shortcut="g k"
                 >
                   Go to API keys
+                </PaletteItem>
+                <PaletteItem
+                  onSelect={() =>
+                    run(() =>
+                      void navigate({ to: "/project/$projectId/databases", params: { projectId: currentProjectId } }),
+                    )
+                  }
+                  shortcut="g d"
+                >
+                  Go to databases
                 </PaletteItem>
                 <PaletteItem
                   onSelect={() =>

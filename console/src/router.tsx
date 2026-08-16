@@ -8,11 +8,16 @@ import { AppShell } from "./AppShell";
 import { ErrorNote } from "./components/ui";
 import { ApiKeysPage } from "./screens/ApiKeysPage";
 import { AuthSettingsPage } from "./screens/AuthSettingsPage";
+import { ColumnsPage } from "./screens/ColumnsPage";
+import { DatabaseIndexPage, DatabaseLayout } from "./screens/DatabaseLayout";
+import { DatabasesPage } from "./screens/DatabasesPage";
+import { IndexesPage } from "./screens/IndexesPage";
 import { LoginPage } from "./screens/LoginPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectListPage } from "./screens/ProjectListPage";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
+import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
 import { UserDetailPage } from "./screens/UserDetailPage";
 import { UsersPage } from "./screens/UsersPage";
@@ -93,6 +98,42 @@ const authSettingsRoute = createRoute({
   component: AuthSettingsPage,
 });
 
+const databasesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "databases",
+  component: DatabasesPage,
+});
+
+const databaseLayoutRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "databases/$databaseId",
+  component: DatabaseLayout,
+});
+
+const databaseIndexRoute = createRoute({
+  getParentRoute: () => databaseLayoutRoute,
+  path: "/",
+  component: DatabaseIndexPage,
+});
+
+const tableColumnsRoute = createRoute({
+  getParentRoute: () => databaseLayoutRoute,
+  path: "tables/$tableId/columns",
+  component: ColumnsPage,
+});
+
+const tableIndexesRoute = createRoute({
+  getParentRoute: () => databaseLayoutRoute,
+  path: "tables/$tableId/indexes",
+  component: IndexesPage,
+});
+
+const tableSettingsRoute = createRoute({
+  getParentRoute: () => databaseLayoutRoute,
+  path: "tables/$tableId/settings",
+  component: TableSettingsPage,
+});
+
 const apiKeysRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "api-keys",
@@ -116,6 +157,8 @@ const routeTree = rootRoute.addChildren([
       teamsRoute,
       teamDetailRoute,
       authSettingsRoute,
+      databasesRoute,
+      databaseLayoutRoute.addChildren([databaseIndexRoute, tableColumnsRoute, tableIndexesRoute, tableSettingsRoute]),
       apiKeysRoute,
       platformsRoute,
     ]),

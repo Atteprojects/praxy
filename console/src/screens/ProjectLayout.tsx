@@ -48,7 +48,17 @@ export function ProjectLayout() {
               <NavEntry to="/project/$projectId/auth/settings" projectId={projectId} kbd="g s">
                 Auth settings
               </NavEntry>
+            </>
+          ) : null}
 
+          {features.databases ? (
+            <NavEntry to="/project/$projectId/databases" projectId={projectId} kbd="g d">
+              {STR.databases}
+            </NavEntry>
+          ) : null}
+
+          {features.auth ? (
+            <>
               <SectionLabel>Manage</SectionLabel>
               <NavEntry to="/project/$projectId/api-keys" projectId={projectId} kbd="g k">
                 API keys

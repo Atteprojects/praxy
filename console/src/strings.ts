@@ -12,4 +12,13 @@ export const STR = {
   teams: "Teams",
   sessions: "Sessions",
   memberships: "Memberships",
+  databases: "Databases",
+  database: "database",
+  tables: "Tables",
+  table: "table",
+  columns: "Columns",
+  column: "column",
+  indexes: "Indexes",
+  index: "index",
+  rowSecurity: "Row security",
 } as const;
