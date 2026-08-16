@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
+    <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
+    <ProjectReference Include="..\Praxy.Events\Praxy.Events.csproj" />
+    <ProjectReference Include="..\Praxy.Realtime\Praxy.Realtime.csproj" />
+  </ItemGroup>
+
+</Project>

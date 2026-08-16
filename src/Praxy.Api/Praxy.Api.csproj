@@ -18,6 +18,7 @@
     <ProjectReference Include="..\Praxy.Auth\Praxy.Auth.csproj" />
     <ProjectReference Include="..\Praxy.Tables\Praxy.Tables.csproj" />
     <ProjectReference Include="..\Praxy.Realtime\Praxy.Realtime.csproj" />
+    <ProjectReference Include="..\Praxy.Webhooks\Praxy.Webhooks.csproj" />
   </ItemGroup>
 
 </Project>

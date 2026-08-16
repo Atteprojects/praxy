@@ -32,6 +32,9 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<TablePermission> TablePermissions => Set<TablePermission>();
     public DbSet<OutboxEvent> Events => Set<OutboxEvent>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
+    public DbSet<WebhookSubscription> WebhookSubscriptions => Set<WebhookSubscription>();
+    public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
+    public DbSet<WebhookDeliveryAttempt> WebhookDeliveryAttempts => Set<WebhookDeliveryAttempt>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -204,6 +207,8 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Type).HasMaxLength(256);
             e.Property(x => x.Payload).HasColumnType("jsonb");
             e.HasIndex(x => x.CreatedAt);
+            // The webhook dispatcher's claim query: un-dispatched events, oldest first.
+            e.HasIndex(x => x.DispatchedAt);
         });
 
         b.Entity<AuditLogEntry>(e =>
@@ -214,6 +219,39 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Resource).HasMaxLength(256);
             e.Property(x => x.Ip).HasMaxLength(64);
             e.HasIndex(x => x.ProjectId);
+        });
+
+        b.Entity<WebhookSubscription>(e =>
+        {
+            e.ToTable("webhook_subscriptions");
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.Url).HasMaxLength(2048);
+            e.Property(x => x.Secret).HasMaxLength(256);
+            e.Property(x => x.DisabledReason).HasMaxLength(256);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ProjectId);
+        });
+
+        b.Entity<WebhookDelivery>(e =>
+        {
+            e.ToTable("webhook_deliveries");
+            e.Property(x => x.EventType).HasMaxLength(256);
+            e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.LastError).HasMaxLength(2048);
+            e.HasOne<WebhookSubscription>().WithMany().HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.SubscriptionId);
+            // The delivery worker's claim query: due, unfinished deliveries, oldest first.
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+        });
+
+        b.Entity<WebhookDeliveryAttempt>(e =>
+        {
+            e.ToTable("webhook_delivery_attempts");
+            e.Property(x => x.ResponseBody).HasMaxLength(8192);
+            e.Property(x => x.Error).HasMaxLength(2048);
+            e.HasOne<WebhookDelivery>().WithMany().HasForeignKey(x => x.DeliveryId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.DeliveryId);
         });
     }
 }

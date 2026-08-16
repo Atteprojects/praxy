@@ -14,4 +14,12 @@ public class OutboxEvent
 
     public string Payload { get; set; } = "{}";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Set by the Phase 6 webhook outbox dispatcher once it has expanded this event into every
+    /// matching subscription's <see cref="WebhookDelivery"/> row. Null means "not yet claimed" —
+    /// the dispatcher's <c>FOR UPDATE SKIP LOCKED</c> claim query filters on this being null, the
+    /// same shape <c>SchemaJobRunner</c> uses for <c>schema_jobs.status = 'queued'</c>.
+    /// </summary>
+    public DateTimeOffset? DispatchedAt { get; set; }
 }

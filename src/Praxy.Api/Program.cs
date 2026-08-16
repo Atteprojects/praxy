@@ -11,6 +11,7 @@ using Praxy.Events;
 using Praxy.Persistence;
 using Praxy.Realtime;
 using Praxy.Tables;
+using Praxy.Webhooks;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -89,6 +90,34 @@ try
     builder.Services.AddSingleton(new RealtimeOptions(
         MaxConnectionsPerProject: builder.Configuration.GetValue("Praxy:Realtime:MaxConnectionsPerProject", 1000)));
     builder.Services.AddHostedService<RealtimeHub>();
+
+    // ---- Phase 6: webhooks ----
+    builder.Services.AddScoped<WebhookSubscriptionsService>();
+    builder.Services.AddSingleton<WebhookDeliverySignal>();
+    builder.Services.AddScoped<WebhookDeliveriesService>();
+    var webhookOptions = new WebhookOptions(
+        DispatchPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Webhooks:DispatchPollIntervalSeconds", 2),
+        DeliveryPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Webhooks:DeliveryPollIntervalSeconds", 2),
+        TimeoutSeconds: builder.Configuration.GetValue("Praxy:Webhooks:TimeoutSeconds", 15),
+        MaxAttempts: builder.Configuration.GetValue("Praxy:Webhooks:MaxAttempts", 10),
+        BackoffBaseSeconds: builder.Configuration.GetValue("Praxy:Webhooks:BackoffBaseSeconds", 1.0),
+        BackoffCapSeconds: builder.Configuration.GetValue("Praxy:Webhooks:BackoffCapSeconds", 300.0),
+        DisableAfterConsecutiveFailures: builder.Configuration.GetValue("Praxy:Webhooks:DisableAfterConsecutiveFailures", 10),
+        AllowPrivateNetworkTargets: builder.Configuration.GetValue("Praxy:Webhooks:AllowPrivateNetworkTargets", false),
+        MaxResponseBodyCaptureBytes: builder.Configuration.GetValue("Praxy:Webhooks:MaxResponseBodyCaptureBytes", 8192));
+    builder.Services.AddSingleton(webhookOptions);
+    // SSRF guard lives at connect time (SsrfGuard.ConnectAsync resolves DNS itself and connects to
+    // the resolved address directly), and AllowAutoRedirect=false is the whole of "no redirects
+    // followed cross-origin" — simpler and safer than allowing same-origin redirects selectively.
+    builder.Services.AddHttpClient<WebhookHttpClient>(c => c.Timeout = TimeSpan.FromSeconds(webhookOptions.TimeoutSeconds))
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            ConnectCallback = async (context, ct) => await SsrfGuard.ConnectAsync(
+                context.DnsEndPoint.Host, context.DnsEndPoint.Port, webhookOptions.AllowPrivateNetworkTargets, ct),
+        });
+    builder.Services.AddHostedService<WebhookOutboxDispatcher>();
+    builder.Services.AddHostedService<WebhookDeliveryWorker>();
 
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
     // source address alone never carves out someone else's budget. Limits are configurable and
@@ -207,6 +236,7 @@ try
     RowEndpoints.Map(app);
     ConsoleRowEndpoints.Map(app);
     RealtimeEndpoints.Map(app);
+    WebhookEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.

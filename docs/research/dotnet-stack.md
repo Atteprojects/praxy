@@ -248,6 +248,47 @@ export default defineConfig({ plugins: [react(), tailwindcss()] });
 
 ---
 
+## Webhook delivery: SSRF guard and secret storage (Phase 6)
+
+No resilience/retry package exists on NuGet worth pulling in for this: `Microsoft.Extensions.Http.Resilience`
+wraps Polly and is built for *outbound calls this process makes to services it trusts*, with jittered retry
+as the main feature — it has no SSRF-guard concept, and the full-jitter backoff formula
+(`uniform(0, min(cap, base·2^attempt))`) research/flutter-sdk.md already specified for the realtime
+reconnect is three lines to hand-roll (`Praxy.Webhooks.WebhookBackoff`) versus a new pinned dependency
+for one call site. Skipped.
+
+**SSRF guard — connect-time, not URL-validation-time.** A webhook URL is arbitrary and owner-supplied
+per project; the naive guard (parse the URL, resolve DNS, reject private ranges, *then* let
+`HttpClient` connect) has a TOCTOU hole — DNS can resolve differently a second later (rebinding), and
+the validating code path is never the code path that actually opens the socket. The fix confirmed
+against the current BCL: `SocketsHttpHandler.ConnectCallback` (`Func<SocketsHttpConnectionContext,
+CancellationToken, ValueTask<Stream>>`, available since .NET 6) lets you replace the handler's own
+connect step entirely. `Praxy.Webhooks.SsrfGuard.ConnectAsync` resolves `Dns.GetHostAddressesAsync`
+itself, filters the *resolved addresses* (not the hostname) against private/loopback/link-local/
+multicast ranges, and opens the `Socket` directly — so the address that gets validated is the address
+that gets connected to, no gap in between. `AllowAutoRedirect = false` on the same handler is the
+entire "no redirects followed cross-origin" requirement — simpler and strictly safer than allowing
+same-origin redirects selectively (a redirect target needs the same guard applied again, and disabling
+redirects entirely sidesteps that). No package needed — `SocketsHttpHandler`, `Dns`, and `Socket` are
+all in the `System.Net`/`System.Net.Http` shared-framework namespaces already implicit-used here.
+
+**Webhook signing secrets are stored in plaintext, not hashed.** Every other secret in this codebase
+(session tokens, API keys, verification/recovery tokens) is hashed at rest because the server only
+ever needs to *compare* a presented value against the stored hash. A webhook secret is structurally
+different: the server is the one computing `HMAC-SHA256(secret, timestamp + "." + body)` on every
+outbound delivery, forever — a one-way hash of the secret cannot be used to compute a new HMAC, so the
+raw value has to stay retrievable. This is the same shape Stripe, GitHub, and every other webhook
+provider uses (the signing secret lives in their DB in a form the delivery worker can read back).
+Architecture.md §10's "OAuth provider tokens encrypted with a project key" describes a *reversible*
+symmetric-encryption layer for exactly this kind of secret, but that layer doesn't exist yet anywhere
+in the codebase (`Microsoft.AspNetCore.DataProtection` is available via the Web SDK's shared framework
+but nothing currently calls `AddDataProtection()`/`IDataProtector`, and OAuth provider tokens
+themselves aren't persisted past the token exchange today — there's nothing to check the pattern
+against). Building that layer for one column, mid-phase, is more surface than this phase asked for;
+Phase 6 stores `WebhookSubscription.Secret` in plaintext (reveal-once at the API response layer, same
+as API keys, just not hash-only at rest) and flags this as the natural target once a project-key
+encryption layer exists for OAuth tokens too — one mechanism, two consumers, not two bespoke ones.
+
 ## Other notes
 
 - **OpenAPI UI only in Development.** It discloses the full API surface.
