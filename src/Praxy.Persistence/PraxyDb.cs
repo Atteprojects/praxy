@@ -25,6 +25,11 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<Token> Tokens => Set<Token>();
     public DbSet<Identity> Identities => Set<Identity>();
     public DbSet<SchemaJob> SchemaJobs => Set<SchemaJob>();
+    public DbSet<Database> Databases => Set<Database>();
+    public DbSet<TableDef> Tables => Set<TableDef>();
+    public DbSet<ColumnDef> Columns => Set<ColumnDef>();
+    public DbSet<IndexDef> Indexes => Set<IndexDef>();
+    public DbSet<TablePermission> TablePermissions => Set<TablePermission>();
     public DbSet<OutboxEvent> Events => Set<OutboxEvent>();
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
@@ -137,6 +142,60 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.Payload).HasColumnType("jsonb");
             e.HasIndex(x => new { x.DatabaseId, x.Status });
+            e.HasIndex(x => new { x.TableId, x.Status });
+        });
+
+        b.Entity<Database>(e =>
+        {
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.SchemaName).HasMaxLength(63);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
+        });
+
+        b.Entity<TableDef>(e =>
+        {
+            e.ToTable("tables");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.PhysicalName).HasMaxLength(63);
+            e.HasOne<Database>().WithMany().HasForeignKey(x => x.DatabaseId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.DatabaseId, x.Key }).IsUnique();
+        });
+
+        b.Entity<ColumnDef>(e =>
+        {
+            e.ToTable("columns");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.PhysicalName).HasMaxLength(63);
+            e.Property(x => x.DefaultValue).HasMaxLength(4096);
+            e.Property(x => x.Format).HasMaxLength(32);
+            e.Property(x => x.Options).HasColumnType("jsonb");
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TableId, x.Key }).IsUnique();
+        });
+
+        b.Entity<IndexDef>(e =>
+        {
+            e.ToTable("indexes");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Type).HasMaxLength(16);
+            e.Property(x => x.PhysicalName).HasMaxLength(63);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TableId, x.Key }).IsUnique();
+        });
+
+        b.Entity<TablePermission>(e =>
+        {
+            e.ToTable("table_permissions");
+            e.HasKey(x => new { x.TableId, x.Action, x.Role });
+            e.Property(x => x.Action).HasMaxLength(16);
+            e.Property(x => x.Role).HasMaxLength(128);
+            e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<OutboxEvent>(e =>
