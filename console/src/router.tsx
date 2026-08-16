@@ -17,6 +17,7 @@ import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectListPage } from "./screens/ProjectListPage";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
+import { RowsPage } from "./screens/RowsPage";
 import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
 import { UserDetailPage } from "./screens/UserDetailPage";
@@ -116,6 +117,12 @@ const databaseIndexRoute = createRoute({
   component: DatabaseIndexPage,
 });
 
+const tableRowsRoute = createRoute({
+  getParentRoute: () => databaseLayoutRoute,
+  path: "tables/$tableId/rows",
+  component: RowsPage,
+});
+
 const tableColumnsRoute = createRoute({
   getParentRoute: () => databaseLayoutRoute,
   path: "tables/$tableId/columns",
@@ -158,7 +165,9 @@ const routeTree = rootRoute.addChildren([
       teamDetailRoute,
       authSettingsRoute,
       databasesRoute,
-      databaseLayoutRoute.addChildren([databaseIndexRoute, tableColumnsRoute, tableIndexesRoute, tableSettingsRoute]),
+      databaseLayoutRoute.addChildren([
+        databaseIndexRoute, tableRowsRoute, tableColumnsRoute, tableIndexesRoute, tableSettingsRoute,
+      ]),
       apiKeysRoute,
       platformsRoute,
     ]),

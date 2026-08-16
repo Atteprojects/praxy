@@ -244,8 +244,8 @@ export function DataTable({ headers, children }: { headers: string[]; children: 
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-ink-800">
-            {headers.map((header) => (
-              <th key={header} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-ink-500">
+            {headers.map((header, i) => (
+              <th key={i} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-ink-500">
                 {header}
               </th>
             ))}
@@ -272,8 +272,8 @@ export function EmptyState({
       <table className="w-full text-left text-sm" aria-hidden>
         <thead>
           <tr className="border-b border-ink-800">
-            {headers.map((header) => (
-              <th key={header} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-ink-500">
+            {headers.map((header, i) => (
+              <th key={i} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-ink-500">
                 {header}
               </th>
             ))}
@@ -282,8 +282,8 @@ export function EmptyState({
         <tbody>
           {[0, 1, 2].map((row) => (
             <tr key={row} className="border-b border-ink-800/40">
-              {headers.map((header) => (
-                <td key={header} className="px-4 py-3.5">
+              {headers.map((_, i) => (
+                <td key={i} className="px-4 py-3.5">
                   <div className="h-3 w-2/3 rounded bg-ink-850" />
                 </td>
               ))}

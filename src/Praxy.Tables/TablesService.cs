@@ -13,7 +13,7 @@ namespace Praxy.Tables;
 /// tables carry only the three system columns (<c>_id</c>, <c>_created_at</c>, <c>_updated_at</c>)
 /// — user columns are added one at a time via <see cref="ColumnsService"/>.
 /// </summary>
-public sealed class TablesService(PraxyDb db)
+public sealed class TablesService(PraxyDb db, CatalogCache cache)
 {
     public const int MaxTablesPerDatabase = 200;
 
@@ -127,6 +127,7 @@ public sealed class TablesService(PraxyDb db)
             table.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
         }
+        cache.Invalidate(table.Id);
         return table;
     }
 
@@ -147,6 +148,7 @@ public sealed class TablesService(PraxyDb db)
             // CASCADE also drops the row-permissions side table (it FKs to this table).
             await SchemaDdl.ExecuteAsync(db, $"DROP TABLE IF EXISTS {qualified} CASCADE", ct);
         }, ct);
+        cache.Invalidate(table.Id);
     }
 
     // ---- permissions ----------------------------------------------------------------------------
@@ -182,6 +184,7 @@ public sealed class TablesService(PraxyDb db)
             Role = e.Role,
         }));
         await db.SaveChangesAsync(ct);
+        cache.Invalidate(tableId);
         return await GetPermissionsAsync(tableId, ct);
     }
 

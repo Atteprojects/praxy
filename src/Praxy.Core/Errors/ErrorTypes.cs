@@ -58,6 +58,11 @@ public static class ErrorTypes
     public const string GeneralForceRequired = "general_force_required";
     public const string GeneralResourceLimitExceeded = "general_resource_limit_exceeded";
 
+    public const string RowNotFound = "row_not_found";
+    public const string RowAlreadyExists = "row_already_exists";
+    public const string RowInvalidStructure = "row_invalid_structure";
+    public const string GeneralQueryInvalid = "general_query_invalid";
+
     /// <summary>Every registered type. The unit test asserting <c>^[a-z0-9_]+$</c> walks this list.</summary>
     public static readonly IReadOnlyList<string> All =
     [
@@ -106,5 +111,9 @@ public static class ErrorTypes
         RowSizeExceeded,
         GeneralForceRequired,
         GeneralResourceLimitExceeded,
+        RowNotFound,
+        RowAlreadyExists,
+        RowInvalidStructure,
+        GeneralQueryInvalid,
     ];
 }

@@ -45,7 +45,7 @@ public sealed record ColumnResponse(
 {
     public static ColumnResponse From(ColumnDef c) => new(
         Ids.Wire(c.Id), Ids.Wire(c.TableId), c.Key, c.Type, c.Required, c.IsArray, c.Size,
-        ParseDefault(c.DefaultValue), ExtractElements(c.Options), c.Status, c.Error, c.Position,
+        ParseDefault(c.DefaultValue), Praxy.Tables.ColumnTypes.ExtractElements(c.Options), c.Status, c.Error, c.Position,
         c.CreatedAt, c.UpdatedAt);
 
     private static JsonNode? ParseDefault(string? json)
@@ -55,21 +55,6 @@ public sealed record ColumnResponse(
         try
         {
             return JsonNode.Parse(json);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private static string[]? ExtractElements(string optionsJson)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(optionsJson);
-            return doc.RootElement.TryGetProperty("elements", out var el) && el.ValueKind == JsonValueKind.Array
-                ? [.. el.EnumerateArray().Select(e => e.GetString() ?? "")]
-                : null;
         }
         catch (JsonException)
         {

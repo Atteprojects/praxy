@@ -16,7 +16,7 @@ export function TableDetailHeader({
   projectId: string;
   databaseId: string;
   table: TableSchema;
-  active: "columns" | "indexes" | "settings";
+  active: "rows" | "columns" | "indexes" | "settings";
 }) {
   return (
     <div className="mb-6">
@@ -27,6 +27,7 @@ export function TableDetailHeader({
         {table.rowSecurity ? <Badge tone="iris">{STR.rowSecurity}</Badge> : null}
       </div>
       <div className="flex gap-1 border-b border-ink-800" role="tablist">
+        <TabLink to="rows" label={STR.rows} active={active === "rows"} projectId={projectId} databaseId={databaseId} tableId={table.id} />
         <TabLink to="columns" label={STR.columns} active={active === "columns"} projectId={projectId} databaseId={databaseId} tableId={table.id} />
         <TabLink to="indexes" label={STR.indexes} active={active === "indexes"} projectId={projectId} databaseId={databaseId} tableId={table.id} />
         <TabLink to="settings" label="Settings" active={active === "settings"} projectId={projectId} databaseId={databaseId} tableId={table.id} />
@@ -34,6 +35,13 @@ export function TableDetailHeader({
     </div>
   );
 }
+
+const TAB_ROUTES = {
+  rows: "/project/$projectId/databases/$databaseId/tables/$tableId/rows",
+  columns: "/project/$projectId/databases/$databaseId/tables/$tableId/columns",
+  indexes: "/project/$projectId/databases/$databaseId/tables/$tableId/indexes",
+  settings: "/project/$projectId/databases/$databaseId/tables/$tableId/settings",
+} as const;
 
 function TabLink({
   to,
@@ -43,7 +51,7 @@ function TabLink({
   databaseId,
   tableId,
 }: {
-  to: "columns" | "indexes" | "settings";
+  to: keyof typeof TAB_ROUTES;
   label: string;
   active: boolean;
   projectId: string;
@@ -54,22 +62,8 @@ function TabLink({
   const className = `-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
     active ? "border-iris-400 text-ink-100" : "border-transparent text-ink-500 hover:text-ink-300"
   }`;
-  if (to === "columns") {
-    return (
-      <Link to="/project/$projectId/databases/$databaseId/tables/$tableId/columns" params={params} className={className} role="tab" aria-selected={active}>
-        {label}
-      </Link>
-    );
-  }
-  if (to === "indexes") {
-    return (
-      <Link to="/project/$projectId/databases/$databaseId/tables/$tableId/indexes" params={params} className={className} role="tab" aria-selected={active}>
-        {label}
-      </Link>
-    );
-  }
   return (
-    <Link to="/project/$projectId/databases/$databaseId/tables/$tableId/settings" params={params} className={className} role="tab" aria-selected={active}>
+    <Link to={TAB_ROUTES[to]} params={params} className={className} role="tab" aria-selected={active}>
       {label}
     </Link>
   );

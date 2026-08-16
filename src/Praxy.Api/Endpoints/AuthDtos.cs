@@ -61,10 +61,10 @@ public sealed record MembershipResponse(
 
 public sealed record ApiKeyResponse(
     string Id, string Name, string[] Scopes, DateTimeOffset? ExpiresAt, DateTimeOffset? LastUsedAt,
-    DateTimeOffset CreatedAt)
+    bool BypassRowPermissions, DateTimeOffset CreatedAt)
 {
     public static ApiKeyResponse From(ApiKey k) =>
-        new(Ids.Wire(k.Id), k.Name, k.Scopes, k.ExpiresAt, k.LastUsedAt, k.CreatedAt);
+        new(Ids.Wire(k.Id), k.Name, k.Scopes, k.ExpiresAt, k.LastUsedAt, k.BypassRowPermissions, k.CreatedAt);
 }
 
 public sealed record PlatformResponse(string Id, string Type, string Name, string? Hostname, DateTimeOffset CreatedAt)

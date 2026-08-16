@@ -227,7 +227,7 @@ export function useApiKeys(projectId: string) {
 export function useCreateApiKey(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; scopes: string[] }) =>
+    mutationFn: (input: { name: string; scopes: string[]; bypassRowPermissions?: boolean }) =>
       api<CreatedApiKey>(`${base(projectId)}/keys`, { method: "POST", body: input }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["projects", projectId, "keys"] }),

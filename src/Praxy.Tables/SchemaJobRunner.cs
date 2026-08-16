@@ -24,6 +24,7 @@ public sealed class SchemaJobRunner(
     IServiceScopeFactory scopeFactory,
     SchemaJobSignal signal,
     SchemaJobRunnerOptions options,
+    CatalogCache cache,
     ILogger<SchemaJobRunner> logger) : BackgroundService
 {
     /// <summary>Postgres' <c>query_canceled</c> SQL state — what a running statement gets after <c>pg_cancel_backend</c>.</summary>
@@ -207,7 +208,7 @@ public sealed class SchemaJobRunner(
         }
     }
 
-    private static async Task FinalizeAsync(PraxyDb db, SchemaJob job, string jobStatus, string? error, CancellationToken ct)
+    private async Task FinalizeAsync(PraxyDb db, SchemaJob job, string jobStatus, string? error, CancellationToken ct)
     {
         await db.SchemaJobs.Where(j => j.Id == job.Id)
             .ExecuteUpdateAsync(s => s
@@ -219,7 +220,7 @@ public sealed class SchemaJobRunner(
         // The target resource (an index today) has no "cancelled" state of its own — both
         // outcomes surface to it as "failed", with the job's own status/detail staying distinct.
         var targetStatus = jobStatus == "available" ? "available" : "failed";
-        await SchemaJobsService.MarkTargetAsync(db, job, targetStatus, error, ct);
+        await SchemaJobsService.MarkTargetAsync(db, job, targetStatus, error, cache, ct);
     }
 
     private static Task ExecAsync(NpgsqlConnection conn, string sql, CancellationToken ct) =>

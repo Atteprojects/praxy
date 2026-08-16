@@ -21,4 +21,6 @@ export const STR = {
   indexes: "Indexes",
   index: "index",
   rowSecurity: "Row security",
+  rows: "Rows",
+  row: "row",
 } as const;

@@ -19,7 +19,8 @@ public sealed record UpdateAuthSettingsRequest(
     bool? EmailPassword, bool? GoogleEnabled, string? GoogleClientId, string? GoogleClientSecret,
     int? SessionLimit, int? PasswordMinLength);
 
-public sealed record CreateApiKeyRequest(string Name, string[] Scopes, DateTimeOffset? ExpiresAt);
+public sealed record CreateApiKeyRequest(
+    string Name, string[] Scopes, DateTimeOffset? ExpiresAt, bool? BypassRowPermissions);
 
 public sealed record CreatePlatformRequest(string Type, string Name, string? Hostname);
 
@@ -387,7 +388,8 @@ public static class ConsoleAuthAdminEndpoints
         CreateApiKeyRequest req, HttpContext http, PraxyDb db, ApiKeyService apiKeys, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
-        var (key, secret) = await apiKeys.CreateAsync(project.Id, req.Name, req.Scopes, req.ExpiresAt, ct);
+        var (key, secret) = await apiKeys.CreateAsync(
+            project.Id, req.Name, req.Scopes, req.ExpiresAt, req.BypassRowPermissions ?? false, ct);
         await AuditAsync(db, http, project.Id, "keys.create", $"key/{Ids.Wire(key.Id)}", ct);
         // The secret appears exactly once — here. Only its hash survives.
         return Results.Created(

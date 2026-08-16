@@ -48,7 +48,7 @@ export function DatabaseLayout() {
             {sorted.map((table) => (
               <Link
                 key={table.id}
-                to="/project/$projectId/databases/$databaseId/tables/$tableId/columns"
+                to="/project/$projectId/databases/$databaseId/tables/$tableId/rows"
                 params={{ projectId, databaseId, tableId: table.id }}
                 activeOptions={{ exact: false }}
                 className="block truncate rounded-lg px-3 py-2 text-sm font-medium text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100"

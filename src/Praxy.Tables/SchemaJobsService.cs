@@ -13,7 +13,7 @@ namespace Praxy.Tables;
 /// on the pid the runner captured; the runner itself observes the resulting cancellation and
 /// finalizes the job and its target resource, so this service never touches DDL directly.
 /// </summary>
-public sealed class SchemaJobsService(PraxyDb db, NpgsqlDataSource dataSource)
+public sealed class SchemaJobsService(PraxyDb db, NpgsqlDataSource dataSource, CatalogCache cache)
 {
     public Task<List<SchemaJob>> ListAsync(Guid databaseId, Guid? tableId, CancellationToken ct)
     {
@@ -34,7 +34,7 @@ public sealed class SchemaJobsService(PraxyDb db, NpgsqlDataSource dataSource)
             case "queued":
                 job.Status = "cancelled";
                 job.UpdatedAt = DateTimeOffset.UtcNow;
-                await MarkTargetAsync(db, job, "failed", "Cancelled before it started.", ct);
+                await MarkTargetAsync(db, job, "failed", "Cancelled before it started.", cache, ct);
                 await db.SaveChangesAsync(ct);
                 return job;
 
@@ -67,7 +67,7 @@ public sealed class SchemaJobsService(PraxyDb db, NpgsqlDataSource dataSource)
         job.Pid = null;
         job.Attempts += 1;
         job.UpdatedAt = DateTimeOffset.UtcNow;
-        await MarkTargetAsync(db, job, "processing", null, ct);
+        await MarkTargetAsync(db, job, "processing", null, cache, ct);
         await db.SaveChangesAsync(ct);
         return job;
     }
@@ -75,10 +75,15 @@ public sealed class SchemaJobsService(PraxyDb db, NpgsqlDataSource dataSource)
     /// <summary>
     /// Flips the job's target resource (today: always an index) alongside the job itself. Static
     /// and keyed on the payload so the runner (which owns a differently-scoped <see cref="PraxyDb"/>)
-    /// can call the exact same logic when it finalizes a job.
+    /// can call the exact same logic when it finalizes a job. Also invalidates the owning table's
+    /// catalog cache entry — an index flipping to available/failed changes what the query compiler
+    /// (e.g. <c>search</c>'s fulltext-index requirement) sees for that table.
     /// </summary>
-    public static async Task MarkTargetAsync(PraxyDb db, SchemaJob job, string status, string? error, CancellationToken ct)
+    public static async Task MarkTargetAsync(
+        PraxyDb db, SchemaJob job, string status, string? error, CatalogCache cache, CancellationToken ct)
     {
+        if (job.TableId is { } tableId)
+            cache.Invalidate(tableId);
         if (job.Kind != SchemaJobKinds.CreateIndex)
             return;
         var payload = System.Text.Json.JsonSerializer.Deserialize<CreateIndexJobPayload>(job.Payload)

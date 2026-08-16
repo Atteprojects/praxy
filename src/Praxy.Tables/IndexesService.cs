@@ -15,7 +15,7 @@ namespace Praxy.Tables;
 /// consistent story (architecture.md §4.5). Deletion is a plain synchronous <c>DROP INDEX</c>: a
 /// brief exclusive lock, guarded by <c>lock_timeout</c>, not a concurrent rebuild.
 /// </summary>
-public sealed class IndexesService(PraxyDb db)
+public sealed class IndexesService(PraxyDb db, CatalogCache cache)
 {
     public const string TypeKey = "key";
     public const string TypeUnique = "unique";
@@ -103,6 +103,7 @@ public sealed class IndexesService(PraxyDb db)
             await db.SaveChangesAsync(ct);
         }, ct);
 
+        cache.Invalidate(table.Id);
         signal.Notify();
         return index;
     }
@@ -132,6 +133,7 @@ public sealed class IndexesService(PraxyDb db)
                 await SchemaDdl.ExecuteAsync(db, $"ALTER TABLE {qualified} DROP COLUMN IF EXISTS {ftsColumn}", ct);
             }
         }, ct);
+        cache.Invalidate(table.Id);
     }
 
     private static List<ColumnDef> ResolveIndexColumns(List<ColumnDef> columns, string[] columnKeys, string type)

@@ -14,7 +14,7 @@ namespace Praxy.Tables;
 /// recomputed against every existing column plus the one being added, and named offenders are
 /// reported when it's exceeded (roadmap.md).
 /// </summary>
-public sealed class ColumnsService(PraxyDb db)
+public sealed class ColumnsService(PraxyDb db, CatalogCache cache)
 {
     public const int MaxColumnsPerTable = 200;
 
@@ -60,7 +60,7 @@ public sealed class ColumnsService(PraxyDb db)
             Position = position,
         };
 
-        return await SchemaDdl.InTransactionAsync(db, async () =>
+        var created = await SchemaDdl.InTransactionAsync(db, async () =>
         {
             db.Columns.Add(column);
             try
@@ -81,6 +81,8 @@ public sealed class ColumnsService(PraxyDb db)
                 ct);
             return column;
         }, ct);
+        cache.Invalidate(table.Id);
+        return created;
     }
 
     public Task<List<ColumnDef>> ListAsync(Guid tableId, CancellationToken ct) =>
@@ -134,6 +136,7 @@ public sealed class ColumnsService(PraxyDb db)
                     ct);
             }
         }, ct);
+        cache.Invalidate(table.Id);
         return column;
     }
 
@@ -165,6 +168,7 @@ public sealed class ColumnsService(PraxyDb db)
             await SchemaDdl.ExecuteAsync(db,
                 $"ALTER TABLE {qualified} DROP COLUMN {PhysicalNaming.Quote(column.PhysicalName)}", ct);
         }, ct);
+        cache.Invalidate(table.Id);
     }
 
     // ---- validation -----------------------------------------------------------------------------
@@ -230,7 +234,7 @@ public sealed class ColumnsService(PraxyDb db)
 
         var estimates = existing
             .Select(c => new RowByteBudget.ColumnEstimate(
-                c.Key, RowByteBudget.EstimateBytes(c.Type, c.Size, c.IsArray, ExtractElements(c.Options))))
+                c.Key, RowByteBudget.EstimateBytes(c.Type, c.Size, c.IsArray, ColumnTypes.ExtractElements(c.Options))))
             .Append(new RowByteBudget.ColumnEstimate(
                 extra.Key, RowByteBudget.EstimateBytes(extra.Type, extra.Size, extra.IsArray, extra.Elements)))
             .ToList();
@@ -247,18 +251,4 @@ public sealed class ColumnsService(PraxyDb db)
         }
     }
 
-    private static string[]? ExtractElements(string optionsJson)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(optionsJson);
-            return doc.RootElement.TryGetProperty("elements", out var el) && el.ValueKind == JsonValueKind.Array
-                ? [.. el.EnumerateArray().Select(e => e.GetString() ?? "")]
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 }

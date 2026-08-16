@@ -41,5 +41,13 @@ public class ApiKey
     public string[] Scopes { get; set; } = [];
     public DateTimeOffset? ExpiresAt { get; set; }
     public DateTimeOffset? LastUsedAt { get; set; }
+
+    /// <summary>
+    /// Off by default (architecture.md §5: "that bypass is exactly the flag that leaks data when
+    /// it defaults wrong"). On: row CRUD skips table- and row-level permission filtering entirely
+    /// for this key, the same way a trusted server integration works.
+    /// </summary>
+    public bool BypassRowPermissions { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

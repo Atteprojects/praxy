@@ -67,6 +67,7 @@ try
     builder.Services.AddScoped<IOAuthProviderRegistry, OAuthProviderRegistry>();
 
     // ---- Phase 2: schema engine ----
+    builder.Services.AddSingleton<CatalogCache>();
     builder.Services.AddScoped<DatabasesService>();
     builder.Services.AddScoped<TablesService>();
     builder.Services.AddScoped<ColumnsService>();
@@ -77,6 +78,9 @@ try
         PollIntervalSeconds: builder.Configuration.GetValue("Praxy:Tables:SchemaJobs:PollIntervalSeconds", 2),
         IndexBuildTimeoutSeconds: builder.Configuration.GetValue("Praxy:Tables:SchemaJobs:IndexBuildTimeoutSeconds", 1800)));
     builder.Services.AddHostedService<SchemaJobRunner>();
+
+    // ---- Phase 3: data plane ----
+    builder.Services.AddScoped<RowsService>();
 
     // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
     // source address alone never carves out someone else's budget. Limits are configurable and
@@ -188,6 +192,8 @@ try
     ConsoleAuthAdminEndpoints.Map(app);
     DatabaseEndpoints.Map(app);
     ConsoleDatabaseEndpoints.Map(app);
+    RowEndpoints.Map(app);
+    ConsoleRowEndpoints.Map(app);
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.

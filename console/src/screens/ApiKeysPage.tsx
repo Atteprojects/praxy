@@ -3,10 +3,12 @@ import { useState, type FormEvent } from "react";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "../api/auth";
 import { ApiError } from "../api/client";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, Toggle, timeAgo,
 } from "../components/ui";
 
-const ALL_SCOPES = ["users.read", "users.write", "teams.read", "teams.write"] as const;
+const ALL_SCOPES = [
+  "users.read", "users.write", "teams.read", "teams.write", "databases.read", "databases.write",
+] as const;
 
 const HEADERS = ["Name", "ID", "Scopes", "Last used", "Created", ""];
 
@@ -55,6 +57,7 @@ export function ApiKeysPage() {
                       {scope}
                     </Badge>
                   ))}
+                  {key.bypassRowPermissions ? <Badge tone="amber">bypasses row permissions</Badge> : null}
                 </span>
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(key.lastUsedAt)}</td>
@@ -83,13 +86,14 @@ function CreateKeyModal({ projectId, onClose }: { projectId: string; onClose: ()
   const create = useCreateApiKey(projectId);
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<string[]>([]);
+  const [bypassRowPermissions, setBypassRowPermissions] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const error = create.error instanceof ApiError ? create.error : null;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const created = await create.mutateAsync({ name, scopes });
+    const created = await create.mutateAsync({ name, scopes, bypassRowPermissions });
     setSecret(created.secret);
   }
 
@@ -167,6 +171,12 @@ function CreateKeyModal({ projectId, onClose }: { projectId: string; onClose: ()
             <span className="mt-1 block text-xs text-coral-400">{error.fieldErrors("scopes")[0]}</span>
           ) : null}
         </div>
+        <Toggle
+          checked={bypassRowPermissions}
+          onChange={setBypassRowPermissions}
+          label="Bypass row permissions"
+          description="Server-only. Row CRUD with this key skips table- and row-level permission checks entirely — leave off unless this key is a trusted backend."
+        />
         <button type="submit" className="btn-primary w-full" disabled={create.isPending || scopes.length === 0}>
           {create.isPending ? <Spinner /> : "Create key"}
         </button>

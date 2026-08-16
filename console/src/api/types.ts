@@ -143,6 +143,7 @@ export interface ApiKey {
   scopes: string[];
   expiresAt: string | null;
   lastUsedAt: string | null;
+  bypassRowPermissions: boolean;
   createdAt: string;
 }
 
@@ -269,4 +270,29 @@ export interface SchemaJob {
 export interface SchemaJobList {
   total: number;
   jobs: SchemaJob[];
+}
+
+// ---- Phase 3: data plane ----
+
+/** A row's shape is dynamic (one property per column) plus the fixed `$`-prefixed system fields. */
+export interface Row {
+  $id: string;
+  $tableId: string;
+  $databaseId: string;
+  $createdAt: string;
+  $updatedAt: string;
+  $permissions: string[];
+  [columnKey: string]: unknown;
+}
+
+export interface RowList {
+  total: number | null;
+  rows: Row[];
+}
+
+/** One chip in the filter popover — mirrors the query DSL's `{method, attribute, values}` shape. */
+export interface QueryFilter {
+  method: string;
+  attribute?: string;
+  values?: unknown[];
 }

@@ -31,7 +31,8 @@ public sealed class ApiKeyService(PraxyDb db)
     private static readonly TimeSpan LastUsedResolution = TimeSpan.FromSeconds(60);
 
     public async Task<(ApiKey Key, string Secret)> CreateAsync(
-        string projectId, string name, string[] scopes, DateTimeOffset? expiresAt, CancellationToken ct = default)
+        string projectId, string name, string[] scopes, DateTimeOffset? expiresAt,
+        bool bypassRowPermissions = false, CancellationToken ct = default)
     {
         if (Ids.IsReservedProjectId(projectId))
             throw new PraxyException(403, ErrorTypes.ProjectReserved,
@@ -60,6 +61,7 @@ public sealed class ApiKeyService(PraxyDb db)
             SecretHash = secretHash,
             Scopes = scopes.Distinct().ToArray(),
             ExpiresAt = expiresAt,
+            BypassRowPermissions = bypassRowPermissions,
         };
         db.ApiKeys.Add(apiKey);
         await db.SaveChangesAsync(ct);

@@ -105,4 +105,20 @@ public static class ColumnTypes
             v.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
             ? dt
             : throw new FormatException("A 'datetime' default must be an ISO-8601 JSON string.");
+
+    /// <summary>Pulls an enum column's declared <c>elements</c> back out of its jsonb <c>options</c> blob.</summary>
+    public static string[]? ExtractElements(string optionsJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(optionsJson);
+            return doc.RootElement.TryGetProperty("elements", out var el) && el.ValueKind == JsonValueKind.Array
+                ? [.. el.EnumerateArray().Select(e => e.GetString() ?? "")]
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

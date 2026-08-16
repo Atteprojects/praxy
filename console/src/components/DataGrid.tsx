@@ -1,7 +1,7 @@
 import { flexRender, type RowData } from "@tanstack/react-table";
 import { getCoreRowModel, useLegacyTable, type LegacyColumnDef } from "@tanstack/react-table/legacy";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 /** Convenience alias so screens don't need to reach into the legacy entrypoint themselves. */
 export type DataGridColumn<T extends RowData> = LegacyColumnDef<T, unknown>;
@@ -25,6 +25,7 @@ export function DataGrid<T extends RowData>({
   emptyState,
   estimateRowHeight = 44,
   maxHeight = "70vh",
+  onNearEnd,
 }: {
   columns: DataGridColumn<T>[];
   data: T[];
@@ -33,6 +34,8 @@ export function DataGrid<T extends RowData>({
   emptyState?: ReactNode;
   estimateRowHeight?: number;
   maxHeight?: string;
+  /** Fires while scrolling once the visible window nears the last loaded row — wire to `fetchNextPage` for infinite scroll. */
+  onNearEnd?: () => void;
 }) {
   const table = useLegacyTable({
     data,
@@ -50,11 +53,17 @@ export function DataGrid<T extends RowData>({
     overscan: 8,
   });
 
+  const virtualRows = virtualizer.getVirtualItems();
+  const lastVirtualIndex = virtualRows[virtualRows.length - 1]?.index;
+  useEffect(() => {
+    if (onNearEnd && lastVirtualIndex !== undefined && lastVirtualIndex >= rows.length - 5) {
+      onNearEnd();
+    }
+  }, [onNearEnd, lastVirtualIndex, rows.length]);
+
   if (rows.length === 0 && emptyState) {
     return <>{emptyState}</>;
   }
-
-  const virtualRows = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
   const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
   const paddingBottom = virtualRows.length > 0 ? totalSize - virtualRows[virtualRows.length - 1].end : 0;
