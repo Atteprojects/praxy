@@ -4,7 +4,7 @@ A self-hosted backend-as-a-service. Authentication, a dynamic database where a u
 PostgreSQL table, realtime subscriptions, functions, webhooks and messaging — with an admin console and a
 Flutter SDK.
 
-**Status:** Phase 7 complete — solution skeleton, system catalog, instance claim, projects API, full
+**Status:** Phase 8 complete — solution skeleton, system catalog, instance claim, projects API, full
 app-user auth (email+password, Google OAuth, teams, API keys, rate limiting), the dynamic schema engine
 (databases → tables → columns → indexes, synchronous DDL, an async job runner with real cancel/retry,
 table-level permission storage), the data plane (row CRUD, the 24-method query DSL, keyset
@@ -14,11 +14,15 @@ a native Flutter/Dart SDK (`praxy_core`/`praxy_flutter`/`praxy_codegen`, secure-
 Google OAuth, a real `Stream`-based realtime client with `liveList`, an example app), webhooks
 (an outbox-consuming dispatcher and delivery worker, HMAC-SHA256 signed deliveries with full-jitter
 retry/backoff and auto-disable, a connect-time SSRF guard, and a console delivery log with redeliver),
-and functions (a Docker executor for Dart/Node, deployments with build logs, a warm container pool,
+functions (a Docker executor for Dart/Node, deployments with build logs, a warm container pool,
 sync and async invocations with stored results, event- and cron-triggered execution, encrypted-at-rest
 env vars, scoped user JWTs for calling back into the data plane, and a full console: functions,
-deployments, executions, settings).
-Phase 8 (Messaging) is next; see [docs/handoff/](docs/handoff/).
+deployments, executions, settings), and messaging (per-project email providers, topics/subscribers,
+send-to-topic and send-to-users with per-target delivery status via a claim-loop worker, and a
+project-overridable template system that Praxy's own verification/recovery/invitation emails now
+render through — falling back to the existing instance-wide SMTP config when a project hasn't
+configured its own provider).
+Phase 9 (Hardening → v0.1.0) is next; see [docs/handoff/](docs/handoff/).
 
 ## Stack
 
