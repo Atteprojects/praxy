@@ -41,7 +41,7 @@ public static class ConsoleAuthEndpoints
         db.AuditLog.Add(new AuditLogEntry
         {
             Id = Ids.NewUuid(),
-            Actor = $"user:{session.Account.Id}",
+            Actor = $"admin:{session.Account.Id}",
             Action = "instance.claim",
             Resource = "instance",
             Ip = ClientIp(http),

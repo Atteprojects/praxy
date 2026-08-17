@@ -192,7 +192,7 @@ public static class WebhookEndpoints
         {
             Id = Ids.NewUuid(),
             ProjectId = projectId,
-            Actor = $"user:{op.Account.Id}",
+            Actor = $"admin:{op.Account.Id}",
             Action = action,
             Resource = resource,
             Ip = http.Connection.RemoteIpAddress?.ToString(),
