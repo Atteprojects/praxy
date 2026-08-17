@@ -13,6 +13,10 @@ if [ ! -f .env ]; then
     echo "# Set to your public origin (e.g. https://praxy.example.com) to require a"
     echo "# setup token — printed to the api container logs — when claiming."
     echo "PRAXY_PUBLIC_URL="
+    echo "# Public deployment with automatic HTTPS: set both, then run"
+    echo "# 'docker compose --profile https up -d' instead of ./up.sh. See docs/self-host.md."
+    echo "PRAXY_DOMAIN="
+    echo "PRAXY_TRUST_FORWARDED_HEADERS=false"
   } > .env
   chmod 600 .env
 fi

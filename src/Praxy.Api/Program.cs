@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Praxy.Api.Endpoints;
@@ -267,6 +268,24 @@ try
         Log.Warning(
             "PRAXY_SECRET_KEY is not set — using an ephemeral instance key. OAuth logins in " +
             "flight and encrypted provider tokens will not survive a restart. Set it in .env for production.");
+
+    // Opt-in only (Praxy:TrustForwardedHeaders, default false) and first in the pipeline: everything
+    // downstream (the session cookie's Secure flag, rate-limit partitioning, audit/session IP
+    // logging) reads Request.IsHttps/RemoteIpAddress, which are wrong behind a reverse proxy unless
+    // corrected here. Trusting every proxy (KnownNetworks/KnownProxies cleared) is only safe because
+    // this is meant for exactly one trusted proxy reached over the compose network, never a
+    // public-facing api port — enabling this while the api port is also directly internet-reachable
+    // lets any direct-connecting client spoof its own scheme/IP.
+    if (builder.Configuration.GetValue("Praxy:TrustForwardedHeaders", false))
+    {
+        var forwardedHeadersOptions = new ForwardedHeadersOptions
+        {
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        };
+        forwardedHeadersOptions.KnownIPNetworks.Clear();
+        forwardedHeadersOptions.KnownProxies.Clear();
+        app.UseForwardedHeaders(forwardedHeadersOptions);
+    }
 
     app.UseMiddleware<RequestIdMiddleware>();
     app.UseMiddleware<ErrorHandlingMiddleware>();

@@ -30,6 +30,11 @@ services:
       PRAXY_SECRET_KEY: ${PRAXY_SECRET_KEY:-}
       # Set to your public origin to require the logged setup token for instance claim.
       PRAXY_PUBLIC_URL: ${PRAXY_PUBLIC_URL:-}
+      # Only true when the "https" profile's Caddy sits in front (see below) — Caddy is the one
+      # proxy in this stack, reached over the compose network rather than the public internet, so
+      # trusting its X-Forwarded-* headers unconditionally is safe. Never enable this if the api
+      # port is reachable directly (a direct-connecting client could spoof its own IP/scheme).
+      Praxy__TrustForwardedHeaders: ${PRAXY_TRUST_FORWARDED_HEADERS:-false}
     ports:
       - "${PRAXY_PORT:-8080}:8080"
     volumes:
@@ -42,5 +47,27 @@ services:
       # rest of Praxy is unaffected).
       - /var/run/docker.sock:/var/run/docker.sock
 
+  # Optional reverse proxy for a public deployment: automatic HTTPS (Let's Encrypt) for
+  # PRAXY_DOMAIN, forwarding to the api service over the compose network. Not started by default —
+  # `docker compose --profile https up -d` after setting PRAXY_DOMAIN and
+  # PRAXY_TRUST_FORWARDED_HEADERS=true in .env. See docs/self-host.md.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PRAXY_DOMAIN: ${PRAXY_DOMAIN:?set PRAXY_DOMAIN in .env to use the https profile}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - praxy-caddy-data:/data
+      - praxy-caddy-config:/config
+
 volumes:
   praxy-pgdata:
+  praxy-caddy-data:
+  praxy-caddy-config:

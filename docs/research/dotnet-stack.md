@@ -63,6 +63,9 @@ immature lint/tooling tail. Pin 5.9.3.
    `ConnectionIdleLifetime`, `ConnectionPruningInterval`, `Multiplexing`.
 9. **Direct `new NpgsqlConnection(...)` has been discouraged since Npgsql 7.** Always go through the
    singleton, thread-safe `NpgsqlDataSource`.
+10. **`ForwardedHeadersOptions.KnownNetworks` is obsolete in .NET 10** (`ASPDEPR005`, a hard build
+    error under this repo's `TreatWarningsAsErrors`) — use `KnownIPNetworks` (`System.Net.IPNetwork`-based)
+    instead. `KnownProxies` is unaffected.
 
 ---
 
