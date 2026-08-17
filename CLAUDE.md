@@ -72,7 +72,18 @@ Filled in as phases land — keep this section current.
   --dart-define=PRAXY_TABLE_ID=<id>` from `sdk/flutter/example` (ids are real generated ids, not
   keys — create the database/table via the console first) · codegen:
   `dart run praxy_codegen --endpoint ... --project <id> --api-key <key> --database <key>
-  --table <key> --output lib/db/x_columns.dart` from `sdk/flutter/praxy_codegen`
+  --table <key> --output lib/db/x_columns.dart` from `sdk/flutter/praxy_codegen` · real docs at
+  `sdk/flutter/README.md` and each package's own `README.md` since Phase 9 (were unmodified
+  boilerplate before then).
+- Backup/restore (self-host stack, Phase 9): `cd deploy && ./backup.sh [output-dir]` and
+  `./restore.sh <backup-dir>` — stop the `api` container before restoring (catalog cache goes stale
+  under a raw `pg_restore`). Full runbook, config reference, and upgrade procedure:
+  `docs/self-host.md`.
+- Load tests (Phase 9, not part of `dotnet test`): `dotnet run --project tests/Praxy.LoadTests --
+  schemas|websockets|fuzz [options]` — see `tests/Praxy.LoadTests/README.md`.
+- API reference: `docs/api-reference.md` explains how the OpenAPI document ships (dev-only live at
+  `/scalar/v1`/`/openapi/v1.json`; a committed, regeneratable snapshot at `docs/openapi/v1.json` for
+  everyone else).
 
 ## Session end — handoff protocol
 

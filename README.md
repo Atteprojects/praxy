@@ -4,25 +4,27 @@ A self-hosted backend-as-a-service. Authentication, a dynamic database where a u
 PostgreSQL table, realtime subscriptions, functions, webhooks and messaging — with an admin console and a
 Flutter SDK.
 
-**Status:** Phase 8 complete — solution skeleton, system catalog, instance claim, projects API, full
-app-user auth (email+password, Google OAuth, teams, API keys, rate limiting), the dynamic schema engine
-(databases → tables → columns → indexes, synchronous DDL, an async job runner with real cancel/retry,
-table-level permission storage), the data plane (row CRUD, the 24-method query DSL, keyset
-pagination, table- and row-level permission filtering, a catalog cache, and an outbox), realtime
-(a WebSocket endpoint, message-mode protocol, permission-filtered fan-out, and a console inspector),
-a native Flutter/Dart SDK (`praxy_core`/`praxy_flutter`/`praxy_codegen`, secure-storage sessions,
-Google OAuth, a real `Stream`-based realtime client with `liveList`, an example app), webhooks
-(an outbox-consuming dispatcher and delivery worker, HMAC-SHA256 signed deliveries with full-jitter
-retry/backoff and auto-disable, a connect-time SSRF guard, and a console delivery log with redeliver),
-functions (a Docker executor for Dart/Node, deployments with build logs, a warm container pool,
-sync and async invocations with stored results, event- and cron-triggered execution, encrypted-at-rest
-env vars, scoped user JWTs for calling back into the data plane, and a full console: functions,
-deployments, executions, settings), and messaging (per-project email providers, topics/subscribers,
-send-to-topic and send-to-users with per-target delivery status via a claim-loop worker, and a
-project-overridable template system that Praxy's own verification/recovery/invitation emails now
-render through — falling back to the existing instance-wide SMTP config when a project hasn't
-configured its own provider).
-Phase 9 (Hardening → v0.1.0) is next; see [docs/handoff/](docs/handoff/).
+**Status: v0.1.0.** Instance claim, full app-user auth (email+password, Google OAuth, teams, API
+keys, rate limiting), the dynamic schema engine (databases → tables → columns → indexes,
+synchronous DDL, an async job runner with real cancel/retry, table-level permission storage), the
+data plane (row CRUD, the 24-method query DSL, keyset pagination, table- and row-level permission
+filtering, a catalog cache, and an outbox), realtime (a WebSocket endpoint, message-mode protocol,
+permission-filtered fan-out, and a console inspector), a native Flutter/Dart SDK
+(`praxy_core`/`praxy_flutter`/`praxy_codegen`, secure-storage sessions, Google OAuth, a real
+`Stream`-based realtime client with `liveList`, an example app, real package docs), webhooks (an
+outbox-consuming dispatcher and delivery worker, HMAC-SHA256 signed deliveries with full-jitter
+retry/backoff and auto-disable, an SSRF guard, and a console delivery log with redeliver), functions
+(a Docker executor for Dart/Node, deployments with build logs, a warm container pool, sync and
+async invocations with stored results, event- and cron-triggered execution, encrypted-at-rest env
+vars, scoped user JWTs for calling back into the data plane, and a full console), messaging
+(per-project email providers, topics/subscribers, send-to-topic and send-to-users with per-target
+delivery status, and a project-overridable template system Praxy's own auth emails render through),
+and hardening (org-level quotas enforced and surfaced, an unambiguous audit trail, a proven
+backup/restore and upgrade path, load tests at 1k schemas / 10k WebSocket connections / query-
+compiler fuzzing, and a security pass that found and fixed five real bugs — see
+[docs/handoff/phase-9-report.md](docs/handoff/phase-9-report.md)).
+This is the end of the [roadmap](docs/roadmap.md) — see that doc's "Phase 2"/"Phase 3" notes for
+what's next (Storage, relationships, multi-node scale-out, per-project Postgres roles).
 
 ## Stack
 
@@ -49,6 +51,9 @@ tests/        Unit and integration tests
 
 - [docs/roadmap.md](docs/roadmap.md) — phase breakdown, acceptance gates, handoff protocol
 - [docs/architecture.md](docs/architecture.md) — system design, data model, threat model
+- [docs/self-host.md](docs/self-host.md) — operator's guide: configuration, backup/restore, upgrades
+- [docs/api-reference.md](docs/api-reference.md) — how the OpenAPI reference ships for production
+- [sdk/flutter/README.md](sdk/flutter/README.md) — Flutter SDK overview and quick start
 - [docs/research/](docs/research/) — research distillations backing the decisions
 - [docs/handoff/](docs/handoff/) — per-phase session prompts and completion reports
 
