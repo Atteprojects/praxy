@@ -7,7 +7,9 @@ document.
 
 ## Requirements
 
-- Docker and Docker Compose.
+- A host running Ubuntu (or any Debian-family distro) if you want `./up.sh` to install Docker for
+  you; otherwise install [Docker + the Compose plugin](https://docs.docker.com/engine/install/)
+  yourself first, on whatever OS.
 - A host that can reach the internet if you want Google OAuth or outbound SMTP to work, though
   neither is required to run the instance.
 - If you plan to use Functions: a reachable Docker daemon at runtime, not just at build time (see
@@ -16,53 +18,60 @@ document.
 ## Quick start
 
 ```bash
-cd deploy && ./up.sh
+git clone https://github.com/<your-fork-or-org>/praxy.git
+cd praxy/deploy && ./up.sh
 ```
 
-The first run generates `deploy/.env` with a random Postgres password and a random
-`PRAXY_SECRET_KEY` (signs short-lived OAuth JWTs and encrypts provider tokens/OAuth credentials at
-rest — losing it invalidates in-flight OAuth logins and any encrypted secrets, so back it up with
-the rest of `deploy/.env`, not just the database). Then it builds the image and starts Postgres and
-the API.
+First run only, `up.sh` asks one question and then handles everything else:
 
-Open `http://localhost:8080/console` and claim the instance — the first account created becomes the
-instance owner, and sign-up closes immediately afterward (enforced by the API, not just hidden in
-the UI).
+```
+Public domain for this instance, e.g. praxy.example.com (leave blank to run over plain HTTP / localhost):
+```
 
-If the instance is reachable from the public internet, set `PRAXY_PUBLIC_URL` in `deploy/.env` to
-your public origin **before** claiming. This makes claiming require a setup token that's printed to
-the `api` container's logs (`docker compose logs api`) — otherwise anyone who reaches the instance
-before you do can claim it first.
+- **Leave it blank** for local use or an internal network — plain HTTP on `PRAXY_PORT` (8080),
+  identical to every earlier version of this script.
+- **Give it a domain** (with DNS already pointed at this host's IP) for a real public deployment —
+  `up.sh` installs Docker if it isn't already there, generates secrets, brings up a
+  [Caddy](https://caddyserver.com) reverse proxy that gets you a Let's Encrypt certificate
+  automatically, binds the plain-HTTP `api` port to `127.0.0.1` only (never reachable from the
+  internet directly — Caddy reaches it over the internal Docker network regardless), and does a
+  best-effort `ufw` firewall lockdown (22/80/443 only). One command, no manual `.env` editing.
 
-## Public deployment with HTTPS
+Either way, once it's up, open the console (`http://localhost:8080/console`, or
+`https://your.domain.com/console`) and claim the instance — the first account created becomes the
+owner, and sign-up closes immediately afterward (enforced by the API, not just hidden in the UI). In
+the domain case, claiming requires a setup token printed to the `api` container's logs
+(`docker compose logs api`) — otherwise anyone who reaches the instance before you do could claim it
+first.
 
-`./up.sh` alone serves plain HTTP on `PRAXY_PORT` — fine for `localhost` or an internal network, not
-for the open internet (browsers refuse the `Secure` session cookie over HTTP, and credentials would
-cross the wire in clear text). The compose file has an optional `https` profile: a
-[Caddy](https://caddyserver.com) reverse proxy that gets a Let's Encrypt certificate for your domain
-automatically and forwards to `api` over the internal compose network.
+Re-running `./up.sh` later (to restart the stack) reuses the `.env` from first run and remembers
+which mode you picked — it won't ask again.
 
-1. Point a DNS A record at the host's public IP.
-2. In `deploy/.env`, set:
-   ```
-   PRAXY_DOMAIN=your.domain.com
-   PRAXY_PUBLIC_URL=https://your.domain.com
-   PRAXY_TRUST_FORWARDED_HEADERS=true
-   ```
-   The last one matters: without it, the `api` container (which only ever sees plain HTTP from
-   Caddy) marks the session cookie insecure and logs every request as coming from Caddy's own IP
-   rather than the real client's. It's opt-in and only safe to enable when `api`'s port genuinely
-   isn't reachable directly from the internet — a cloud firewall allowing only 22/80/443 inbound
-   (blocking `PRAXY_PORT`, 8080 by default) is the way to guarantee that; see your provider's
-   firewall/security-group feature.
-3. Start with the profile instead of `./up.sh`:
-   ```bash
-   docker compose --profile https up -d
-   ```
+## Public deployment with HTTPS — how it works, and the manual path
 
-Verified end to end as part of Phase 9 hardening: HTTP redirects to HTTPS, the reverse proxy forwards
-correctly to `api`, and the session cookie's `Set-Cookie` header carries `secure` — confirming
-`Praxy:TrustForwardedHeaders` actually closes the gap it's meant to.
+The interactive flow above is the intended way to get HTTPS. What it's actually doing, if you'd
+rather set it up by hand (non-interactive provisioning, an OS `up.sh` can't auto-install Docker on,
+etc.) — in `deploy/.env`:
+```
+PRAXY_DOMAIN=your.domain.com
+PRAXY_PUBLIC_URL=https://your.domain.com
+PRAXY_TRUST_FORWARDED_HEADERS=true
+PRAXY_BIND=127.0.0.1
+```
+then `docker compose --profile https up -d` instead of `./up.sh`.
+
+`PRAXY_TRUST_FORWARDED_HEADERS` matters: without it, the `api` container (which only ever sees plain
+HTTP from Caddy) marks the session cookie insecure and logs every request as coming from Caddy's own
+IP rather than the real client's. `PRAXY_BIND=127.0.0.1` is what actually keeps the plain-HTTP `api`
+port off the public internet — more reliable than a host firewall alone, since Docker's own iptables
+rules are known to bypass tools like `ufw` for ports a container explicitly publishes. `up.sh` still
+runs `ufw` too, as a second layer covering everything else on the host (SSH brute-forcing, stray
+ports), but the port lockdown itself doesn't depend on it.
+
+Verified end to end as part of Phase 9 hardening and again live on a real droplet: HTTP redirects to
+HTTPS, the reverse proxy forwards correctly to `api`, the session cookie's `Set-Cookie` header
+carries `secure`, and the plain-HTTP port is confirmed unreachable from outside the host (not just
+firewalled — genuinely unbound on any externally-reachable interface).
 
 ## Configuration
 
@@ -78,6 +87,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `PRAXY_PUBLIC_URL` | unset | Requires the setup token to claim (see above). |
 | `PRAXY_DOMAIN` | unset | The `https` profile's Caddy gets a certificate for this domain (see [Public deployment with HTTPS](#public-deployment-with-https)). |
 | `Praxy:TrustForwardedHeaders` (`PRAXY_TRUST_FORWARDED_HEADERS`) | `false` | Trust `X-Forwarded-For`/`-Proto` from the `https` profile's Caddy. Only enable alongside that profile — never if `api`'s port is also directly internet-reachable. |
+| `PRAXY_BIND` | `0.0.0.0` | Host interface `PRAXY_PORT` binds to. `up.sh` sets this to `127.0.0.1` whenever a domain is configured — the actual mechanism that keeps the plain-HTTP port off the public internet. |
 | `Praxy:Auth:SessionCacheSeconds` | 60 | In-memory session cache TTL. |
 | `Praxy:Database:StatementTimeoutSeconds` | 30 | `statement_timeout` applied to every connection in the shared pool (Postgres-side, via the connection string's `Options`). DDL/schema-job connections `SET` their own longer value per session and are unaffected. |
 | `Praxy:Smtp:Host`/`Port`/`Username`/`Password`/`From`/`UseTls` | unset (logs instead) | Instance-wide fallback email transport — used for auth emails and Messaging sends on any project that hasn't configured its own provider. |

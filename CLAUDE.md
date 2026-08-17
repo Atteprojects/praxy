@@ -50,8 +50,10 @@ forward from later phases.
 
 Filled in as phases land — keep this section current.
 
-- Self-host stack: `cd deploy && ./up.sh` (generates `.env` on first run; console at
-  `http://localhost:8080/console`)
+- Self-host stack: `cd deploy && ./up.sh` — asks one question on first run (public domain, or blank
+  for local/plain-HTTP), then handles the rest: installs Docker if missing, generates `.env`, and
+  (domain given) brings up Caddy for automatic HTTPS + binds the plain-HTTP port to loopback-only +
+  best-effort `ufw` lockdown. Console at `http://localhost:8080/console` (or `https://<domain>/console`).
 - Tests: `dotnet test` (integration needs Docker for Testcontainers)
 - Dev API: `dotnet run --project src/Praxy.Api` — port 5090, Scalar at `/scalar/v1`; expects local
   Postgres `praxy/praxy/praxy` on 5432 (see README dev section). Since Phase 7, also needs a reachable

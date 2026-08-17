@@ -36,7 +36,12 @@ services:
       # port is reachable directly (a direct-connecting client could spoof its own IP/scheme).
       Praxy__TrustForwardedHeaders: ${PRAXY_TRUST_FORWARDED_HEADERS:-false}
     ports:
-      - "${PRAXY_PORT:-8080}:8080"
+      # PRAXY_BIND defaults to 0.0.0.0 (direct plain-HTTP access — the local/no-domain case).
+      # up.sh sets it to 127.0.0.1 whenever a domain is configured, so the api port is reachable
+      # only from inside the host (Caddy reaches it via the compose network regardless, which
+      # doesn't go through this host port mapping at all) — not relying on the host firewall alone,
+      # since Docker's own iptables rules are known to bypass ufw for published ports.
+      - "${PRAXY_BIND:-0.0.0.0}:${PRAXY_PORT:-8080}:8080"
     volumes:
       # Docker-outside-of-Docker for Phase 7 Functions: the api container builds and runs function
       # containers as siblings via the host's own Docker daemon. This is effectively root-equivalent
@@ -58,7 +63,11 @@ services:
     depends_on:
       - api
     environment:
-      PRAXY_DOMAIN: ${PRAXY_DOMAIN:?set PRAXY_DOMAIN in .env to use the https profile}
+      # Deliberately not ${PRAXY_DOMAIN:?...} — Compose validates every service's required env
+      # vars at parse time regardless of which profile is active, so a hard-require here broke
+      # plain `docker compose up` (no --profile) for everyone, not just https users. up.sh
+      # validates this is set before it ever passes --profile https instead.
+      PRAXY_DOMAIN: ${PRAXY_DOMAIN:-}
     ports:
       - "80:80"
       - "443:443"

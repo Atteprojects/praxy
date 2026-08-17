@@ -63,10 +63,12 @@ tests/        Unit and integration tests
 cd deploy && ./up.sh
 ```
 
-First run generates `deploy/.env` with fresh secrets, builds the image, and starts Postgres + API.
-Open http://localhost:8080/console and claim the instance — the first account becomes the owner and
-sign-up closes. Set `PRAXY_PUBLIC_URL` in `deploy/.env` if the instance is reachable from the
-internet; claiming then requires the setup token printed to the api container logs.
+First run asks one question — a public domain, or blank for local/plain-HTTP — then handles the
+rest: installs Docker if it's missing, generates `deploy/.env` with fresh secrets, and (if you gave
+a domain) brings up automatic HTTPS via Caddy and locks down the firewall. Open the console
+(`http://localhost:8080/console`, or `https://your.domain.com/console`) and claim the instance — the
+first account becomes the owner and sign-up closes. See [docs/self-host.md](docs/self-host.md) for
+the full guide.
 
 ## Development
 
