@@ -1,6 +1,6 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useConnectionCount, useProject } from "../api/queries";
+import { useConnectionCount, useProject, useQuotas } from "../api/queries";
 import { FullPageSpinner } from "../components/ui";
 
 export function ProjectOverviewPage() {
@@ -21,6 +21,59 @@ export function ProjectOverviewPage() {
 
       {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
       <ConnectionsTile projectId={project.data.id} />
+      <QuotaCard projectId={project.data.id} />
+    </div>
+  );
+}
+
+/**
+ * Org-level quota usage (roadmap Phase 9), surfaced without an org switcher: organizations are
+ * still hidden in this UI, so this shows only what this project's own numbers are against the
+ * effective limit (org override, else instance default) — no org identity, no cross-project view.
+ */
+function QuotaCard({ projectId }: { projectId: string }) {
+  const quotas = useQuotas(projectId);
+  if (!quotas.data) return null;
+
+  const rows: Array<{ label: string; used: number; max: number }> = [
+    { label: "Projects (organization)", used: quotas.data.projectsUsed, max: quotas.data.projectsMax },
+    { label: "Databases", used: quotas.data.databasesUsed, max: quotas.data.databasesMax },
+    { label: "Tables (busiest database)", used: quotas.data.busiestDatabaseTables, max: quotas.data.tablesPerDatabaseMax },
+    { label: "Columns (busiest table)", used: quotas.data.busiestTableColumns, max: quotas.data.columnsPerTableMax },
+    { label: "Indexes (busiest table)", used: quotas.data.busiestTableIndexes, max: quotas.data.indexesPerTableMax },
+  ];
+
+  return (
+    <div className="surface mt-4 max-w-2xl p-6">
+      <h2 className="mb-4 text-lg font-medium">Usage</h2>
+      <div className="space-y-3">
+        {rows.map((row) => (
+          <QuotaRow key={row.label} {...row} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuotaRow({ label, used, max }: { label: string; used: number; max: number }) {
+  const ratio = max > 0 ? used / max : 0;
+  const barColor = ratio >= 1 ? "bg-red-500" : ratio >= 0.8 ? "bg-amber-400" : "bg-mint-400";
+  const textColor = ratio >= 1 ? "text-red-400" : ratio >= 0.8 ? "text-amber-400" : "text-ink-300";
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-sm">
+        <span className="text-ink-400">{label}</span>
+        <span className={`tabular-nums ${textColor}`}>
+          {used} / {max}
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">
+        <div
+          className={`h-full rounded-full ${barColor}`}
+          style={{ width: `${Math.min(100, ratio * 100)}%` }}
+        />
+      </div>
     </div>
   );
 }

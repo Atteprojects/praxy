@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
-import type { Account, Capabilities, Project, ProjectList } from "./types";
+import type { Account, Capabilities, Project, ProjectList, QuotaSnapshot } from "./types";
 
 export function useCapabilities() {
   return useQuery({
@@ -44,6 +44,14 @@ export function useProject(projectId: string, options: { pollWhileUnpinged?: boo
     refetchInterval: options.pollWhileUnpinged
       ? (query) => (query.state.data?.lastPingAt ? false : 3_000)
       : false,
+  });
+}
+
+/** Org-level quota usage for this project (roadmap Phase 9) — static enough per page-load, no polling. */
+export function useQuotas(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "quotas"],
+    queryFn: () => api<QuotaSnapshot>(`/console/projects/${projectId}/quotas`),
   });
 }
 

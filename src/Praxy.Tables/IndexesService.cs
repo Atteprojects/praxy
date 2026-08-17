@@ -5,6 +5,7 @@ using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Tables.Quotas;
 using Database = Praxy.Persistence.Entities.Database;
 
 namespace Praxy.Tables;
@@ -15,14 +16,13 @@ namespace Praxy.Tables;
 /// consistent story (architecture.md §4.5). Deletion is a plain synchronous <c>DROP INDEX</c>: a
 /// brief exclusive lock, guarded by <c>lock_timeout</c>, not a concurrent rebuild.
 /// </summary>
-public sealed class IndexesService(PraxyDb db, CatalogCache cache)
+public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService quotas)
 {
     public const string TypeKey = "key";
     public const string TypeUnique = "unique";
     public const string TypeFulltext = "fulltext";
     public static readonly IReadOnlyList<string> Types = [TypeKey, TypeUnique, TypeFulltext];
 
-    public const int MaxIndexesPerTable = 64;
     public const int MaxColumnsPerIndex = 8;
 
     /// <summary>Text-backed column types — the only ones a fulltext index can source from.</summary>
@@ -41,9 +41,7 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache)
                 {
                     ["key"] = ["Must start with a letter and contain only letters, digits and underscores (max 64 chars)."],
                 });
-        if (await db.Indexes.CountAsync(i => i.TableId == table.Id, ct) >= MaxIndexesPerTable)
-            throw new PraxyException(400, ErrorTypes.GeneralResourceLimitExceeded,
-                $"This table already has the maximum of {MaxIndexesPerTable} indexes.");
+        await quotas.EnsureIndexQuotaAsync(database.ProjectId, table.Id, ct);
 
         var columns = await db.Columns.Where(c => c.TableId == table.Id).ToListAsync(ct);
         var resolved = ResolveIndexColumns(columns, columnKeys, type);

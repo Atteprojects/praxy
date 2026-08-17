@@ -4,6 +4,7 @@ using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Tables.Quotas;
 
 namespace Praxy.Api.Endpoints;
 
@@ -26,6 +27,7 @@ public static class ProjectEndpoints
         projects.MapGet("", List);
         projects.MapPost("", Create);
         projects.MapGet("/{projectId}", Get);
+        projects.MapGet("/{projectId}/quotas", GetQuotas).AddEndpointFilter<ConsoleProjectFilter>();
     }
 
     private static async Task<IResult> List(HttpContext http, PraxyDb db, CancellationToken ct)
@@ -38,7 +40,7 @@ public static class ProjectEndpoints
     }
 
     private static async Task<IResult> Create(
-        CreateProjectRequest req, HttpContext http, PraxyDb db, CancellationToken ct)
+        CreateProjectRequest req, HttpContext http, PraxyDb db, QuotaService quotas, CancellationToken ct)
     {
         var op = RequireOperatorFilter.Current(http);
 
@@ -72,13 +74,15 @@ public static class ProjectEndpoints
             .FirstOrDefaultAsync(ct)
             ?? throw new PraxyException(500, ErrorTypes.GeneralServerError, "Operator has no organization.");
 
+        await quotas.EnsureProjectQuotaAsync(orgId, ct);
+
         var project = new Project { Id = id, OrganizationId = orgId, Name = name };
         db.Projects.Add(project);
         db.AuditLog.Add(new AuditLogEntry
         {
             Id = Ids.NewUuid(),
             ProjectId = project.Id,
-            Actor = $"user:{op.Account.Id}",
+            Actor = $"admin:{op.Account.Id}",
             Action = "projects.create",
             Resource = $"project/{project.Id}",
             Ip = http.Connection.RemoteIpAddress?.ToString(),
@@ -103,6 +107,17 @@ public static class ProjectEndpoints
             .FirstOrDefaultAsync(p => p.Id == projectId, ct)
             ?? throw PraxyException.NotFound(ErrorTypes.ProjectNotFound, $"Project '{projectId}' not found.");
         return Results.Ok(ProjectResponse.From(project));
+    }
+
+    /// <summary>
+    /// Org-level quotas surfaced without an org switcher (roadmap Phase 9): the operator's own
+    /// project's usage against the effective limits (org override, else instance default).
+    /// </summary>
+    private static async Task<IResult> GetQuotas(HttpContext http, QuotaService quotas, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var snapshot = await quotas.GetSnapshotAsync(project.Id, ct);
+        return Results.Ok(snapshot);
     }
 
     /// <summary>

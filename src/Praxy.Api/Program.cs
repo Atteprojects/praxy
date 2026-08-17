@@ -13,6 +13,7 @@ using Praxy.Messaging;
 using Praxy.Persistence;
 using Praxy.Realtime;
 using Praxy.Tables;
+using Praxy.Tables.Quotas;
 using Praxy.Webhooks;
 using Scalar.AspNetCore;
 using Serilog;
@@ -34,7 +35,19 @@ try
     var connectionString = builder.Configuration.GetConnectionString("praxy")
         ?? throw new InvalidOperationException("ConnectionStrings:praxy is not configured.");
 
-    builder.Services.AddNpgsqlDataSource(connectionString);
+    // architecture.md §11's threat model claims "statement_timeout on every connection" as a
+    // resource-exhaustion mitigation — true for DDL/schema-job connections (each sets its own via
+    // SET LOCAL) but not, until Phase 9's security pass caught it, for the shared pool the data
+    // plane's row reads/writes run on. The Options startup parameter applies a default to every
+    // connection opened from this pool; DDL paths that need longer already SET a session-level
+    // override afterward, which takes precedence for the rest of that connection's lifetime.
+    var statementTimeoutMs = builder.Configuration.GetValue("Praxy:Database:StatementTimeoutSeconds", 30) * 1000;
+    var connectionStringBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+    connectionStringBuilder.Options = string.IsNullOrEmpty(connectionStringBuilder.Options)
+        ? $"-c statement_timeout={statementTimeoutMs}"
+        : $"{connectionStringBuilder.Options} -c statement_timeout={statementTimeoutMs}";
+
+    builder.Services.AddNpgsqlDataSource(connectionStringBuilder.ConnectionString);
     builder.Services.AddDbContext<PraxyDb>((sp, o) => o
         .UseNpgsql(sp.GetRequiredService<Npgsql.NpgsqlDataSource>(),
             npgsql => npgsql.MigrationsHistoryTable(PraxyDb.MigrationsHistoryTable, PraxyDb.Schema))
@@ -70,6 +83,15 @@ try
     builder.Services.AddHttpClient<GoogleOAuthProvider>();
     builder.Services.AddTransient<IOAuthProvider>(sp => sp.GetRequiredService<GoogleOAuthProvider>());
     builder.Services.AddScoped<IOAuthProviderRegistry, OAuthProviderRegistry>();
+
+    // ---- Phase 9: org-level quotas (read by the schema engine below, so bind first) ----
+    builder.Services.AddSingleton(new QuotaOptions(
+        MaxProjects: builder.Configuration.GetValue("Praxy:Quotas:MaxProjects", 100),
+        MaxDatabasesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxDatabasesPerProject", 20),
+        MaxTablesPerDatabase: builder.Configuration.GetValue("Praxy:Quotas:MaxTablesPerDatabase", 200),
+        MaxColumnsPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxColumnsPerTable", 200),
+        MaxIndexesPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxIndexesPerTable", 64)));
+    builder.Services.AddScoped<QuotaService>();
 
     // ---- Phase 2: schema engine ----
     builder.Services.AddSingleton<CatalogCache>();

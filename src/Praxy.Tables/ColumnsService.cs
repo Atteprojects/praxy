@@ -5,6 +5,7 @@ using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Tables.Quotas;
 using Database = Praxy.Persistence.Entities.Database;
 
 namespace Praxy.Tables;
@@ -14,10 +15,8 @@ namespace Praxy.Tables;
 /// recomputed against every existing column plus the one being added, and named offenders are
 /// reported when it's exceeded (roadmap.md).
 /// </summary>
-public sealed class ColumnsService(PraxyDb db, CatalogCache cache)
+public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService quotas)
 {
-    public const int MaxColumnsPerTable = 200;
-
     public async Task<ColumnDef> CreateAsync(
         Database database, TableDef table, string type, string key, bool required, bool isArray,
         int? size, string[]? elements, JsonElement? defaultValue, CancellationToken ct)
@@ -27,9 +26,7 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache)
         ValidateKey(key);
         ValidateTypeShape(type, size, elements);
 
-        if (await db.Columns.CountAsync(c => c.TableId == table.Id, ct) >= MaxColumnsPerTable)
-            throw new PraxyException(400, ErrorTypes.GeneralResourceLimitExceeded,
-                $"This table already has the maximum of {MaxColumnsPerTable} columns.");
+        await quotas.EnsureColumnQuotaAsync(database.ProjectId, table.Id, ct);
 
         await AssertRowBudgetAsync(table.Id, extra: (key, type, size, isArray, elements), ct);
 

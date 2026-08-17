@@ -537,3 +537,19 @@ export interface MessageDetail {
   message: PraxyMessage;
   targets: MessageTarget[];
 }
+
+// ---- Phase 9: quotas ----
+
+/** Usage vs. the effective limit (org override, else instance default) for this project. */
+export interface QuotaSnapshot {
+  projectsUsed: number;
+  projectsMax: number;
+  databasesUsed: number;
+  databasesMax: number;
+  busiestDatabaseTables: number;
+  tablesPerDatabaseMax: number;
+  busiestTableColumns: number;
+  columnsPerTableMax: number;
+  busiestTableIndexes: number;
+  indexesPerTableMax: number;
+}

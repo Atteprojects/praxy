@@ -4,6 +4,7 @@ using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Tables.Quotas;
 using Database = Praxy.Persistence.Entities.Database;
 
 namespace Praxy.Tables;
@@ -13,17 +14,13 @@ namespace Praxy.Tables;
 /// tables carry only the three system columns (<c>_id</c>, <c>_created_at</c>, <c>_updated_at</c>)
 /// — user columns are added one at a time via <see cref="ColumnsService"/>.
 /// </summary>
-public sealed class TablesService(PraxyDb db, CatalogCache cache)
+public sealed class TablesService(PraxyDb db, CatalogCache cache, QuotaService quotas)
 {
-    public const int MaxTablesPerDatabase = 200;
-
     public async Task<TableDef> CreateAsync(Database database, string key, string name, CancellationToken ct)
     {
         ValidateKeyAndName(key, name);
 
-        if (await db.Tables.CountAsync(t => t.DatabaseId == database.Id, ct) >= MaxTablesPerDatabase)
-            throw new PraxyException(400, ErrorTypes.GeneralResourceLimitExceeded,
-                $"This database already has the maximum of {MaxTablesPerDatabase} tables.");
+        await quotas.EnsureTableQuotaAsync(database.ProjectId, database.Id, ct);
 
         var id = Ids.NewUuid();
         var physicalName = PhysicalNaming.EntityName(key, id);

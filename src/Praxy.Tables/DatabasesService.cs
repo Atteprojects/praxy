@@ -3,6 +3,7 @@ using Npgsql;
 using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
+using Praxy.Tables.Quotas;
 using Database = Praxy.Persistence.Entities.Database;
 
 namespace Praxy.Tables;
@@ -11,17 +12,13 @@ namespace Praxy.Tables;
 /// Databases: metadata insert + <c>CREATE SCHEMA px_&lt;hex32&gt;</c> in one transaction, per
 /// architecture.md §4.1. No delete endpoint this phase — the roadmap only asks for create/list/get.
 /// </summary>
-public sealed class DatabasesService(PraxyDb db)
+public sealed class DatabasesService(PraxyDb db, QuotaService quotas)
 {
-    public const int MaxDatabasesPerProject = 20;
-
     public async Task<Database> CreateAsync(string projectId, string key, string name, CancellationToken ct)
     {
         ValidateKeyAndName(key, name);
 
-        if (await db.Databases.CountAsync(d => d.ProjectId == projectId, ct) >= MaxDatabasesPerProject)
-            throw new PraxyException(400, ErrorTypes.GeneralResourceLimitExceeded,
-                $"This project already has the maximum of {MaxDatabasesPerProject} databases.");
+        await quotas.EnsureDatabaseQuotaAsync(projectId, ct);
 
         var id = Ids.NewUuid();
         var schemaName = PhysicalNaming.SchemaName(id);
