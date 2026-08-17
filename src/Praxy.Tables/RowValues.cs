@@ -88,8 +88,22 @@ public static class RowValues
 
     // ---- per-type validation ----------------------------------------------------------------
 
-    private static string RequireString(string key, JsonElement v) =>
-        v.ValueKind == JsonValueKind.String ? v.GetString()! : throw new FormatException($"'{key}' must be a string.");
+    /// <summary>
+    /// Postgres' <c>text</c> type cannot represent U+0000 at all — not an escaping problem,
+    /// the wire protocol itself rejects it (<c>22021: invalid byte sequence for encoding "UTF8": 0x00</c>),
+    /// so a parameterized value doesn't help here the way it does for injection. Found by Phase 9's
+    /// query-compiler fuzz test reaching this through a filter value; the same string can arrive
+    /// through row write data, so the check lives at the one shared string boundary both paths use.
+    /// </summary>
+    private static string RequireString(string key, JsonElement v)
+    {
+        if (v.ValueKind != JsonValueKind.String)
+            throw new FormatException($"'{key}' must be a string.");
+        var s = v.GetString()!;
+        return s.Contains('\0')
+            ? throw new FormatException($"'{key}' must not contain a null character.")
+            : s;
+    }
 
     private static long RequireInteger(string key, JsonElement v) =>
         v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var i)

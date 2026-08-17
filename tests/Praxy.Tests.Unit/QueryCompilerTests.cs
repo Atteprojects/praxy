@@ -145,4 +145,21 @@ public class QueryCompilerTests
         var predicate = QueryCompiler.CompilePermissionPredicate(entry, "delete", ["users"], bypassPermissions: false);
         Assert.Equal("TRUE", predicate.Sql);
     }
+
+    /// <summary>
+    /// Found by Phase 9's query-compiler fuzz test: a filter value that doesn't match its column's
+    /// type (a string against an integer column here) used to reach Postgres as a bad parameter and
+    /// come back as an unhandled 500 — <see cref="QueryCompiler"/>'s value conversion now catches
+    /// that <see cref="FormatException"/> and rethrows it as the same 400 every other malformed-query
+    /// shape in this compiler already produces, never a raw exception escaping to the caller.
+    /// </summary>
+    [Fact]
+    public void A_filter_value_that_does_not_match_its_columns_type_is_a_clean_400_not_a_crash()
+    {
+        var entry = BuildEntry();
+        var queries = Q("""{"method":"equal","attribute":"views","values":["not-a-number"]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(400, ex.Code);
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
 }

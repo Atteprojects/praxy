@@ -42,4 +42,13 @@ public class IdsTests
         var b = Ids.NewResourceId();
         Assert.True(string.CompareOrdinal(a, b) < 0);
     }
+
+    /// <summary>
+    /// A request body missing a "required" JSON string property binds it to null (System.Text.Json
+    /// does not enforce C#'s non-nullable reference annotations at runtime) — found by Phase 9's
+    /// security pass throwing <see cref="ArgumentNullException"/>, an unhandled 500, for an ordinary
+    /// incomplete <c>POST /v1/console/projects</c> body.
+    /// </summary>
+    [Fact]
+    public void Null_id_is_invalid_not_a_crash() => Assert.False(Ids.IsValidCustomId(null));
 }

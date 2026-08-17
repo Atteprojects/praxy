@@ -148,6 +148,31 @@ public class MessagingTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.True(first.GetProperty("hasSecret").GetBoolean());
     }
 
+    /// <summary>
+    /// Found by Phase 9's security pass: a per-project provider's <c>host</c>/<c>port</c> is exactly
+    /// as attacker-steerable as a webhook URL (any project's own console operator sets it), but had
+    /// no SSRF protection at all before this phase — unlike Webhooks' own guard since Phase 6. This
+    /// proves the fix through the real send path (console → MessagesService → MessageSendWorker →
+    /// EmailProviderResolver → SmtpEmailSender → SsrfAddressGuard), not just the guard in isolation.
+    /// </summary>
+    [Fact]
+    public async Task A_provider_pointed_at_a_private_address_is_blocked_not_attempted()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var response = await Client.SendAsync(Authed(HttpMethod.Post,
+            $"/v1/console/projects/{projectId}/messaging/providers", operatorToken,
+            new { type = "email", name = "Loopback", host = "127.0.0.1", port = 2525, from = "noreply@example.com", useTls = false }));
+        Assert.Equal(201, (int)response.StatusCode);
+
+        var (_, victim) = await SignupAsync(projectId, "victim@example.com");
+        var messageId = await SendAsync(operatorToken, projectId, "probe", "probe", userIds: [victim.GetProperty("id").GetString()!]);
+
+        var message = await WaitForMessageStatusAsync(operatorToken, projectId, messageId, "completed");
+        var target = Assert.Single(message.GetProperty("targets").EnumerateArray());
+        Assert.Equal("failed", target.GetProperty("status").GetString());
+        Assert.Contains("blocked by the SSRF guard", target.GetProperty("error").GetString());
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     private async Task<string> CreateTopicAsync(string operatorToken, string projectId, string key, string name)

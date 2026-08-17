@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Praxy.Core.Net;
 
 namespace Praxy.Webhooks;
 
@@ -13,38 +14,8 @@ namespace Praxy.Webhooks;
 /// </summary>
 public static class SsrfGuard
 {
-    public static bool IsBlockedAddress(IPAddress address)
-    {
-        if (address.IsIPv4MappedToIPv6)
-            address = address.MapToIPv4();
-
-        if (IPAddress.IsLoopback(address))
-            return true;
-
-        if (address.AddressFamily == AddressFamily.InterNetwork)
-        {
-            var b = address.GetAddressBytes();
-            if (b[0] == 0) return true;                             // 0.0.0.0/8 — "this network"
-            if (b[0] == 10) return true;                            // 10.0.0.0/8
-            if (b[0] == 172 && b[1] is >= 16 and <= 31) return true; // 172.16.0.0/12
-            if (b[0] == 192 && b[1] == 168) return true;             // 192.168.0.0/16
-            if (b[0] == 169 && b[1] == 254) return true;             // 169.254.0.0/16 — link-local, incl. cloud metadata (169.254.169.254)
-            if (b[0] >= 224) return true;                            // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved
-            return false;
-        }
-
-        if (address.AddressFamily == AddressFamily.InterNetworkV6)
-        {
-            if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast)
-                return true;
-            // fc00::/7 — unique local addresses (IsIPv6SiteLocal only covers the deprecated fec0::/10 form).
-            if ((address.GetAddressBytes()[0] & 0xfe) == 0xfc)
-                return true;
-            return false;
-        }
-
-        return true; // unknown address family: deny by default
-    }
+    /// <summary>The shared range predicate (<see cref="SsrfAddressGuard"/>) — kept as a same-named passthrough so nothing calling this class needs to change.</summary>
+    public static bool IsBlockedAddress(IPAddress address) => SsrfAddressGuard.IsBlocked(address);
 
     /// <summary>
     /// Resolves <paramref name="host"/> and connects to the first candidate address that passes the

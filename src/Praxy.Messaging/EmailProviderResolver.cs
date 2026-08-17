@@ -13,7 +13,7 @@ namespace Praxy.Messaging;
 /// configuration additive: a project that never visits the Providers screen keeps working exactly
 /// as it did before Messaging existed.
 /// </summary>
-public sealed class EmailProviderResolver(PraxyDb db, InstanceKey key, IEmailSender fallback)
+public sealed class EmailProviderResolver(PraxyDb db, InstanceKey key, IEmailSender fallback, SmtpOptions instanceSmtpOptions)
 {
     public async Task<IEmailSender> ResolveAsync(string projectId, CancellationToken ct)
     {
@@ -32,6 +32,11 @@ public sealed class EmailProviderResolver(PraxyDb db, InstanceKey key, IEmailSen
             Password = password,
             From = config.From,
             UseTls = config.UseTls,
+            // A per-project provider's Host/Port is exactly as attacker-steerable as a webhook URL
+            // (any project's own console operator sets it) — the self-hoster's own network-topology
+            // decision (instance-wide, same as Webhooks'), not something a per-provider toggle should
+            // override per project.
+            AllowPrivateNetworkTargets = instanceSmtpOptions.AllowPrivateNetworkTargets,
         });
     }
 }

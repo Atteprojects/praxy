@@ -29,6 +29,15 @@ public class PermissionStringsTests
         Assert.Throws<FormatException>(() => PermissionStrings.Parse("read(\"not a real role!!\")"));
     }
 
+    /// <summary>
+    /// A permissions array can carry a JSON <c>null</c> element — found by Phase 9's security pass
+    /// throwing <see cref="ArgumentNullException"/>, an unhandled 500, instead of the same clean
+    /// <see cref="FormatException"/> every other malformed permission entry already produces.
+    /// </summary>
+    [Fact]
+    public void Null_permission_entry_throws_FormatException_not_a_crash() =>
+        Assert.Throws<FormatException>(() => PermissionStrings.Parse(null));
+
     [Theory]
     [InlineData("any")]
     [InlineData("guests")]

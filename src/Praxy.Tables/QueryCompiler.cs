@@ -285,13 +285,29 @@ public static class QueryCompiler
              ?? throw QueryDsl.Invalid($"Unknown attribute '{attribute}'.", "queries", $"'{attribute}' is not a column on this table."),
     };
 
+    /// <summary>
+    /// Converts one filter value the same way a write value is validated (<see cref="RowValues.ToFilterScalar"/>)
+    /// — but a filter value comes from a query string, not a trusted write body, so a type mismatch
+    /// here (found by Phase 9's query-compiler fuzz test: <c>equal("views", "not-a-number")</c> and
+    /// friends reached Postgres as a bad parameter and surfaced as an unhandled 500) is a normal,
+    /// expected client mistake. <see cref="FormatException"/> is caught and rethrown as the same
+    /// <see cref="QueryDsl.Invalid"/> 400 every other query-shape error in this compiler already uses,
+    /// never left to fall through to the generic 500 handler.
+    /// </summary>
     private static object ConvertValue(ColumnDef column, JsonElement value)
     {
-        if (column.Type != IdType)
-            return RowValues.ToFilterScalar(column, column.Key, value);
-        if (value.ValueKind != JsonValueKind.String || !Ids.TryParseWire(value.GetString(), out var g))
-            throw new FormatException($"'{column.Key}' must be a valid row id.");
-        return g;
+        try
+        {
+            if (column.Type != IdType)
+                return RowValues.ToFilterScalar(column, column.Key, value);
+            if (value.ValueKind != JsonValueKind.String || !Ids.TryParseWire(value.GetString(), out var g))
+                throw new FormatException($"'{column.Key}' must be a valid row id.");
+            return g;
+        }
+        catch (FormatException ex)
+        {
+            throw QueryDsl.Invalid(ex.Message, "queries", ex.Message);
+        }
     }
 
     private static object BuildArray(List<object> items)

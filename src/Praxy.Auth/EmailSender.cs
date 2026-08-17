@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Logging;
+using Praxy.Core.Net;
 
 namespace Praxy.Auth;
 
@@ -24,6 +25,16 @@ public sealed class SmtpOptions
     public string From { get; set; } = "praxy@localhost";
     public bool UseTls { get; set; } = true;
 
+    /// <summary>
+    /// Same default-deny, self-host-configurable shape as <c>Praxy:Webhooks:AllowPrivateNetworkTargets</c>
+    /// (architecture.md §11). Off by default: an SMTP <c>Host</c>/<c>Port</c> is exactly as attacker-
+    /// steerable as a webhook URL when it comes from a per-project Messaging provider a project's own
+    /// console operator configures (Phase 9's security pass found this path had no SSRF protection at
+    /// all before this flag existed) — a self-hoster running their own internal mail relay opts in
+    /// explicitly, the same way an internal webhook target requires opting in.
+    /// </summary>
+    public bool AllowPrivateNetworkTargets { get; set; }
+
     public bool Configured => !string.IsNullOrWhiteSpace(Host);
 }
 
@@ -32,6 +43,9 @@ public sealed class SmtpEmailSender(SmtpOptions options) : IEmailSender
 {
     public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
+        await SsrfAddressGuard.EnsureHostResolvesToAnAllowedAddressAsync(
+            options.Host!, options.AllowPrivateNetworkTargets, ct);
+
         using var client = new SmtpClient(options.Host!, options.Port)
         {
             EnableSsl = options.UseTls,

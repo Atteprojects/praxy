@@ -26,8 +26,14 @@ public static partial class Ids
 
     /// <summary>
     /// Custom resource ids: 1–36 chars, lowercase alphanumeric plus hyphen, must start alphanumeric.
+    /// Null-safe like <see cref="TryParseWire"/> — a request body missing a "required" JSON string
+    /// property binds it to <c>null</c> (System.Text.Json does not enforce C#'s non-nullable
+    /// reference annotations at runtime), so every validator on this boundary must treat null as
+    /// "invalid," not "crash" (found by Phase 9's security pass: <c>Regex.IsMatch(null)</c> threw
+    /// <see cref="ArgumentNullException"/>, an unhandled 500, for something as ordinary as an
+    /// incomplete request body).
     /// </summary>
-    public static bool IsValidCustomId(string id) => CustomIdRegex().IsMatch(id);
+    public static bool IsValidCustomId(string? id) => id is not null && CustomIdRegex().IsMatch(id);
 
     public static bool IsReservedProjectId(string id) =>
         string.Equals(id, ConsoleProjectId, StringComparison.OrdinalIgnoreCase);

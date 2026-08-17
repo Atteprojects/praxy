@@ -132,4 +132,22 @@ public class RowValuesTests
         var ex = Assert.Throws<FormatException>(() => RowValues.ToWriteValue(column, "views", Parse("\"not a number\"")));
         Assert.Contains("views", ex.Message);
     }
+
+    /// <summary>
+    /// Postgres' <c>text</c> type cannot represent U+0000 at all (found by Phase 9's query-compiler
+    /// fuzz test — a filter value containing a null character reached Postgres and came back as an
+    /// unhandled 500, <c>22021: invalid byte sequence for encoding "UTF8": 0x00</c>, not something a
+    /// parameterized query protects against). Rejected at the same JSON-to-CLR string boundary every
+    /// string-shaped column type shares, so both row writes and query filter values are covered.
+    /// </summary>
+    [Theory]
+    [InlineData(ColumnTypes.String)]
+    [InlineData(ColumnTypes.Enum)]
+    public void A_string_containing_a_null_character_is_rejected(string type)
+    {
+        var column = type == ColumnTypes.Enum
+            ? Column(type, options: """{"elements":["a b"]}""")
+            : Column(type, size: 100);
+        Assert.Throws<FormatException>(() => RowValues.ToWriteValue(column, "col", Parse("\"a\\u0000b\"")));
+    }
 }

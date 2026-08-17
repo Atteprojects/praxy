@@ -25,9 +25,16 @@ public static partial class PermissionStrings
 
     public static string Format(string action, string role) => $"{action}(\"{role}\")";
 
-    /// <summary>Parses one <c>action("role")</c> string. Throws <see cref="FormatException"/> on a malformed entry.</summary>
-    public static (string Action, string Role) Parse(string permission)
+    /// <summary>
+    /// Parses one <c>action("role")</c> string. Throws <see cref="FormatException"/> on a malformed
+    /// entry — including null (a permissions array can carry a JSON <c>null</c> element; found by
+    /// Phase 9's security pass throwing <see cref="ArgumentNullException"/>, an unhandled 500,
+    /// instead of the same clean 400 every other malformed entry already produced here).
+    /// </summary>
+    public static (string Action, string Role) Parse(string? permission)
     {
+        if (permission is null)
+            throw new FormatException("A permission entry must be a string, not null.");
         var match = PermissionRegex().Match(permission);
         if (!match.Success)
             throw new FormatException($"'{permission}' is not a valid permission string.");
