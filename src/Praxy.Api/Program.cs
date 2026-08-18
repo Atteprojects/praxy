@@ -155,7 +155,7 @@ try
         // reached by their container IP on it, since api's own 127.0.0.1 is a different network
         // namespace than the host's.
         DockerNetwork: builder.Configuration["Praxy:Functions:DockerNetwork"] ?? "",
-        DartBaseImage: builder.Configuration["Praxy:Functions:DartBaseImage"] ?? "dart:stable",
+        DartBaseImage: builder.Configuration["Praxy:Functions:DartBaseImage"] ?? "dart:3.13.0",
         NodeBaseImage: builder.Configuration["Praxy:Functions:NodeBaseImage"] ?? "node:22-alpine",
         BuildPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:BuildPollIntervalSeconds", 2),
         ExecutionPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:ExecutionPollIntervalSeconds", 2),

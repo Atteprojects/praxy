@@ -1,6 +1,6 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { useCreateFunction, useFunctions } from "../api/functions";
+import { useCreateFunction, useFunctionRuntimes, useFunctions } from "../api/functions";
 import { ApiError } from "../api/client";
 import { FUNCTION_RUNTIMES, type FunctionRuntime } from "../api/types";
 import {
@@ -115,6 +115,7 @@ export function FunctionsPage() {
 
 function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const create = useCreateFunction(projectId);
+  const runtimes = useFunctionRuntimes(projectId);
   const [key, setKey] = useState("");
   const [keyTouched, setKeyTouched] = useState(false);
   const [name, setName] = useState("");
@@ -183,7 +184,14 @@ function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClos
             value={runtime}
             onChange={(e) => onRuntimeChange(e.target.value as FunctionRuntime)}
           >
-            {FUNCTION_RUNTIMES.map((r) => <option key={r} value={r}>{r}</option>)}
+            {FUNCTION_RUNTIMES.map((r) => {
+              const baseImage = runtimes.data?.runtimes.find((info) => info.id === r)?.baseImage;
+              return (
+                <option key={r} value={r}>
+                  {r}{baseImage ? ` (${baseImage})` : ""}
+                </option>
+              );
+            })}
           </select>
         </Field>
         <Field label="Entrypoint" error={error?.fieldErrors("entrypoint")[0]}>

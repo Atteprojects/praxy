@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
   ErrorEnvelope, FunctionDeployment, FunctionDeploymentList, FunctionEnvVar, FunctionEnvVarList,
-  FunctionExecution, FunctionExecutionList, FunctionList, PraxyFunction,
+  FunctionExecution, FunctionExecutionList, FunctionList, FunctionRuntimeList, PraxyFunction,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/functions`;
@@ -12,6 +12,15 @@ export function useFunctions(projectId: string) {
     queryKey: ["projects", projectId, "functions"],
     queryFn: () => api<FunctionList>(base(projectId)),
     refetchInterval: 5_000,
+  });
+}
+
+/** Base images are an operator config knob, not a fixed constant — see FunctionEndpoints.ListRuntimes. */
+export function useFunctionRuntimes(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "functions", "runtimes"],
+    queryFn: () => api<FunctionRuntimeList>(`${base(projectId)}/runtimes`),
+    staleTime: 5 * 60_000,
   });
 }
 

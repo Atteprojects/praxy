@@ -88,7 +88,8 @@ environment:
   sdk: '>=2.19.0 <4.0.0'
 ```
 
-Base image: `dart:stable` by default (`Praxy:Functions:DartBaseImage`).
+Base image: `dart:3.13.0` by default (`Praxy:Functions:DartBaseImage`) — pinned to a real version
+rather than the floating `stable` tag, so builds stay reproducible across time.
 
 ## Node
 

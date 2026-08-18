@@ -362,6 +362,15 @@ export interface WebhookDeliveryDetail {
 export const FUNCTION_RUNTIMES = ["dart", "node"] as const;
 export type FunctionRuntime = (typeof FUNCTION_RUNTIMES)[number];
 
+export interface FunctionRuntimeInfo {
+  id: FunctionRuntime;
+  baseImage: string;
+}
+
+export interface FunctionRuntimeList {
+  runtimes: FunctionRuntimeInfo[];
+}
+
 export interface PraxyFunction {
   id: string;
   key: string;

@@ -18,6 +18,8 @@ public sealed record SetEnvVarRequest(string Value);
 
 public sealed record InvokeFunctionRequest(string? Method, string? Path, string? Body);
 
+public sealed record FunctionRuntimeResponse(string Id, string BaseImage);
+
 public sealed record FunctionResponse(
     string Id, string Key, string Name, string Runtime, string Entrypoint, int TimeoutSeconds, bool Enabled,
     string[] Events, string? Schedule, DateTimeOffset? NextScheduledRunAt, string? ActiveDeploymentId, bool IsWarm,
@@ -67,6 +69,7 @@ public static class FunctionEndpoints
             .AddEndpointFilter<ConsoleProjectFilter>();
 
         admin.MapGet("", ListFunctions);
+        admin.MapGet("/runtimes", ListRuntimes);
         admin.MapPost("", CreateFunction);
         admin.MapGet("/{functionId}", GetFunction);
         admin.MapPatch("/{functionId}", UpdateFunction);
@@ -100,6 +103,19 @@ public static class FunctionEndpoints
         var list = await functions.ListAsync(project.Id, ct);
         return Results.Ok(new { total = list.Count, functions = list.Select(f => FunctionResponse.From(f, functions.IsWarm(f))) });
     }
+
+    /// <summary>
+    /// Base images are an operator config knob (<c>Praxy:Functions:DartBaseImage</c>/<c>NodeBaseImage</c>,
+    /// self-host.md documents both), not a hardcoded constant — the console's runtime picker calls this
+    /// instead of assuming the upstream defaults, so a self-hoster who pinned a different tag sees their
+    /// actual pin, not a stale guess.
+    /// </summary>
+    private static IResult ListRuntimes(FunctionsOptions options) =>
+        Results.Ok(new
+        {
+            runtimes = FunctionRuntimes.All.Select(r => new FunctionRuntimeResponse(
+                r, r == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage)),
+        });
 
     private static async Task<IResult> CreateFunction(
         CreateFunctionRequest req, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)

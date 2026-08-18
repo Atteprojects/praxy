@@ -4,7 +4,10 @@ namespace Praxy.Functions;
 public sealed record FunctionsOptions(
     string DockerEndpoint = "unix:///var/run/docker.sock",
     string DockerNetwork = "",
-    string DartBaseImage = "dart:stable",
+    // Pinned to a real version, not the floating "stable" tag — "stable" silently resolves to
+    // whatever Dart most recently cut (irreproducible builds across time) and is meaningless as a
+    // version to show in the console's runtime picker. Bump deliberately, not by drift.
+    string DartBaseImage = "dart:3.13.0",
     string NodeBaseImage = "node:22-alpine",
     int BuildPollIntervalSeconds = 2,
     int ExecutionPollIntervalSeconds = 2,
