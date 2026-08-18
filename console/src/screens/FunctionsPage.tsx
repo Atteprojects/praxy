@@ -17,8 +17,15 @@ const EVENT_PRESETS = [
 // `main`: Dart rejects any custom-signature top-level `main` anywhere in the compiled program, even
 // one only ever reached via `import`, so the documented contract used to be unsatisfiable.
 const RUNTIME_EXAMPLES: Record<FunctionRuntime, string> = {
-  dart: `Future<Map<String, dynamic>> handler(Map<String, dynamic> context) async {
-  return {'statusCode': 200, 'body': 'Hello, World!'};
+  // Wrapped across lines (dart format would do the same for a signature this long) so it fits the
+  // modal's width without needing to scroll — a clipped mid-word signature was worse than useless.
+  dart: `Future<Map<String, dynamic>> handler(
+  Map<String, dynamic> context,
+) async {
+  return {
+    'statusCode': 200,
+    'body': 'Hello, World!',
+  };
 }`,
   node: `module.exports = async (context) => ({
   statusCode: 200,
