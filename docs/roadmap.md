@@ -38,7 +38,7 @@ do not "upgrade" past them without checking.
 - `GET /v1/console/capabilities` — server-driven feature flags the console gates screens on.
 
 **Console** — Vite + React 19 + TS 5.9 (pinned) + Tailwind v4 + TanStack Router/Query, served by the API
-container at `/console`. Screens: claim/login, chrome-less create-project card, project list, project
+container at the root path. Screens: claim/login, chrome-less create-project card, project list, project
 overview with "waiting for first ping" state, ⌘K palette shell (`g`-chord navigation). Own modern UI —
 simple like Appwrite's layout (sidebar + tabs + tables) but our design language; see
 [research/console-design.md](research/console-design.md).

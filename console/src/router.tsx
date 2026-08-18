@@ -272,7 +272,7 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
-  basepath: "/console",
+  basepath: "/",
 });
 
 declare module "@tanstack/react-router" {

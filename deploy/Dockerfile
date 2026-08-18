@@ -17,8 +17,8 @@ RUN dotnet publish src/Praxy.Api -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=api-build /app/publish ./
-# The console is static assets served by the API at /console — one container, no CORS.
-COPY --from=console-build /console/dist ./wwwroot/console
+# The console is static assets served by the API at the root — one container, no CORS.
+COPY --from=console-build /console/dist ./wwwroot
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Praxy.Api.dll"]

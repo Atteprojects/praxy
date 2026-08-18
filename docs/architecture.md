@@ -353,7 +353,9 @@ though nothing consumes it yet — retrofitting an outbox after the fact means t
 ## 9. Console
 
 React + TypeScript + Vite, TanStack Query, Tailwind and shadcn/ui, built into static assets and served by the API
-container at `/console`. One container, no CORS, no second deployment for the operator to think about.
+container at the root path (any hostname reaching the container gets the console; optionally its own
+subdomain via `PRAXY_CONSOLE_DOMAIN`, see docs/self-host.md). One container, no CORS, no second deployment for
+the operator to think about.
 
 Blazor WASM would keep everything in C#, but the component ecosystem for the two hardest screens here — an editable
 data grid and a schema designer — is meaningfully weaker. Not worth the language purity.
