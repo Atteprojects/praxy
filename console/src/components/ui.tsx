@@ -111,14 +111,14 @@ export function Modal({ onClose, title, children }: { onClose: () => void; title
       role="dialog"
       aria-modal
     >
-      <div className="surface w-full max-w-md p-6">
+      <div className="surface flex max-h-[85vh] w-full max-w-md flex-col p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
           <button type="button" className="btn-ghost px-2 py-1 text-ink-500" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
-        {children}
+        <div className="min-h-0 overflow-y-auto">{children}</div>
       </div>
     </div>
   );
