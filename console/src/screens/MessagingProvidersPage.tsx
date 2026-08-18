@@ -146,8 +146,8 @@ function ProviderModal({
         <Field label="Name" error={error?.fieldErrors("name")[0]}>
           <input className="input-base" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Primary SMTP" />
         </Field>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="sm:col-span-2">
             <Field label="Host" error={error?.fieldErrors("host")[0]}>
               <input className="input-base font-mono" required value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.example.com" />
             </Field>

@@ -143,7 +143,7 @@ function CreateKeyModal({ projectId, onClose }: { projectId: string; onClose: ()
         </Field>
         <div>
           <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">Scopes</span>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {ALL_SCOPES.map((scope) => (
               <label
                 key={scope}

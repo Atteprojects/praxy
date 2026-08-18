@@ -100,7 +100,7 @@ function AddPlatformModal({ projectId, onClose }: { projectId: string; onClose: 
     <Modal title="Add platform" onClose={onClose}>
       <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
         {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {PLATFORM_TYPES.map((platformType) => (
             <button
               key={platformType.id}

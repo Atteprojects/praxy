@@ -162,7 +162,7 @@ export function TeamDetailPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
           <input
-            className="input-base w-44"
+            className="input-base w-full sm:w-44"
             placeholder="roles, e.g. owner"
             value={roles}
             onChange={(e) => setRoles(e.target.value)}

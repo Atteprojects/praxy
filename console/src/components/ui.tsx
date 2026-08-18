@@ -105,16 +105,16 @@ export function Badge({ tone = "ink", children }: { tone?: keyof typeof badgeTon
 export function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) {
   return (
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-ink-950/70 p-4 backdrop-blur-sm"
+      className="animate-backdrop-in fixed inset-0 z-40 grid place-items-center bg-ink-950/70 p-4 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       onKeyDown={(e) => e.key === "Escape" && onClose()}
       role="dialog"
       aria-modal
     >
-      <div className="surface flex max-h-[85vh] w-full max-w-md flex-col p-6">
+      <div className="surface animate-modal-in flex max-h-[85vh] w-full max-w-md flex-col p-5 sm:p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-          <button type="button" className="btn-ghost px-2 py-1 text-ink-500" onClick={onClose} aria-label="Close">
+          <button type="button" className="btn-ghost p-2 text-ink-500" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
@@ -124,30 +124,40 @@ export function Modal({ onClose, title, children }: { onClose: () => void; title
   );
 }
 
-/** Side sheet: same backdrop/escape semantics as Modal, anchored to the right edge instead of centered. */
+/** Side sheet: same backdrop/escape semantics as Modal, anchored to an edge instead of centered. */
 export function Sheet({
   onClose,
   title,
   children,
   footer,
+  side = "right",
 }: {
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  side?: "left" | "right";
 }) {
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-ink-950/70 backdrop-blur-sm"
+      className={`animate-backdrop-in fixed inset-0 z-40 flex bg-ink-950/70 backdrop-blur-sm ${
+        side === "left" ? "justify-start" : "justify-end"
+      }`}
       onClick={(e) => e.target === e.currentTarget && onClose()}
       onKeyDown={(e) => e.key === "Escape" && onClose()}
       role="dialog"
       aria-modal
     >
-      <div className="flex h-full w-full max-w-md flex-col border-l border-ink-800 bg-ink-900 shadow-2xl shadow-black/50">
+      <div
+        className={`flex h-full w-full max-w-md flex-col bg-ink-900 shadow-2xl shadow-black/50 ${
+          side === "left"
+            ? "animate-sheet-in-left border-r border-ink-800"
+            : "animate-sheet-in-right border-l border-ink-800"
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-ink-800 px-6 py-4">
           <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-          <button type="button" className="btn-ghost px-2 py-1 text-ink-500" onClick={onClose} aria-label="Close">
+          <button type="button" className="btn-ghost p-2 text-ink-500" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
@@ -241,7 +251,7 @@ export function Tabs<T extends string>({
 export function DataTable({ headers, children }: { headers: string[]; children: ReactNode }) {
   return (
     <div className="surface overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="w-full text-left text-sm [&_tbody_tr]:transition-colors [&_tbody_tr]:hover:bg-ink-850/40">
         <thead>
           <tr className="border-b border-ink-800">
             {headers.map((header, i) => (

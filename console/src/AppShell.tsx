@@ -15,7 +15,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-ink-800 bg-ink-950/80 px-5 backdrop-blur">
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-ink-800 bg-ink-950/80 px-4 backdrop-blur sm:px-5">
         <Link to="/" aria-label="Home">
           <Logo />
         </Link>

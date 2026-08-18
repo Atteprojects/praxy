@@ -128,18 +128,18 @@ export function RealtimeInspectorPage() {
         to their own roles.
       </p>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter by channel or event name…"
-          className="w-80 rounded-lg border border-ink-700 bg-ink-900 px-3 py-1.5 text-sm text-ink-100 placeholder:text-ink-600 focus:border-iris-400 focus:outline-none"
+          className="w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-1.5 text-sm text-ink-100 placeholder:text-ink-600 focus:border-iris-400 focus:outline-none sm:w-80"
         />
         <button type="button" className="btn-ghost border border-ink-700 text-xs" onClick={() => setEvents([])}>
           Clear
         </button>
-        <span className="ml-auto text-xs text-ink-500">{filtered.length} shown · {events.length} received</span>
+        <span className="text-xs text-ink-500 sm:ml-auto">{filtered.length} shown · {events.length} received</span>
       </div>
 
       {filtered.length === 0 ? (

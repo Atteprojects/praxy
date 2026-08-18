@@ -36,24 +36,25 @@ body {
 }
 
 @utility surface {
-  @apply bg-ink-900 border border-ink-800 rounded-xl;
+  @apply bg-ink-900 border border-ink-800 rounded-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03),0_8px_24px_-12px_rgba(0,0,0,0.5)];
 }
 
 @utility input-base {
-  @apply w-full rounded-lg bg-ink-950 border border-ink-700 px-3 py-2 text-sm text-ink-100
+  @apply w-full rounded-lg bg-ink-950 border border-ink-700 px-3 py-2.5 text-sm text-ink-100
     placeholder:text-ink-500 outline-none focus:border-iris-500 focus:ring-2 focus:ring-iris-500/30
     transition-colors;
 }
 
 @utility btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-iris-500 px-4 py-2 text-sm
-    font-medium text-white hover:bg-iris-400 active:bg-iris-600 disabled:opacity-50
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-b
+    from-iris-400 to-iris-500 px-4 py-2 text-sm font-medium text-white shadow-sm shadow-black/30
+    hover:from-iris-400 hover:to-iris-400 active:to-iris-600 disabled:opacity-50
     disabled:pointer-events-none transition-colors cursor-pointer;
 }
 
 @utility btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
-    text-ink-300 hover:bg-ink-800 hover:text-ink-100 transition-colors cursor-pointer;
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm
+    font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100 transition-colors cursor-pointer;
 }
 
 @keyframes ping-pulse {
@@ -68,4 +69,58 @@ body {
 
 .animate-ping-pulse {
   animation: ping-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-modal-in {
+  animation: modal-in 0.15s ease-out;
+}
+
+.animate-sheet-in-right {
+  animation: sheet-in-right 0.2s ease-out;
+}
+
+.animate-sheet-in-left {
+  animation: sheet-in-left 0.2s ease-out;
+}
+
+.animate-backdrop-in {
+  animation: backdrop-in 0.15s ease-out;
 }
