@@ -377,9 +377,26 @@ not publicly specified anywhere reachable in this research pass, and replicating
 be a project of its own — so Praxy's runtime wrapper (`RuntimeTemplates.DartWrapper`/`NodeWrapper`)
 defines its own minimal envelope (`{method, path, body, headers}` in, `{statusCode, body, headers,
 logs, errors}` out) and its own per-language function signature (Dart: `Future<Map<String, dynamic>>
-main(Map<String, dynamic> context)`; Node: `module.exports = async (context) => ({statusCode, body,
+handler(Map<String, dynamic> context)`; Node: `module.exports = async (context) => ({statusCode, body,
 headers})`). Documented here so the divergence is a decision on record, not something the next phase
 discovers by diffing against upstream.
+
+**Correction (post-Phase-7 bugfix): the Dart entrypoint function was originally specified as `main`,
+not `handler` — that was unworkable, not a style choice.** Dart's compiler enforces a hard rule
+project-wide, not just for the file actually passed to `dart run`: **any top-level function named
+`main`, anywhere in the compiled program — including one only ever reached via a static `import ... as
+alias`, never executed as the process entry point — must accept `List<String>` (or no) arguments.**
+`RuntimeTemplates.DartWrapper` imports the user's file and calls `user_fn.main(envelope)`; with the
+user file defining `Future<Map<String, dynamic>> main(Map<String, dynamic> context)` per the original
+contract, this fails outright at container start (`dart run` never gets past its own front-end check):
+`Error: The type 'Map<String, dynamic>' of the first parameter of the 'main' method is not a supertype
+of 'List<String>'`. This is not a Praxy bug in the sense of "wrong code" — it's a contract that Dart
+itself cannot satisfy, discovered by running the exact wrapper+user-file pair through `dart run` in
+isolation, not by reasoning about it. **No Dart function ever ran successfully under the original
+contract, in any environment, for any user code.** Fixed by renaming the required export to `handler`
+— an ordinary top-level function name carries none of `main`'s special entry-point rules — while
+leaving the entrypoint *file* free to be named anything (still `main.dart` by convention; only the
+*function* inside it changed).
 
 ## Other notes
 

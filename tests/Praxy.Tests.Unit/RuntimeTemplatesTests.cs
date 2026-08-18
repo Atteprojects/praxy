@@ -42,7 +42,7 @@ public class RuntimeTemplatesTests
     [Fact]
     public async Task Dart_context_carries_user_files_plus_generated_dockerfile_and_wrapper()
     {
-        await using var userTar = await MakeUserTarAsync(("main.dart", "Future<Map<String,dynamic>> main(Map<String,dynamic> c) async => {};"));
+        await using var userTar = await MakeUserTarAsync(("main.dart", "Future<Map<String,dynamic>> handler(Map<String,dynamic> c) async => {};"));
         await using var context = await RuntimeTemplates.BuildContextAsync(
             FunctionRuntimes.Dart, "main.dart", "dart:stable", userTar, CancellationToken.None);
 

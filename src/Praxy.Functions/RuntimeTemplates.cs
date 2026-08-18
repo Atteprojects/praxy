@@ -93,7 +93,12 @@ public static class RuntimeTemplates
     /// Dart has no dynamic <c>require</c>, so the entrypoint has to be a static import — this
     /// wrapper is generated fresh per build with the (validated, traversal-free) entrypoint path
     /// interpolated in. Contract: the user file exports <c>Future&lt;Map&lt;String, dynamic&gt;&gt;
-    /// main(Map&lt;String, dynamic&gt; context)</c>.
+    /// handler(Map&lt;String, dynamic&gt; context)</c>. Deliberately not named <c>main</c> — Dart
+    /// requires every top-level <c>main</c> in a compiled program, imported or not, to accept
+    /// <c>List&lt;String&gt;</c> args (it's an entry-point candidate check the compiler runs
+    /// unconditionally), so a user file that defines its own custom-signature <c>main</c> fails to
+    /// compile the moment this wrapper imports it — confirmed directly (<c>dart run</c> against an
+    /// isolated repro), not assumed.
     /// </summary>
     private static string DartWrapper(string entrypoint) => $$"""
         import 'dart:async';
@@ -133,7 +138,7 @@ public static class RuntimeTemplates
             String? error;
             try {
               result = await runZoned<Future<Map<String, dynamic>>>(
-                () => user_fn.main(envelope),
+                () => user_fn.handler(envelope),
                 zoneSpecification: ZoneSpecification(
                   print: (self, parent, zone, line) => logs.add(line),
                 ),
