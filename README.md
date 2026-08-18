@@ -53,6 +53,7 @@ tests/        Unit and integration tests
 - [docs/architecture.md](docs/architecture.md) — system design, data model, threat model
 - [docs/self-host.md](docs/self-host.md) — operator's guide: configuration, backup/restore, upgrades
 - [docs/api-reference.md](docs/api-reference.md) — how the OpenAPI reference ships for production
+- [docs/functions-runtimes.md](docs/functions-runtimes.md) — what your function code must look like, per runtime
 - [sdk/flutter/README.md](sdk/flutter/README.md) — Flutter SDK overview and quick start
 - [docs/research/](docs/research/) — research distillations backing the decisions
 - [docs/handoff/](docs/handoff/) — per-phase session prompts and completion reports

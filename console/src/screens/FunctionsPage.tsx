@@ -13,6 +13,19 @@ const EVENT_PRESETS = [
   { pattern: "databases.*.tables.*.rows.*.delete", label: "Row deleted" },
 ] as const;
 
+// Kept in sync with docs/functions-runtimes.md — the Dart signature is deliberately `handler`, not
+// `main`: Dart rejects any custom-signature top-level `main` anywhere in the compiled program, even
+// one only ever reached via `import`, so the documented contract used to be unsatisfiable.
+const RUNTIME_EXAMPLES: Record<FunctionRuntime, string> = {
+  dart: `Future<Map<String, dynamic>> handler(Map<String, dynamic> context) async {
+  return {'statusCode': 200, 'body': 'Hello, World!'};
+}`,
+  node: `module.exports = async (context) => ({
+  statusCode: 200,
+  body: 'Hello, World!',
+});`,
+};
+
 const HEADERS = ["Name", "Runtime", "Triggers", "Status", "Created", ""];
 
 export function FunctionsPage() {
@@ -175,6 +188,14 @@ function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClos
             placeholder={runtime === "dart" ? "main.dart" : "index.js"}
           />
         </Field>
+        <div>
+          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
+            {entrypoint || (runtime === "dart" ? "main.dart" : "index.js")} must export
+          </span>
+          <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-300">
+            {RUNTIME_EXAMPLES[runtime]}
+          </pre>
+        </div>
         <Field label="Timeout (seconds)" error={error?.fieldErrors("timeoutSeconds")[0]}>
           <input
             className="input-base"
