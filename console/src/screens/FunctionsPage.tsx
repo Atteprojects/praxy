@@ -195,6 +195,9 @@ function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClos
           <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-300">
             {RUNTIME_EXAMPLES[runtime]}
           </pre>
+          <span className="mt-1 block text-[11px] text-ink-500">
+            Praxy's own contract, not Appwrite/open-runtimes-compatible — see docs/functions-runtimes.md.
+          </span>
         </div>
         <Field label="Timeout (seconds)" error={error?.fieldErrors("timeoutSeconds")[0]}>
           <input

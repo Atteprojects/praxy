@@ -5,6 +5,13 @@ This is the contract your uploaded code has to satisfy for each runtime Praxy su
 `docs/api-reference.md` and the console's Functions pages instead — this doc is only about what
 goes *inside* the deployment tar.
 
+**Not Appwrite/open-runtimes-compatible.** Praxy's console and self-host workflow are modeled on
+Appwrite's, but the function contract below is Praxy's own, deliberately not a port of Appwrite's
+actual per-language SDKs (see `docs/research/dotnet-stack.md`'s "open-runtimes wire contract"
+section for why). A function copied from Appwrite's docs uses a different shape entirely — a
+`context.req`/`context.res` object with side-effecting `.send()`/`.json()` calls — and will not run
+here without rewriting to the plain envelope-in/envelope-out contract below.
+
 ## How invocation works
 
 Every function runs as its own Docker container, built from your uploaded source plus a Praxy-
@@ -118,3 +125,10 @@ All configurable via `Praxy:Functions:*` (see `docs/self-host.md`'s config table
 A function's own configured timeout (set per-function, up to 900s) only applies to *async*
 invocations — sync invocations are always additionally capped at `MaxSyncTimeoutSeconds`, whichever
 is lower.
+
+## Adding a runtime
+
+Document its contract here — the entrypoint signature, a minimal working example, and its base
+image — in the same shape as the sections above. `RuntimeTemplates.cs`'s generated wrapper is the
+source of truth for the actual contract; this doc has to be kept in sync with it by hand, so update
+both in the same change.
