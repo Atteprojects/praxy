@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace Praxy.Functions;
 
 internal sealed record WarmEntry(RunningContainer Container, Guid DeploymentId, DateTimeOffset LastUsedAt);
@@ -11,7 +13,7 @@ internal sealed record WarmEntry(RunningContainer Container, Guid DeploymentId, 
 /// <see cref="IsWarm"/> is exposed for the execution record to note whether an invocation paid the
 /// cold-start cost, and both knobs are configurable.
 /// </summary>
-public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : IAsyncDisposable
+public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options, ILogger<WarmPool> logger) : IAsyncDisposable
 {
     private readonly Dictionary<Guid, WarmEntry> _byDeployment = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -76,7 +78,9 @@ public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : 
     public async Task<RunningContainer> AcquireAsync(
         Guid deploymentId, string imageTag, IReadOnlyDictionary<string, string> envVars, CancellationToken ct)
     {
+        logger.LogWarning("DIAG: AcquireAsync entered for {DeploymentId}, waiting for lock", deploymentId);
         await _lock.WaitAsync(ct);
+        logger.LogWarning("DIAG: AcquireAsync got lock for {DeploymentId}", deploymentId);
         try
         {
             if (_byDeployment.TryGetValue(deploymentId, out var existing))
@@ -88,11 +92,14 @@ public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : 
         finally
         {
             _lock.Release();
+            logger.LogWarning("DIAG: AcquireAsync released first lock for {DeploymentId}", deploymentId);
         }
 
         // The cold start itself happens outside the lock — a slow container boot for one function
         // must not block warm-pool lookups for every other function.
+        logger.LogWarning("DIAG: about to call docker.StartContainerAsync for {DeploymentId}", deploymentId);
         var container = await docker.StartContainerAsync(imageTag, envVars, deploymentId.ToString(), ct);
+        logger.LogWarning("DIAG: docker.StartContainerAsync returned for {DeploymentId}", deploymentId);
 
         await _lock.WaitAsync(ct);
         try

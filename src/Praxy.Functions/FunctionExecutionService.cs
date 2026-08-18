@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Praxy.Auth;
 using Praxy.Core;
 using Praxy.Persistence;
@@ -18,10 +19,11 @@ namespace Praxy.Functions;
 /// </summary>
 public sealed class FunctionExecutionService(
     PraxyDb db, DockerExecutor docker, WarmPool pool, FunctionsOptions options,
-    InstanceKey key, AccountJwtService jwts)
+    InstanceKey key, AccountJwtService jwts, ILogger<FunctionExecutionService> logger)
 {
     public async Task RunAsync(FunctionExecution execution, CancellationToken ct)
     {
+        logger.LogWarning("DIAG: RunAsync entered for execution {ExecutionId}, ct.IsCancellationRequested={Cancelled}", execution.Id, ct.IsCancellationRequested);
         var fn = await db.Functions.FirstOrDefaultAsync(f => f.Id == execution.FunctionId, ct);
         if (fn is null || !fn.Enabled || fn.ActiveDeploymentId is not { } deploymentId)
         {
@@ -38,14 +40,20 @@ public sealed class FunctionExecutionService(
             return;
         }
 
+        logger.LogWarning("DIAG: about to BuildEnvAsync for {ExecutionId}", execution.Id);
         var env = await BuildEnvAsync(fn, execution, ct);
+        logger.LogWarning("DIAG: BuildEnvAsync done for {ExecutionId}", execution.Id);
         var timeoutSeconds = execution.Async ? fn.TimeoutSeconds : Math.Min(fn.TimeoutSeconds, options.MaxSyncTimeoutSeconds);
+        logger.LogWarning("DIAG: about to call pool.IsWarm for {ExecutionId}", execution.Id);
         var wasWarm = pool.IsWarm(deploymentId);
+        logger.LogWarning("DIAG: pool.IsWarm returned {WasWarm} for {ExecutionId}", wasWarm, execution.Id);
 
         var sw = Stopwatch.StartNew();
         try
         {
+            logger.LogWarning("DIAG: about to call pool.AcquireAsync for {ExecutionId}", execution.Id);
             var container = await pool.AcquireAsync(deploymentId, deployment.ImageTag, env, ct);
+            logger.LogWarning("DIAG: pool.AcquireAsync returned for {ExecutionId}", execution.Id);
             var result = await docker.InvokeAsync(
                 container, execution.Method, execution.Path, execution.RequestBody ?? "",
                 new Dictionary<string, string>(), TimeSpan.FromSeconds(timeoutSeconds), ct);
