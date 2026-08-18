@@ -1,6 +1,5 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using Microsoft.Extensions.Logging;
 using Praxy.Auth;
 
 namespace Praxy.Functions;
@@ -21,13 +20,21 @@ public sealed class DockerExecutor : IDisposable
 {
     private readonly IDockerClient _client;
     private readonly FunctionsOptions _options;
-    private readonly ILogger<DockerExecutor> _logger;
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
-    public DockerExecutor(FunctionsOptions options, ILogger<DockerExecutor> logger)
+    // Explicit ConnectTimeout, not just the per-attempt CancellationToken passed to SendAsync:
+    // a function container that dies right after being assigned a bridge-network IP can leave that
+    // IP briefly blackholed (no RST, no ICMP unreachable) rather than cleanly refused the way a
+    // closed loopback port always is — and a pending TCP connect attempt is not guaranteed to
+    // observe a CancellationToken promptly on every platform. SocketsHttpHandler's own ConnectTimeout
+    // bounds the connect phase independently of that, so a single stuck attempt can't outlive it.
+    private readonly HttpClient _http = new(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(2) })
+    {
+        Timeout = Timeout.InfiniteTimeSpan,
+    };
+
+    public DockerExecutor(FunctionsOptions options)
     {
         _options = options;
-        _logger = logger;
         _client = new DockerClientBuilder().WithEndpoint(new Uri(options.DockerEndpoint)).Build();
     }
 
@@ -179,7 +186,6 @@ public sealed class DockerExecutor : IDisposable
             };
         }
 
-        _logger.LogWarning("DIAG: about to call CreateContainerAsync for {Label}", label);
         var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
         {
             Image = imageTag,
@@ -189,15 +195,11 @@ public sealed class DockerExecutor : IDisposable
             HostConfig = hostConfig,
             NetworkingConfig = networkingConfig,
         }, ct);
-        _logger.LogWarning("DIAG: CreateContainerAsync returned {ContainerId}", created.ID);
 
         try
         {
-            _logger.LogWarning("DIAG: about to call StartContainerAsync for {ContainerId}", created.ID);
             await _client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), ct);
-            _logger.LogWarning("DIAG: StartContainerAsync returned for {ContainerId}", created.ID);
             var inspected = await _client.Containers.InspectContainerAsync(created.ID, ct);
-            _logger.LogWarning("DIAG: InspectContainerAsync returned for {ContainerId}", created.ID);
 
             string host;
             int port;
@@ -235,11 +237,8 @@ public sealed class DockerExecutor : IDisposable
     {
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.ColdStartTimeoutSeconds));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-        var attempt = 0;
         while (true)
         {
-            attempt++;
-            _logger.LogWarning("DIAG: health-check attempt {Attempt} for {Host}:{Port}", attempt, host, port);
             linked.Token.ThrowIfCancellationRequested();
             try
             {

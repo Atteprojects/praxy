@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Praxy.Auth;
 using Praxy.Core;
 using Praxy.Persistence;
@@ -19,16 +18,25 @@ namespace Praxy.Functions;
 /// </summary>
 public sealed class FunctionExecutionService(
     PraxyDb db, DockerExecutor docker, WarmPool pool, FunctionsOptions options,
-    InstanceKey key, AccountJwtService jwts, ILogger<FunctionExecutionService> logger)
+    InstanceKey key, AccountJwtService jwts)
 {
+    /// <summary>
+    /// <paramref name="ct"/> is the caller's own token (HTTP <c>RequestAborted</c> for the sync
+    /// endpoint) — it can legitimately become cancelled mid-invocation for reasons that have
+    /// nothing to do with whether the invocation itself succeeded or failed (client navigated away,
+    /// a proxy hop timed out, network hiccup). Every write this method makes uses
+    /// <see cref="CancellationToken.None"/> instead, deliberately: a caller disconnecting must never
+    /// leave the execution row stuck in "waiting" forever — the row is the only record of what
+    /// happened, sync caller or not, and it must always reach a final status.
+    /// </summary>
     public async Task RunAsync(FunctionExecution execution, CancellationToken ct)
     {
-        logger.LogWarning("DIAG: RunAsync entered for execution {ExecutionId}, ct.IsCancellationRequested={Cancelled}", execution.Id, ct.IsCancellationRequested);
         var fn = await db.Functions.FirstOrDefaultAsync(f => f.Id == execution.FunctionId, ct);
         if (fn is null || !fn.Enabled || fn.ActiveDeploymentId is not { } deploymentId)
         {
             await FinalizeAsync(execution.Id, null, "failed", 0, "", "", null, false,
-                fn is null ? "Function no longer exists." : !fn.Enabled ? "Function is disabled." : "No active deployment.", ct);
+                fn is null ? "Function no longer exists." : !fn.Enabled ? "Function is disabled." : "No active deployment.",
+                CancellationToken.None);
             return;
         }
 
@@ -36,24 +44,18 @@ public sealed class FunctionExecutionService(
         if (deployment is null || deployment.Status != "ready" || deployment.ImageTag is null)
         {
             await FinalizeAsync(execution.Id, deploymentId, "failed", 0, "", "", null, false,
-                "The function's active deployment is not ready.", ct);
+                "The function's active deployment is not ready.", CancellationToken.None);
             return;
         }
 
-        logger.LogWarning("DIAG: about to BuildEnvAsync for {ExecutionId}", execution.Id);
         var env = await BuildEnvAsync(fn, execution, ct);
-        logger.LogWarning("DIAG: BuildEnvAsync done for {ExecutionId}", execution.Id);
         var timeoutSeconds = execution.Async ? fn.TimeoutSeconds : Math.Min(fn.TimeoutSeconds, options.MaxSyncTimeoutSeconds);
-        logger.LogWarning("DIAG: about to call pool.IsWarm for {ExecutionId}", execution.Id);
         var wasWarm = pool.IsWarm(deploymentId);
-        logger.LogWarning("DIAG: pool.IsWarm returned {WasWarm} for {ExecutionId}", wasWarm, execution.Id);
 
         var sw = Stopwatch.StartNew();
         try
         {
-            logger.LogWarning("DIAG: about to call pool.AcquireAsync for {ExecutionId}", execution.Id);
             var container = await pool.AcquireAsync(deploymentId, deployment.ImageTag, env, ct);
-            logger.LogWarning("DIAG: pool.AcquireAsync returned for {ExecutionId}", execution.Id);
             var result = await docker.InvokeAsync(
                 container, execution.Method, execution.Path, execution.RequestBody ?? "",
                 new Dictionary<string, string>(), TimeSpan.FromSeconds(timeoutSeconds), ct);
@@ -61,19 +63,20 @@ public sealed class FunctionExecutionService(
 
             await FinalizeAsync(
                 execution.Id, deploymentId, result.Errors is null ? "completed" : "failed", result.StatusCode,
-                Cap(result.Body), Cap(result.Logs), (int)sw.ElapsedMilliseconds, !wasWarm, result.Errors, ct);
+                Cap(result.Body), Cap(result.Logs), (int)sw.ElapsedMilliseconds, !wasWarm, result.Errors,
+                CancellationToken.None);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             sw.Stop();
             await FinalizeAsync(execution.Id, deploymentId, "failed", 0, "", "", (int)sw.ElapsedMilliseconds, !wasWarm,
-                $"Execution timed out after {timeoutSeconds}s.", ct);
+                $"Execution timed out after {timeoutSeconds}s.", CancellationToken.None);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             sw.Stop();
             await FinalizeAsync(execution.Id, deploymentId, "failed", 0, "", "", (int)sw.ElapsedMilliseconds, !wasWarm,
-                ex.Message, ct);
+                ex.Message, CancellationToken.None);
         }
     }
 

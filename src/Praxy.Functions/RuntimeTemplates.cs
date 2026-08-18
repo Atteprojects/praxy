@@ -96,6 +96,7 @@ public static class RuntimeTemplates
     /// main(Map&lt;String, dynamic&gt; context)</c>.
     /// </summary>
     private static string DartWrapper(string entrypoint) => $$"""
+        import 'dart:async';
         import 'dart:convert';
         import 'dart:io';
         import './{{entrypoint}}' as user_fn;
