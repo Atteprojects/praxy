@@ -5,15 +5,16 @@ using Praxy.Auth;
 namespace Praxy.Functions;
 
 /// <summary>One running function container — the warm pool's unit of tracking.</summary>
-public sealed record RunningContainer(string ContainerId, int HostPort, string Secret);
+public sealed record RunningContainer(string ContainerId, string Host, int Port, string Secret);
 
 /// <summary>
 /// Thin wrapper over <c>Docker.DotNet.Enhanced</c> (dotnet-stack.md's Phase-7 pin — the
 /// Testcontainers-maintained fork; <c>Docker.DotNet</c> itself is stale). Owns exactly the four
 /// verbs Functions needs: build an image, start/stop a container, nothing else — no exec, no
-/// attach, no swarm. Talks to the container over its published loopback port via plain HTTP
-/// (<see cref="InvokeAsync"/>), not the Docker attach/exec API, so invocation latency doesn't pay
-/// for Docker's own multiplexed-stream framing on every call.
+/// attach, no swarm. Talks to the container via plain HTTP (<see cref="InvokeAsync"/>), not the
+/// Docker attach/exec API, so invocation latency doesn't pay for Docker's own multiplexed-stream
+/// framing on every call — see <see cref="StartContainerAsync"/> for how the container is reached,
+/// which depends on whether <c>api</c> itself runs on the bare host or inside a container.
 /// </summary>
 public sealed class DockerExecutor : IDisposable
 {
@@ -119,6 +120,22 @@ public sealed class DockerExecutor : IDisposable
         return new BuildResult(error is null, log.ToString(), error);
     }
 
+    /// <summary>
+    /// Two ways to reach the container, chosen by <see cref="FunctionsOptions.DockerNetwork"/>:
+    /// <list type="bullet">
+    /// <item>Unset (dev mode — <c>api</c> runs bare on the host): publish the container's port to
+    /// the host's own <c>127.0.0.1</c> on a random port and connect there. Only correct when the
+    /// caller's <c>127.0.0.1</c> and the Docker host's <c>127.0.0.1</c> are the same network
+    /// namespace.</item>
+    /// <item>Set (the Docker Compose self-host stack — <c>api</c> runs inside its own container):
+    /// join the container to that Docker network instead of publishing a host port at all, and
+    /// connect to its container IP on <see cref="RuntimeTemplates.RuntimePort"/> directly. A
+    /// sibling container published to the real host's loopback is unreachable from inside
+    /// <c>api</c>'s own container — its <c>127.0.0.1</c> is a different, isolated loopback — so this
+    /// is the only path that works there. It also never puts the function's port on the host's
+    /// network stack at all, which is strictly more secure than the host-publish path.</item>
+    /// </list>
+    /// </summary>
     public async Task<RunningContainer> StartContainerAsync(
         string imageTag, IReadOnlyDictionary<string, string> envVars, string label, CancellationToken ct)
     {
@@ -127,34 +144,77 @@ public sealed class DockerExecutor : IDisposable
         env.Add($"OPEN_RUNTIMES_SECRET={secret}");
 
         var portKey = $"{RuntimeTemplates.RuntimePort}/tcp";
+        var attachToNetwork = !string.IsNullOrEmpty(_options.DockerNetwork);
+
+        var hostConfig = new HostConfig
+        {
+            Memory = _options.MemoryLimitMb * 1024 * 1024,
+            NanoCPUs = (long)(_options.CpuLimit * 1_000_000_000),
+            AutoRemove = false,
+        };
+        NetworkingConfig? networkingConfig = null;
+        if (attachToNetwork)
+        {
+            // Both set, matching what `docker run --network=<name>` itself does under the hood —
+            // NetworkMode is what actually attaches the container at creation; EndpointsConfig
+            // alone (without a matching NetworkMode) is a documented Docker Engine API footgun that
+            // silently leaves the container on the default bridge instead.
+            hostConfig.NetworkMode = _options.DockerNetwork;
+            networkingConfig = new NetworkingConfig
+            {
+                EndpointsConfig = new Dictionary<string, EndpointSettings>
+                {
+                    [_options.DockerNetwork] = new EndpointSettings(),
+                },
+            };
+        }
+        else
+        {
+            hostConfig.PortBindings = new Dictionary<string, IList<PortBinding>>
+            {
+                [portKey] = [new PortBinding { HostIP = "127.0.0.1", HostPort = "0" }],
+            };
+        }
+
         var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
         {
             Image = imageTag,
             Env = env,
             ExposedPorts = new Dictionary<string, EmptyStruct> { [portKey] = default },
             Labels = new Dictionary<string, string> { ["praxy.function"] = "true", ["praxy.deployment"] = label },
-            HostConfig = new HostConfig
-            {
-                PortBindings = new Dictionary<string, IList<PortBinding>>
-                {
-                    [portKey] = [new PortBinding { HostIP = "127.0.0.1", HostPort = "0" }],
-                },
-                Memory = _options.MemoryLimitMb * 1024 * 1024,
-                NanoCPUs = (long)(_options.CpuLimit * 1_000_000_000),
-                AutoRemove = false,
-            },
+            HostConfig = hostConfig,
+            NetworkingConfig = networkingConfig,
         }, ct);
 
         try
         {
             await _client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), ct);
             var inspected = await _client.Containers.InspectContainerAsync(created.ID, ct);
-            var binding = inspected.NetworkSettings?.Ports?[portKey]?.FirstOrDefault()
-                ?? throw new InvalidOperationException($"Container {created.ID} has no published port binding for {portKey}.");
-            var hostPort = int.Parse(binding.HostPort);
 
-            await WaitUntilHealthyAsync(hostPort, secret, ct);
-            return new RunningContainer(created.ID, hostPort, secret);
+            string host;
+            int port;
+            if (attachToNetwork)
+            {
+                if (inspected.NetworkSettings?.Networks is not { } networks
+                    || !networks.TryGetValue(_options.DockerNetwork, out var endpoint))
+                    throw new InvalidOperationException(
+                        $"Container {created.ID} is not attached to configured Docker network '{_options.DockerNetwork}'.");
+                host = !string.IsNullOrEmpty(endpoint.IPAddress)
+                    ? endpoint.IPAddress
+                    : throw new InvalidOperationException(
+                        $"Container {created.ID} has no IP address on Docker network '{_options.DockerNetwork}'.");
+                port = RuntimeTemplates.RuntimePort;
+            }
+            else
+            {
+                var binding = inspected.NetworkSettings?.Ports?[portKey]?.FirstOrDefault()
+                    ?? throw new InvalidOperationException($"Container {created.ID} has no published port binding for {portKey}.");
+                host = "127.0.0.1";
+                port = int.Parse(binding.HostPort);
+            }
+
+            await WaitUntilHealthyAsync(host, port, secret, ct);
+            return new RunningContainer(created.ID, host, port, secret);
         }
         catch
         {
@@ -163,7 +223,7 @@ public sealed class DockerExecutor : IDisposable
         }
     }
 
-    private async Task WaitUntilHealthyAsync(int hostPort, string secret, CancellationToken ct)
+    private async Task WaitUntilHealthyAsync(string host, int port, string secret, CancellationToken ct)
     {
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.ColdStartTimeoutSeconds));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
@@ -172,7 +232,7 @@ public sealed class DockerExecutor : IDisposable
             linked.Token.ThrowIfCancellationRequested();
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{hostPort}{RuntimeTemplates.HealthPath}");
+                using var req = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{port}{RuntimeTemplates.HealthPath}");
                 req.Headers.Add(RuntimeTemplates.SecretHeader, secret);
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
                 cts.CancelAfter(TimeSpan.FromSeconds(2));
@@ -203,7 +263,7 @@ public sealed class DockerExecutor : IDisposable
                 headers.Select(kv => KeyValuePair.Create(kv.Key, (System.Text.Json.Nodes.JsonNode?)kv.Value))),
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{container.HostPort}/")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://{container.Host}:{container.Port}/")
         {
             Content = new StringContent(envelope.ToJsonString(), System.Text.Encoding.UTF8, "application/json"),
         };

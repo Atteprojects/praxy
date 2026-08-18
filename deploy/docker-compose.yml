@@ -35,6 +35,12 @@ services:
       # trusting its X-Forwarded-* headers unconditionally is safe. Never enable this if the api
       # port is reachable directly (a direct-connecting client could spoof its own IP/scheme).
       Praxy__TrustForwardedHeaders: ${PRAXY_TRUST_FORWARDED_HEADERS:-false}
+      # api runs inside this container, so its own 127.0.0.1 is not the host's — a function
+      # container published to the *host's* loopback (the DockerExecutor default, correct only when
+      # api runs bare on the host) would be unreachable from here. Instead function containers join
+      # this same compose network (named explicitly below, not left to Compose's project-name-derived
+      # default) and are reached by container IP. See docs/self-host.md's Functions section.
+      Praxy__Functions__DockerNetwork: praxy-functions
     ports:
       # PRAXY_BIND defaults to 0.0.0.0 (direct plain-HTTP access — the local/no-domain case).
       # up.sh sets it to 127.0.0.1 whenever a domain is configured, so the api port is reachable
@@ -80,3 +86,10 @@ volumes:
   praxy-pgdata:
   praxy-caddy-data:
   praxy-caddy-config:
+
+networks:
+  # Named explicitly (not left to Compose's default `<project>_default` naming, whose separator
+  # varies by Compose version) so DockerExecutor has a fixed, documented value to join function
+  # containers to — see the api service's Praxy__Functions__DockerNetwork above.
+  default:
+    name: praxy-functions

@@ -327,6 +327,26 @@ cancellation — `Praxy.Functions.DockerExecutor.BuildImageAsync` is the impleme
 `#pragma warning disable CS0618` around the one call site (this project's `TreatWarningsAsErrors` would
 otherwise refuse the intentional obsolete-overload use).
 
+**Correction (post-Phase-7 bugfix): Phase 7's original design — publish the function container's port
+to the Docker host's `127.0.0.1` and connect there — only works when `api` itself runs bare on the
+host.** It was never actually exercised against the real self-host deployment (`api` running inside
+`deploy/docker-compose.yml`), where `api`'s own `127.0.0.1` is a different network namespace than the
+host's — every Functions invocation there timed out. Fixed by joining function containers to `api`'s
+own Docker network instead (`Praxy:Functions:DockerNetwork`, empty by default to keep the original
+host-port-publish behavior for dev mode) and connecting by container IP on the runtime's own port
+(3000), never the host's network stack. The `CreateContainerParameters.NetworkingConfig` /
+`HostConfig.NetworkMode` shape needed for this was verified the same way as the rest of this section —
+by reflecting against the installed `Docker.DotNet.Enhanced` 4.3.3 `net10.0` assets, not written from
+memory: `NetworkingConfig.EndpointsConfig` is `IDictionary<string, EndpointSettings>` keyed by network
+name, and `HostConfig.NetworkMode` must also be set to that same network name — setting only
+`EndpointsConfig` without a matching `NetworkMode` is a documented Docker Engine API footgun that
+silently leaves the container on the default bridge network instead (this mirrors what `docker run
+--network=<name>` itself sets under the hood). After `InspectContainerAsync`, the container's address
+on that network is `ContainerInspectResponse.NetworkSettings.Networks[name].IPAddress` — that
+dictionary only exposes `IDictionary<TKey,TValue>.TryGetValue`, not the `GetValueOrDefault` extension
+(that extension targets `IReadOnlyDictionary<TKey,TValue>`, which `IDictionary<TKey,TValue>` doesn't
+implement here).
+
 **`System.Formats.Tar` (BCL, .NET 7+, no package) is a real tar reader/writer** —
 `TarWriter`/`TarReader`/`PaxTarEntry` — used both to read an uploaded deployment's tar and to write the
 combined build-context tar (uploaded files + generated Dockerfile + generated runtime wrapper) that

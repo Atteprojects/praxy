@@ -149,6 +149,12 @@ try
     var functionsOptions = new FunctionsOptions(
         DockerEndpoint: builder.Configuration["Praxy:Functions:DockerEndpoint"]
             ?? Environment.GetEnvironmentVariable("DOCKER_HOST") ?? "unix:///var/run/docker.sock",
+        // Empty (dev mode: api runs bare on the host) publishes function containers' ports to
+        // 127.0.0.1 and connects there, as before. Set when api itself runs in a container (the
+        // Docker Compose self-host stack) — function containers join this network instead and are
+        // reached by their container IP on it, since api's own 127.0.0.1 is a different network
+        // namespace than the host's.
+        DockerNetwork: builder.Configuration["Praxy:Functions:DockerNetwork"] ?? "",
         DartBaseImage: builder.Configuration["Praxy:Functions:DartBaseImage"] ?? "dart:stable",
         NodeBaseImage: builder.Configuration["Praxy:Functions:NodeBaseImage"] ?? "node:22-alpine",
         BuildPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:BuildPollIntervalSeconds", 2),

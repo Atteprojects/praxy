@@ -3,6 +3,7 @@ namespace Praxy.Functions;
 /// <summary>Every knob configurable, per CLAUDE.md's cross-phase rule — bound from <c>Praxy:Functions:*</c> config in Program.cs, same plain-record-of-defaults shape as <c>WebhookOptions</c>/<c>SchemaJobRunnerOptions</c>.</summary>
 public sealed record FunctionsOptions(
     string DockerEndpoint = "unix:///var/run/docker.sock",
+    string DockerNetwork = "",
     string DartBaseImage = "dart:stable",
     string NodeBaseImage = "node:22-alpine",
     int BuildPollIntervalSeconds = 2,

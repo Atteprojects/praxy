@@ -105,6 +105,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Realtime:MaxConnectionsPerProject` | 1000 | WebSocket connection quota. |
 | `Praxy:Webhooks:*` | see `docs/handoff/phase-6-report.md` | Dispatch/delivery cadence, timeout, retry backoff, auto-disable threshold, SSRF allowlist. |
 | `Praxy:Functions:*` | see `docs/handoff/phase-7-report.md` | Docker endpoint, base images, build/execution timeouts, warm pool size, resource limits. |
+| `Praxy:Functions:DockerNetwork` | `""` | Docker network function containers join instead of publishing a host port; required when `api` itself runs in a container (this repo's own compose file sets it to `praxy-functions`) — see [Functions and the Docker socket](#functions-and-the-docker-socket). |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
 
 **Org-level quotas** (`Praxy:Quotas:*` above) are the instance-wide defaults. An individual
@@ -128,6 +129,17 @@ principle, control every other container and the host filesystem through the soc
 sandboxed alternative in this release. If that tradeoff is unacceptable, comment the volume mount out
 — Functions becomes unusable (every build/invoke call fails closed) but the rest of Praxy is
 unaffected.
+
+**Reaching invoked function containers.** Because `api` itself runs inside a container in this
+stack, it can't reach a sibling function container via a host-published `127.0.0.1` port — its own
+loopback is a different network namespace than the host's. `deploy/docker-compose.yml` instead names
+its Compose network explicitly (`praxy-functions`, not Compose's default project-derived name) and
+sets `Praxy__Functions__DockerNetwork=praxy-functions` on the `api` service; function containers join
+that network directly and are reached by container IP, never touching the host's network stack at
+all. `Praxy:Functions:DockerNetwork` defaults to empty, which falls back to the old host-port-publish
+behavior — correct only when `api` runs bare on the host (`dotnet run`, e.g. local development), not
+inside Compose. If you run `api` in a container outside this repo's own compose file, set this to
+whatever Docker network that container and its Docker daemon's function containers share.
 
 ## Backup and restore
 

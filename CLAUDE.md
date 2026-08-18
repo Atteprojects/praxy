@@ -61,7 +61,11 @@ Filled in as phases land — keep this section current.
   `/var/run/docker.sock` by default (override with `Praxy:Functions:DockerEndpoint` or `DOCKER_HOST`).
   Self-host (`deploy/docker-compose.yml`) mounts the host socket into the api container for this —
   root-equivalent host access from inside that container; the compose file documents the tradeoff and
-  the escape hatch inline. Tunable via `Praxy:Functions:*` (base images, timeouts, warm pool size,
+  the escape hatch inline. Since api itself runs in a container there, `Praxy:Functions:DockerNetwork`
+  is also set (to the compose file's explicitly-named `praxy-functions` network) so function
+  containers are reached by container IP on that network instead of a host-published port, which
+  wouldn't be reachable from inside api's own container — see `docs/self-host.md`'s Functions section.
+  Tunable via `Praxy:Functions:*` (base images, timeouts, warm pool size,
   upload size cap — see `docs/handoff/phase-7-report.md`'s Commands section for the full list).
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
