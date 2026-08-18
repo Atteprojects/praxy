@@ -299,7 +299,19 @@ try
     app.UseMiddleware<PlatformCorsMiddleware>();
 
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+    // Vite's hashed asset filenames (console/assets/*) are content-addressed — safe to cache
+    // forever. index.html (served here for the literal path, and again below for the SPA fallback)
+    // references whichever hash is current, so it must always be revalidated — otherwise a
+    // still-open tab keeps running a deploy old enough that its hashed assets no longer exist on
+    // the server, with nothing short of a hard refresh making a new deploy visible.
+    var consoleCacheOptions = new StaticFileOptions
+    {
+        OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl =
+            ctx.Context.Request.Path.StartsWithSegments("/console/assets")
+                ? "public, max-age=31536000, immutable"
+                : "no-cache",
+    };
+    app.UseStaticFiles(consoleCacheOptions);
 
     // Explicit and *after* static files: otherwise WebApplication auto-prepends routing,
     // the /console/{*path} fallback endpoint matches first, and the static middleware
@@ -341,7 +353,7 @@ try
 
     app.MapGet("/", () => Results.Redirect("/console"));
     // SPA fallback: any /console/* route serves the app shell; client routing takes over.
-    app.MapFallbackToFile("/console/{*path}", "console/index.html");
+    app.MapFallbackToFile("/console/{*path}", "console/index.html", consoleCacheOptions);
     // Anything else unmatched gets the public 404 envelope rather than a bare status code.
     app.MapFallback(() => { throw new PraxyException(404, ErrorTypes.GeneralRouteNotFound, "Route not found."); });
 
