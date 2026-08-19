@@ -336,6 +336,7 @@ try
 
     CapabilitiesEndpoints.Map(app);
     ConsoleAuthEndpoints.Map(app);
+    ConsoleOrganizationEndpoints.Map(app);
     ProjectEndpoints.Map(app);
     DataPlaneEndpoints.Map(app);
     AccountEndpoints.Map(app);

@@ -31,6 +31,8 @@ public static class ErrorTypes
     public const string MembershipAlreadyExists = "membership_already_exists";
     public const string MembershipAlreadyConfirmed = "membership_already_confirmed";
 
+    public const string OrganizationNotFound = "organization_not_found";
+
     public const string ApiKeyNotFound = "api_key_not_found";
     public const string PlatformNotFound = "platform_not_found";
 
@@ -114,6 +116,7 @@ public static class ErrorTypes
         MembershipNotFound,
         MembershipAlreadyExists,
         MembershipAlreadyConfirmed,
+        OrganizationNotFound,
         ApiKeyNotFound,
         PlatformNotFound,
         ProjectNotFound,
