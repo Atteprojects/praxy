@@ -61,7 +61,7 @@ export function ApiKeysPage() {
                       {scope}
                     </Badge>
                   ))}
-                  {key.bypassRowPermissions ? <Badge tone="amber">bypasses row permissions</Badge> : null}
+                  {key.bypassRowPermissions ? <Badge tone="amber">bypasses permissions</Badge> : null}
                 </span>
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(key.lastUsedAt)}</td>
@@ -183,8 +183,8 @@ function CreateKeyModal({ projectId, onClose }: { projectId: string; onClose: ()
         <Toggle
           checked={bypassRowPermissions}
           onChange={setBypassRowPermissions}
-          label="Bypass row permissions"
-          description="Server-only. Row CRUD with this key skips table- and row-level permission checks entirely — leave off unless this key is a trusted backend."
+          label="Bypass permissions"
+          description="Server-only. This key skips the permission layer entirely: row CRUD ignores table- and row-level checks, and it can invoke any function regardless of its execute access. Scopes still apply. Leave off unless this key is a trusted backend."
         />
         <button type="submit" className="btn-primary w-full" disabled={create.isPending || scopes.length === 0}>
           {create.isPending ? <Spinner /> : "Create key"}

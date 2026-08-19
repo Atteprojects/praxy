@@ -44,8 +44,14 @@ public class ApiKey
 
     /// <summary>
     /// Off by default (architecture.md §5: "that bypass is exactly the flag that leaks data when
-    /// it defaults wrong"). On: row CRUD skips table- and row-level permission filtering entirely
-    /// for this key, the same way a trusted server integration works.
+    /// it defaults wrong"). On: this key skips the data plane's permission layer entirely, the same
+    /// way a trusted server integration works — row CRUD skips table- and row-level filtering, and
+    /// function invocation skips the per-function <c>execute</c> role check. Scopes still apply in
+    /// both cases; this bypasses permissions, never authentication or scoping.
+    ///
+    /// The name predates functions having a permission model at all. It is kept because renaming it
+    /// is a breaking wire change to a field SDKs may read; <c>bypassPermissions</c> is the v1.1
+    /// candidate.
     /// </summary>
     public bool BypassRowPermissions { get; set; }
 
