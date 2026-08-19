@@ -284,7 +284,12 @@ try
     builder.Services.ConfigureHttpJsonOptions(o =>
         o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
 
-    builder.Services.AddOpenApi();
+    builder.Services.AddOpenApi(o =>
+    {
+        o.AddOperationTransformer<OpenApiErrorResponses>();
+        o.AddDocumentTransformer<OpenApiErrorResponses>();
+        o.AddDocumentTransformer<OpenApiServers>();
+    });
 
     var app = builder.Build();
 
@@ -363,7 +368,8 @@ try
         app.MapScalarApiReference(o => o.WithOpenApiRoutePattern("/openapi/{documentName}.json"));
     }
 
-    app.MapGet("/v1/health", () => Results.Ok(new { status = "ok", version = Praxy.Core.PraxyVersion.Current }));
+    app.MapGet("/v1/health", () => Results.Ok(new HealthResponse("ok", Praxy.Core.PraxyVersion.Current)))
+        .Produces<HealthResponse>();
 
     CapabilitiesEndpoints.Map(app);
     ConsoleAuthEndpoints.Map(app);
@@ -384,8 +390,9 @@ try
     MessagingEndpoints.Map(app);
 
     // The console used to live under /console; keep old bookmarks/docs working.
-    app.MapGet("/console", () => Results.Redirect("/"));
-    app.MapGet("/console/{*path}", (string path) => Results.Redirect($"/{path}"));
+    app.MapGet("/console", () => Results.Redirect("/")).Produces(StatusCodes.Status302Found);
+    app.MapGet("/console/{*path}", (string path) => Results.Redirect($"/{path}"))
+        .Produces(StatusCodes.Status302Found);
 
     // Unmatched /v1/* still gets the public JSON 404 envelope, not the console shell.
     app.MapFallback("/v1/{*path}", () => { throw new PraxyException(404, ErrorTypes.GeneralRouteNotFound, "Route not found."); });

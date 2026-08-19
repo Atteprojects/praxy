@@ -6,6 +6,11 @@ using Praxy.Persistence.Entities;
 
 namespace Praxy.Api.Endpoints;
 
+public sealed record PingResponse(string Status, string ProjectId, DateTimeOffset At);
+
+/// <summary>Liveness. Deliberately free of the error envelope — load balancers poll it.</summary>
+public sealed record HealthResponse(string Status, string Version);
+
 /// <summary>
 /// The data plane — everything an app (as opposed to a console operator) calls. Every endpoint
 /// in this group resolves <c>X-Praxy-Project</c> and hard-refuses the reserved console project.
@@ -28,8 +33,8 @@ public static class DataPlaneEndpoints
             var now = DateTimeOffset.UtcNow;
             await db.Projects.Where(p => p.Id == project.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(p => p.LastPingAt, now), ct);
-            return Results.Ok(new { status = "pong", projectId = project.Id, at = now });
-        });
+            return Results.Ok(new PingResponse("pong", project.Id, now));
+        }).Produces<PingResponse>();
     }
 
     public static Project CurrentProject(HttpContext http) =>
