@@ -22,11 +22,14 @@ This is item #6 of the post-v0.1.0 gap analysis, and the one furthest from the
 others — it touches Dart, not C# or the console. Items #1–#3 are merged or
 written up; #4 and #5 may or may not have landed by the time this runs.
 
-**One dependency**: `docs/handoff/function-execution-read-prompt.md` closes a
-real API gap this prompt's own writing uncovered (async function invoke has
-no way to read its result back). Check whether it has landed before you start
-`FunctionsService` below — the scope item and landmine for async invoke
-describe both cases.
+**One dependency, now closed**: `docs/handoff/function-execution-read-prompt.md`
+merged (`50eb38c`) — the data plane now has
+`GET /v1/functions/{functionId}/executions/{executionId}`, scoped to the
+caller's own execution (`TriggeredBy` match; a signed-in session or an API key
+each get their own identity now — `user:<id>` / `key:<id>` — verified live
+against a real Docker-built container, including the actual regression case:
+one key cannot read a different key's execution). `FunctionsService` below
+can bind the full sync/async/poll trio without a fallback branch.
 
 Work on a new branch off `main`. Read `CLAUDE.md` first, then
 `docs/research/flutter-sdk.md` in full — it is short, and it is the actual
@@ -62,11 +65,10 @@ existing service already honors.
 2. **`TeamsService`** (new): teams CRUD, memberships CRUD, matching
    `TeamEndpoints.cs`'s client-facing surface — not the console admin one.
 3. **`FunctionsService`** (new): the data-plane invoke
-   (`POST /v1/functions/{functionId}/executions`, sync and async), plus
-   `getExecution` if `docs/handoff/function-execution-read-prompt.md` has
-   landed by the time you start — check before you design this method's
-   return shape, and see the landmine below either way. Deployment management
-   is a console/operator concern, not an app's, and stays out of scope.
+   (`POST /v1/functions/{functionId}/executions`, sync and async) plus
+   `getExecution` (`GET .../executions/{id}`, now real — see the dependency
+   note above). Deployment management is a console/operator concern, not an
+   app's, and stays out of scope.
 4. **No `MessagingService`.** Checked already, not left for you to
    discover: `MessagingEndpoints.cs` maps exactly one route group
    (`/v1/console/projects/{projectId}/messaging`) and every route in it sits
@@ -135,27 +137,15 @@ Verified against current `main`, not recalled.
   from a non-owner is expected behavior to leave alone, not a bug in your new
   method.
 
-- **`FunctionsService`'s async invoke returns a `202` with a queued
-  execution — whether there is anywhere to poll it depends on whether
-  `docs/handoff/function-execution-read-prompt.md` has landed.** Check
-  `src/Praxy.Api/Endpoints/FunctionEndpoints.cs` for a data-plane
-  `GET .../executions/{id}` before writing this method:
-  - **If it exists**: bind `getExecution` normally — same
-    `FunctionExecutionResponse` shape the sync path already decodes, just
-    fetched by id. Read that prompt's landmines section for what
-    authorization rule it settled on (own-execution-only is the recommended
-    outcome, meaning a caller can only ever fetch what they themselves
-    triggered — the SDK doesn't need to do anything about that, the server
-    enforces it, but don't be surprised by a 404 on someone else's execution
-    id).
-  - **If it does not exist yet**: do not invent a poll method that calls a
-    route which doesn't exist — it would 404 for every caller. Ship `invoke`
-    for sync only in this v1.1 surface, document async as deferred pending
-    that prompt (matching how `upsert` and anonymous sessions are already
-    documented as known gaps rather than silently worked around), and do
-    **not** add the missing endpoint yourself as a side effect of this task —
-    that is server scope with its own authorization design decision, already
-    written up as its own prompt for exactly that reason.
+- **`GetDataPlaneExecution` is scoped to the caller's own execution, not
+  anyone the function's `execute` role would let invoke it.** Bind
+  `getExecution` normally — same `FunctionExecutionResponse` shape the sync
+  path already decodes, just fetched by id — but don't be surprised by a
+  `404` on someone else's execution id, including one from a *different* API
+  key with the identical scope. That's not a bug to route around: two keys
+  never share an identity, and a session can only ever fetch what it itself
+  triggered. The server enforces this; the SDK doesn't need to replicate it,
+  just let the resulting `PraxyException` surface like any other.
 
 - **Match the existing package's error and null-handling conventions
   exactly** — `AccountService`/`TablesService` are short, dense, and

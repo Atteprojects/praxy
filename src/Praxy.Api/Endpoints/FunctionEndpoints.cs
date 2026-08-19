@@ -79,6 +79,12 @@ public sealed record FunctionExecutionListResponse(
 /// a new function — deny by default, the same posture a new table has. Server-side trigger paths
 /// (console invoke, event dispatch, cron) are operator-configured and carry no external caller, so
 /// they are not gated; see <see cref="RequireExecutePermissionAsync"/>.
+///
+/// A data-plane caller may also read back one execution it triggered
+/// (<see cref="GetDataPlaneExecution"/>) — the async half of invocation without this would return a
+/// receipt for a result nobody could ever collect. Scoped to the caller's own execution, not the
+/// function's <c>execute</c> role: two different callers permitted to invoke the same function must
+/// not be able to read each other's request/response bodies and logs.
 /// </summary>
 public static class FunctionEndpoints
 {
@@ -134,6 +140,10 @@ public static class FunctionEndpoints
         dataPlane.MapPost("/{functionId}/executions", Invoke)
             .Produces<FunctionExecutionResponse>()
             .Produces<FunctionExecutionResponse>(StatusCodes.Status202Accepted);
+        // The read half of async invocation: a 202 with nowhere to poll it afterward isn't a
+        // feature. Scoped to the caller's own execution — see GetDataPlaneExecution.
+        dataPlane.MapGet("/{functionId}/executions/{executionId}", GetDataPlaneExecution)
+            .Produces<FunctionExecutionResponse>();
     }
 
     // ---- functions ------------------------------------------------------------------------------
@@ -350,15 +360,8 @@ public static class FunctionEndpoints
         RequireInvokable(fn);
 
         var isAsync = bool.TryParse(http.Request.Query["async"], out var a) && a;
-        var triggeredBy = AppPrincipalFilter.Current(http) switch
-        {
-            RequestPrincipal.AppUser(var user, _) => $"user:{Ids.Wire(user.Id)}",
-            RequestPrincipal.JwtUser(var user) => $"user:{Ids.Wire(user.Id)}",
-            RequestPrincipal.Key => "key",
-            _ => "guest",
-        };
         var execution = await functions.CreateExecutionAsync(
-            fn, "http", isAsync, req.Method ?? "GET", req.Path ?? "/", req.Body, triggeredBy, ct);
+            fn, "http", isAsync, req.Method ?? "GET", req.Path ?? "/", req.Body, CallerIdentity(http) ?? "guest", ct);
 
         if (isAsync)
         {
@@ -371,6 +374,61 @@ public static class FunctionEndpoints
         var completed = await functions.GetExecutionAsync(fn.Id, execution.Id, ct);
         return Results.Ok(FunctionExecutionResponse.From(completed));
     }
+
+    /// <summary>
+    /// The data plane's own execution read — the other half of async invocation. Scoped to
+    /// "your own execution only": a caller may read an execution whose stored
+    /// <see cref="FunctionExecution.TriggeredBy"/> matches their own <see cref="CallerIdentity"/>,
+    /// nothing wider. The looser alternative — anyone holding the function's <c>execute</c> role may
+    /// read any execution of it — was rejected: two unrelated app users who both satisfy
+    /// <c>execute("users")</c> on a public function would otherwise be able to read each other's
+    /// request bodies, response bodies and logs. Own-execution-only never crosses that line.
+    ///
+    /// A caller who fails the check gets the same <see cref="ErrorTypes.FunctionExecutionNotFound"/>
+    /// a nonexistent id would produce — never a distinguishable 401 — so this endpoint cannot be used
+    /// to probe whether a given execution id exists, the same "don't confirm existence" instinct
+    /// permission-filtered row reads already follow.
+    ///
+    /// A guest can never read anything back here: <see cref="CallerIdentity"/> returns null for an
+    /// unauthenticated caller because unauthenticated callers are indistinguishable from each other —
+    /// there is no "this guest" to match against a stored "guest" string, so a guest-triggered
+    /// execution is unrecoverable through this endpoint by design, not by omission.
+    /// </summary>
+    private static async Task<IResult> GetDataPlaneExecution(
+        string functionId, string executionId, HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        if (AppPrincipalFilter.Current(http) is RequestPrincipal.Key)
+            AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsExecute);
+
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var execution = await FindExecutionAsync(functions, fn.Id, executionId, ct);
+
+        // The same "trusted server, skip the permission layer" escape hatch RequireExecutePermissionAsync
+        // already grants a bypass key for invocation — a key trusted to invoke anything and bypass row
+        // permissions entirely is trusted to read back an execution it didn't itself trigger.
+        var isBypassKey = AppPrincipalFilter.Current(http) is RequestPrincipal.Key(var apiKey) && apiKey.BypassRowPermissions;
+        if (!isBypassKey && execution.TriggeredBy != CallerIdentity(http))
+            throw PraxyException.NotFound(ErrorTypes.FunctionExecutionNotFound, "Execution not found.");
+
+        return Results.Ok(FunctionExecutionResponse.From(execution));
+    }
+
+    /// <summary>
+    /// The wire identity of the calling app user or API key — exactly what
+    /// <see cref="FunctionExecution.TriggeredBy"/> stores at invoke time, and what
+    /// <see cref="GetDataPlaneExecution"/> checks a stored value against. Null for a guest: every
+    /// unauthenticated caller is indistinguishable from every other, so there is no identity to
+    /// record or to match later.
+    /// </summary>
+    private static string? CallerIdentity(HttpContext http) =>
+        AppPrincipalFilter.Current(http) switch
+        {
+            RequestPrincipal.AppUser(var user, _) => $"user:{Ids.Wire(user.Id)}",
+            RequestPrincipal.JwtUser(var user) => $"user:{Ids.Wire(user.Id)}",
+            RequestPrincipal.Key(var apiKey) => $"key:{Ids.Wire(apiKey.Id)}",
+            _ => null,
+        };
 
     private static void RequireInvokable(FunctionDef fn)
     {
