@@ -4,6 +4,7 @@ import {
   useColumns, useCreateColumn, useDeleteColumn, useTable, useUpdateColumn, type CreateColumnInput,
 } from "../api/databases";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { COLUMN_TYPES, type ColumnSchema, type ColumnType } from "../api/types";
 import { DataGrid, type DataGridColumn } from "../components/DataGrid";
 import { JobStatusBadge } from "../components/JobStatusBadge";
@@ -330,9 +331,7 @@ function EditColumnSheet({
   const remove = useDeleteColumn(projectId, databaseId, tableId);
   const [key, setKey] = useState(column.key);
   const [required, setRequired] = useState(column.required);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const error = update.error instanceof ApiError ? update.error : null;
-  const deleteError = remove.error instanceof ApiError ? remove.error : null;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -341,11 +340,6 @@ function EditColumnSheet({
   }
 
   async function onDelete() {
-    if (!confirmingDelete) {
-      setConfirmingDelete(true);
-      setTimeout(() => setConfirmingDelete(false), 3000);
-      return;
-    }
     await remove.mutateAsync({ columnId: column.id, force: column.required });
     onClose();
   }
@@ -382,19 +376,21 @@ function EditColumnSheet({
 
       <div className="mt-8 border-t border-coral-400/20 pt-5">
         <h3 className="mb-2 text-sm font-medium text-coral-400">Danger zone</h3>
-        {deleteError ? <ErrorNote message={deleteError.message} /> : null}
-        <button
-          type="button"
-          className={`btn-ghost mt-2 border ${confirmingDelete ? "border-coral-400 text-coral-400" : "border-ink-700"}`}
-          disabled={remove.isPending}
-          onClick={() => void onDelete()}
-        >
-          {remove.isPending
-            ? <Spinner />
-            : confirmingDelete
-              ? "Click again to delete"
-              : `Delete column${column.required ? " (required — needs confirmation)" : ""}`}
-        </button>
+        <ConfirmButton
+          label="Delete column"
+          title="Delete column?"
+          confirmLabel="Delete column"
+          successMessage={`Deleted "${column.key}".`}
+          className="btn-ghost mt-2 border border-ink-700 text-coral-400"
+          body={
+            <>
+              Dropping <span className="font-mono text-ink-300">{column.key}</span> deletes its value in
+              every row of this table. This cannot be undone.
+              {column.required ? " It is a required column, so existing rows depend on it." : ""}
+            </>
+          }
+          onConfirm={onDelete}
+        />
       </div>
     </Sheet>
   );
