@@ -39,7 +39,14 @@ export function useCreateFunction(projectId: string) {
       key: string; name: string; runtime: string; entrypoint: string;
       timeoutSeconds?: number; events?: string[]; schedule?: string;
     }) => api<PraxyFunction>(base(projectId), { method: "POST", body: input }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions"] }),
+    // Skips the deleted function's own detail query. Invalidating the whole prefix refetches it,
+    // which 404s and throws on the very screen that is navigating away — leaving the console
+    // stranded on a route for a function that no longer exists.
+    onSuccess: (_result, functionId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "functions"],
+        predicate: (query) => query.queryKey[3] !== functionId,
+      }),
   });
 }
 
@@ -61,7 +68,14 @@ export function useDeleteFunction(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (functionId: string) => api<void>(`${base(projectId)}/${functionId}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions"] }),
+    // Skips the deleted function's own detail query. Invalidating the whole prefix refetches it,
+    // which 404s and throws on the very screen that is navigating away — leaving the console
+    // stranded on a route for a function that no longer exists.
+    onSuccess: (_result, functionId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "functions"],
+        predicate: (query) => query.queryKey[3] !== functionId,
+      }),
   });
 }
 

@@ -57,8 +57,14 @@ export function useCreateTable(projectId: string, databaseId: string) {
   return useMutation({
     mutationFn: (input: { key: string; name: string }) =>
       api<TableSchema>(`${base(projectId)}/${databaseId}/tables`, { method: "POST", body: input }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "databases", databaseId, "tables"] }),
+    // Skips the deleted table's own detail query. Invalidating the whole prefix refetches it,
+    // which 404s and throws on the very screen that is navigating away — leaving the console
+    // stranded on a route for a table that no longer exists.
+    onSuccess: (_result, tableId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "databases", databaseId, "tables"],
+        predicate: (query) => query.queryKey[5] !== tableId,
+      }),
   });
 }
 
@@ -79,8 +85,14 @@ export function useDeleteTable(projectId: string, databaseId: string) {
   return useMutation({
     mutationFn: (tableId: string) =>
       api<void>(`${base(projectId)}/${databaseId}/tables/${tableId}?force=true`, { method: "DELETE" }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "databases", databaseId, "tables"] }),
+    // Skips the deleted table's own detail query. Invalidating the whole prefix refetches it,
+    // which 404s and throws on the very screen that is navigating away — leaving the console
+    // stranded on a route for a table that no longer exists.
+    onSuccess: (_result, tableId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "databases", databaseId, "tables"],
+        predicate: (query) => query.queryKey[5] !== tableId,
+      }),
   });
 }
 

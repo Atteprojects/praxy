@@ -80,8 +80,14 @@ export function useDeleteUser(projectId: string) {
   return useMutation({
     mutationFn: (userId: string) =>
       api<void>(`${base(projectId)}/users/${userId}`, { method: "DELETE" }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "users"] }),
+    // Skips the deleted user's own detail query. Invalidating the whole prefix refetches it,
+    // which 404s and throws on the very screen that is navigating away — leaving the console
+    // stranded on a route for a user that no longer exists.
+    onSuccess: (_result, userId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "users"],
+        predicate: (query) => query.queryKey[3] !== userId,
+      }),
   });
 }
 
@@ -148,8 +154,14 @@ export function useDeleteTeam(projectId: string) {
   return useMutation({
     mutationFn: (teamId: string) =>
       api<void>(`${base(projectId)}/teams/${teamId}`, { method: "DELETE" }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "teams"] }),
+    // Skips the deleted team's own detail query. Invalidating the whole prefix refetches it,
+    // which 404s and throws on the very screen that is navigating away — leaving the console
+    // stranded on a route for a team that no longer exists.
+    onSuccess: (_result, teamId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "teams"],
+        predicate: (query) => query.queryKey[3] !== teamId,
+      }),
   });
 }
 
