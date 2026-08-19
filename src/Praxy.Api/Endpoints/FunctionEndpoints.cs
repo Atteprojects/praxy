@@ -154,7 +154,13 @@ public static class FunctionEndpoints
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var updated = await functions.UpdateAsync(
             fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled, ct);
-        await AuditAsync(db, http, project.Id, "functions.update", $"function/{functionId}", ct);
+        // A permission change gets its own action string. The audit log records what was touched but
+        // not what it became, so folding "who may run this" into the same `functions.update` as a
+        // timeout tweak would make the one security-relevant edit here invisible to anyone reading
+        // the log later.
+        await AuditAsync(db, http, project.Id,
+            req.Execute is null ? "functions.update" : "functions.execute.update",
+            $"function/{functionId}", ct);
         return Results.Ok(FunctionResponse.From(updated, functions.IsWarm(updated)));
     }
 
