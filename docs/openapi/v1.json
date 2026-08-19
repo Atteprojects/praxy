@@ -200,6 +200,40 @@
         }
       }
     },
+    "/v1/console/organizations": {
+      "get": {
+        "tags": [
+          "ConsoleOrganizationEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/v1/console/organizations/{organizationId}": {
+      "get": {
+        "tags": [
+          "ConsoleOrganizationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/v1/console/projects": {
       "get": {
         "tags": [
@@ -5769,6 +5803,9 @@
     },
     {
       "name": "ConsoleAuthEndpoints"
+    },
+    {
+      "name": "ConsoleOrganizationEndpoints"
     },
     {
       "name": "ProjectEndpoints"
