@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Npgsql;
 using Praxy.Core.Errors;
 using Praxy.Tests.Integration.Infrastructure;
 
@@ -135,49 +134,5 @@ public class OrganizationApiTests(PostgresContainerFixture pg) : ApiTestBase(pg)
         var list = await ReadJson(await Client.SendAsync(
             Authed(HttpMethod.Get, "/v1/console/organizations", token)));
         return list.GetProperty("organizations")[0].GetProperty("id").GetString()!;
-    }
-
-    /// <summary>
-    /// Seeds a second console operator with their own organization. Claim is one-shot, and there
-    /// is no operator-invite endpoint, so the row goes in directly — reusing the owner's password
-    /// hash so the account can log in through the real endpoint.
-    /// </summary>
-    private async Task<(string Token, JsonElement Account)> CreateSecondOperatorAsync(
-        string email = "second@praxy.test", string password = "hunter2hunter2")
-    {
-        await using var conn = new NpgsqlConnection(ConnectionString);
-        await conn.OpenAsync();
-
-        await using (var cmd = new NpgsqlCommand(
-            """
-            WITH owner AS (
-                SELECT password_hash FROM praxy.users
-                WHERE project_id = 'console' ORDER BY created_at LIMIT 1
-            ), new_user AS (
-                INSERT INTO praxy.users
-                    (id, project_id, email, password_hash, name, email_verified, status, labels, prefs,
-                     created_at, updated_at)
-                SELECT $1, 'console', $2, owner.password_hash, 'Second', true, true, '{}', '{}', now(), now()
-                FROM owner
-                RETURNING id
-            ), new_org AS (
-                INSERT INTO praxy.organizations (id, name, limits, created_at)
-                VALUES ($3, 'Second', '{}', now())
-                RETURNING id
-            )
-            INSERT INTO praxy.organization_members (organization_id, user_id, role, created_at)
-            SELECT new_org.id, new_user.id, 'owner', now() FROM new_org, new_user
-            """, conn))
-        {
-            cmd.Parameters.AddWithValue(Guid.CreateVersion7());
-            cmd.Parameters.AddWithValue(email);
-            cmd.Parameters.AddWithValue(Guid.CreateVersion7());
-            Assert.Equal(1, await cmd.ExecuteNonQueryAsync());
-        }
-
-        var response = await Client.PostAsJsonAsync("/v1/console/sessions", new { email, password });
-        var body = await ReadJson(response);
-        Assert.Equal(201, (int)response.StatusCode);
-        return (body.GetProperty("session").GetProperty("token").GetString()!, body.GetProperty("account"));
     }
 }
