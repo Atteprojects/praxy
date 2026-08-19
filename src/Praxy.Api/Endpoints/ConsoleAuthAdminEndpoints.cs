@@ -29,6 +29,27 @@ public sealed record CreatePlatformRequest(string Type, string Name, string? Hos
 /// platforms — everything the Phase 1 console screens sit on. Operator session + project
 /// ownership enforced by the filter chain; the reserved console project can never appear here.
 /// </summary>
+/// <summary>One OAuth identity linked to an app user. Console-only detail.</summary>
+public sealed record IdentityResponse(
+    string Id, string Provider, string ProviderUid, string? ProviderEmail, DateTimeOffset CreatedAt);
+
+/// <summary>A user row on the console's users table, with the activity column that list needs.</summary>
+public sealed record ConsoleUserRow(AppUserResponse User, DateTimeOffset? LastActivityAt);
+
+public sealed record ConsoleUserListResponse(int Total, IReadOnlyList<ConsoleUserRow> Users);
+
+public sealed record ConsoleUserDetailResponse(
+    AppUserResponse User, IReadOnlyList<IdentityResponse> Identities);
+
+/// <summary>A membership plus its team's name, so the user-detail screen needs one request, not N.</summary>
+public sealed record ConsoleMembershipRow(MembershipResponse Membership, string TeamName);
+
+public sealed record ConsoleMembershipListResponse(
+    int Total, IReadOnlyList<ConsoleMembershipRow> Memberships);
+
+/// <summary>The secret appears exactly once, here — only its hash survives.</summary>
+public sealed record CreatedApiKeyResponse(ApiKeyResponse Key, string Secret);
+
 public static class ConsoleAuthAdminEndpoints
 {
     public static void Map(IEndpointRouteBuilder api)
@@ -37,35 +58,39 @@ public static class ConsoleAuthAdminEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapGet("/users", ListUsers);
-        admin.MapPost("/users", CreateUser);
-        admin.MapGet("/users/{userId}", GetUser);
-        admin.MapDelete("/users/{userId}", DeleteUser);
-        admin.MapPatch("/users/{userId}/status", UpdateUserStatus);
-        admin.MapPatch("/users/{userId}/labels", UpdateUserLabels);
-        admin.MapGet("/users/{userId}/sessions", ListUserSessions);
-        admin.MapDelete("/users/{userId}/sessions", DeleteUserSessions);
-        admin.MapDelete("/users/{userId}/sessions/{sessionId}", DeleteUserSession);
-        admin.MapGet("/users/{userId}/memberships", ListUserMemberships);
+        admin.MapGet("/users", ListUsers).Produces<ConsoleUserListResponse>();
+        admin.MapPost("/users", CreateUser).Produces<AppUserResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/users/{userId}", GetUser).Produces<ConsoleUserDetailResponse>();
+        admin.MapDelete("/users/{userId}", DeleteUser).Produces(StatusCodes.Status204NoContent);
+        admin.MapPatch("/users/{userId}/status", UpdateUserStatus).Produces<AppUserResponse>();
+        admin.MapPatch("/users/{userId}/labels", UpdateUserLabels).Produces<AppUserResponse>();
+        admin.MapGet("/users/{userId}/sessions", ListUserSessions).Produces<SessionListResponse>();
+        admin.MapDelete("/users/{userId}/sessions", DeleteUserSessions).Produces(StatusCodes.Status204NoContent);
+        admin.MapDelete("/users/{userId}/sessions/{sessionId}", DeleteUserSession)
+            .Produces(StatusCodes.Status204NoContent);
+        admin.MapGet("/users/{userId}/memberships", ListUserMemberships)
+            .Produces<ConsoleMembershipListResponse>();
 
-        admin.MapGet("/teams", ListTeams);
-        admin.MapPost("/teams", CreateTeam);
-        admin.MapGet("/teams/{teamId}", GetTeam);
-        admin.MapDelete("/teams/{teamId}", DeleteTeam);
-        admin.MapGet("/teams/{teamId}/memberships", ListTeamMemberships);
-        admin.MapPost("/teams/{teamId}/memberships", AddTeamMember);
-        admin.MapDelete("/teams/{teamId}/memberships/{membershipId}", DeleteTeamMembership);
+        admin.MapGet("/teams", ListTeams).Produces<TeamListResponse>();
+        admin.MapPost("/teams", CreateTeam).Produces<TeamResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/teams/{teamId}", GetTeam).Produces<TeamResponse>();
+        admin.MapDelete("/teams/{teamId}", DeleteTeam).Produces(StatusCodes.Status204NoContent);
+        admin.MapGet("/teams/{teamId}/memberships", ListTeamMemberships).Produces<MembershipListResponse>();
+        admin.MapPost("/teams/{teamId}/memberships", AddTeamMember)
+            .Produces<MembershipResponse>(StatusCodes.Status201Created);
+        admin.MapDelete("/teams/{teamId}/memberships/{membershipId}", DeleteTeamMembership)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/auth-settings", GetAuthSettings);
-        admin.MapPatch("/auth-settings", UpdateAuthSettings);
+        admin.MapGet("/auth-settings", GetAuthSettings).Produces<AuthSettingsResponse>();
+        admin.MapPatch("/auth-settings", UpdateAuthSettings).Produces<AuthSettingsResponse>();
 
-        admin.MapGet("/keys", ListKeys);
-        admin.MapPost("/keys", CreateKey);
-        admin.MapDelete("/keys/{keyId}", DeleteKey);
+        admin.MapGet("/keys", ListKeys).Produces<ApiKeyListResponse>();
+        admin.MapPost("/keys", CreateKey).Produces<CreatedApiKeyResponse>(StatusCodes.Status201Created);
+        admin.MapDelete("/keys/{keyId}", DeleteKey).Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/platforms", ListPlatforms);
-        admin.MapPost("/platforms", CreatePlatform);
-        admin.MapDelete("/platforms/{platformId}", DeletePlatform);
+        admin.MapGet("/platforms", ListPlatforms).Produces<PlatformListResponse>();
+        admin.MapPost("/platforms", CreatePlatform).Produces<PlatformResponse>(StatusCodes.Status201Created);
+        admin.MapDelete("/platforms/{platformId}", DeletePlatform).Produces(StatusCodes.Status204NoContent);
     }
 
     // ---- users --------------------------------------------------------------------------------
@@ -90,15 +115,9 @@ public static class ConsoleAuthAdminEndpoints
             .Select(g => new { g.Key, Last = g.Max(s => s.CreatedAt) })
             .ToDictionaryAsync(x => x.Key, x => x.Last, ct);
 
-        return Results.Ok(new
-        {
-            total,
-            users = page.Select(u => new
-            {
-                user = AppUserResponse.From(u),
-                lastActivityAt = lastActivity.TryGetValue(u.Id, out var at) ? at : (DateTimeOffset?)null,
-            }),
-        });
+        return Results.Ok(new ConsoleUserListResponse(total, [.. page.Select(u => new ConsoleUserRow(
+            AppUserResponse.From(u),
+            lastActivity.TryGetValue(u.Id, out var at) ? at : null))]));
     }
 
     private static async Task<IResult> CreateUser(
@@ -116,18 +135,10 @@ public static class ConsoleAuthAdminEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var user = await FindUserAsync(db, project.Id, userId, ct);
         var identities = await db.Identities.Where(i => i.UserId == user.Id).ToListAsync(ct);
-        return Results.Ok(new
-        {
-            user = AppUserResponse.From(user),
-            identities = identities.Select(i => new
-            {
-                id = Ids.Wire(i.Id),
-                provider = i.Provider,
-                providerUid = i.ProviderUid,
-                providerEmail = i.ProviderEmail,
-                createdAt = i.CreatedAt,
-            }),
-        });
+        return Results.Ok(new ConsoleUserDetailResponse(
+            AppUserResponse.From(user),
+            [.. identities.Select(i => new IdentityResponse(
+                Ids.Wire(i.Id), i.Provider, i.ProviderUid, i.ProviderEmail, i.CreatedAt))]));
     }
 
     private static async Task<IResult> DeleteUser(
@@ -182,7 +193,7 @@ public static class ConsoleAuthAdminEndpoints
             .Where(s => s.UserId == user.Id)
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new { total = sessions.Count, sessions = sessions.Select(s => SessionResponse.From(s)) });
+        return Results.Ok(new SessionListResponse(sessions.Count, [.. sessions.Select(s => SessionResponse.From(s))]));
     }
 
     private static async Task<IResult> DeleteUserSessions(
@@ -216,15 +227,11 @@ public static class ConsoleAuthAdminEndpoints
         var teamNames = await db.Teams
             .Where(t => memberships.Select(m => m.Membership.TeamId).Contains(t.Id))
             .ToDictionaryAsync(t => t.Id, t => t.Name, ct);
-        return Results.Ok(new
-        {
-            total = memberships.Count,
-            memberships = memberships.Select(m => new
-            {
-                membership = MembershipResponse.From(m),
-                teamName = teamNames.GetValueOrDefault(m.Membership.TeamId, ""),
-            }),
-        });
+        return Results.Ok(new ConsoleMembershipListResponse(
+            memberships.Count,
+            [.. memberships.Select(m => new ConsoleMembershipRow(
+                MembershipResponse.From(m),
+                teamNames.GetValueOrDefault(m.Membership.TeamId, "")))]));
     }
 
     // ---- teams --------------------------------------------------------------------------------
@@ -238,11 +245,8 @@ public static class ConsoleAuthAdminEndpoints
             .GroupBy(m => m.TeamId)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
-        return Results.Ok(new
-        {
-            total = list.Count,
-            teams = list.Select(t => TeamResponse.From(t, counts.GetValueOrDefault(t.Id))),
-        });
+        return Results.Ok(new TeamListResponse(
+            list.Count, [.. list.Select(t => TeamResponse.From(t, counts.GetValueOrDefault(t.Id)))]));
     }
 
     private static async Task<IResult> CreateTeam(
@@ -280,11 +284,8 @@ public static class ConsoleAuthAdminEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var team = await FindTeamAsync(teams, project.Id, teamId, ct);
         var memberships = await teams.ListMembershipsAsync(team.Id, ct);
-        return Results.Ok(new
-        {
-            total = memberships.Count,
-            memberships = memberships.Select(MembershipResponse.From),
-        });
+        return Results.Ok(new MembershipListResponse(
+            memberships.Count, [.. memberships.Select(MembershipResponse.From)]));
     }
 
     /// <summary>Console adds are server semantics: the member lands confirmed, no invite email.</summary>
@@ -381,7 +382,7 @@ public static class ConsoleAuthAdminEndpoints
             .Where(k => k.ProjectId == project.Id)
             .OrderByDescending(k => k.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new { total = keys.Count, keys = keys.Select(ApiKeyResponse.From) });
+        return Results.Ok(new ApiKeyListResponse(keys.Count, [.. keys.Select(ApiKeyResponse.From)]));
     }
 
     private static async Task<IResult> CreateKey(
@@ -394,7 +395,7 @@ public static class ConsoleAuthAdminEndpoints
         // The secret appears exactly once — here. Only its hash survives.
         return Results.Created(
             $"/v1/console/projects/{project.Id}/keys/{Ids.Wire(key.Id)}",
-            new { key = ApiKeyResponse.From(key), secret });
+            new CreatedApiKeyResponse(ApiKeyResponse.From(key), secret));
     }
 
     private static async Task<IResult> DeleteKey(
@@ -423,7 +424,7 @@ public static class ConsoleAuthAdminEndpoints
             .Where(p => p.ProjectId == project.Id)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new { total = platforms.Count, platforms = platforms.Select(PlatformResponse.From) });
+        return Results.Ok(new PlatformListResponse(platforms.Count, [.. platforms.Select(PlatformResponse.From)]));
     }
 
     private static async Task<IResult> CreatePlatform(

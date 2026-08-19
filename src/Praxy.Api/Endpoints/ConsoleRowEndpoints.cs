@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
 using Praxy.Persistence;
@@ -20,11 +21,15 @@ public static class ConsoleRowEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow);
-        admin.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows);
-        admin.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow);
-        admin.MapPatch("/{databaseId}/tables/{tableId}/rows/{rowId}", UpdateRow);
-        admin.MapDelete("/{databaseId}/tables/{tableId}/rows/{rowId}", DeleteRow);
+        // A row is an open JSON object — its columns are defined at runtime, so the schema is
+        // `object` with the documented `$`-prefixed system fields, not a fixed record.
+        admin.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow)
+            .Produces<JsonObject>(StatusCodes.Status201Created);
+        admin.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows).Produces<RowListResponse>();
+        admin.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow).Produces<JsonObject>();
+        admin.MapPatch("/{databaseId}/tables/{tableId}/rows/{rowId}", UpdateRow).Produces<JsonObject>();
+        admin.MapDelete("/{databaseId}/tables/{tableId}/rows/{rowId}", DeleteRow)
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     private static async Task<IResult> CreateRow(

@@ -82,3 +82,27 @@ public sealed record AuthSettingsResponse(
         s.EmailPassword, s.GoogleEnabled, s.GoogleClientId,
         !string.IsNullOrEmpty(s.GoogleClientSecret), s.SessionLimit, s.PasswordMinLength);
 }
+
+// ---- list + composite response shapes -------------------------------------------------------
+// Named records rather than anonymous objects so the generated OpenAPI document describes what
+// each endpoint returns. The wire shape is unchanged: `{total, <resource>}` throughout.
+
+public sealed record AppUserListResponse(int Total, IReadOnlyList<AppUserResponse> Users);
+
+public sealed record SessionListResponse(int Total, IReadOnlyList<SessionResponse> Sessions);
+
+public sealed record TeamListResponse(int Total, IReadOnlyList<TeamResponse> Teams);
+
+public sealed record MembershipListResponse(int Total, IReadOnlyList<MembershipResponse> Memberships);
+
+public sealed record ApiKeyListResponse(int Total, IReadOnlyList<ApiKeyResponse> Keys);
+
+public sealed record PlatformListResponse(int Total, IReadOnlyList<PlatformResponse> Platforms);
+
+/// <summary>Accepting an invitation both joins the team and signs the user in.</summary>
+public sealed record AcceptedMembershipResponse(MembershipResponse Membership, CreatedSessionResponse Session);
+
+/// <summary>What the caller resolves to. The debug view behind <c>GET /v1/account/roles</c>.</summary>
+public sealed record ResolvedRolesResponse(string[] Roles, string Principal, string[]? Scopes);
+
+public sealed record JwtResponse(string Jwt);

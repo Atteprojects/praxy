@@ -44,36 +44,47 @@ public static class AccountEndpoints
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
             .AddEndpointFilter<AppPrincipalFilter>();
 
-        account.MapPost("", Signup).RequireRateLimiting("auth");
-        account.MapGet("", Get);
-        account.MapPatch("/name", UpdateName);
-        account.MapPatch("/password", UpdatePassword);
-        account.MapPatch("/prefs", UpdatePrefs);
+        account.MapPost("", Signup).RequireRateLimiting("auth")
+            .Produces<CreatedSessionResponse>(StatusCodes.Status201Created);
+        account.MapGet("", Get).Produces<AppUserResponse>();
+        account.MapPatch("/name", UpdateName).Produces<AppUserResponse>();
+        account.MapPatch("/password", UpdatePassword).Produces<AppUserResponse>();
+        account.MapPatch("/prefs", UpdatePrefs).Produces<AppUserResponse>();
 
-        account.MapPost("/sessions/email", Login).RequireRateLimiting("auth");
-        account.MapPost("/sessions/token", ExchangeToken).RequireRateLimiting("auth");
-        account.MapGet("/sessions", ListSessions);
-        account.MapDelete("/sessions/current", DeleteCurrentSession);
-        account.MapDelete("/sessions/{sessionId}", DeleteSession);
+        account.MapPost("/sessions/email", Login).RequireRateLimiting("auth")
+            .Produces<CreatedSessionResponse>(StatusCodes.Status201Created);
+        account.MapPost("/sessions/token", ExchangeToken).RequireRateLimiting("auth")
+            .Produces<CreatedSessionResponse>(StatusCodes.Status201Created);
+        account.MapGet("/sessions", ListSessions).Produces<SessionListResponse>();
+        account.MapDelete("/sessions/current", DeleteCurrentSession).Produces(StatusCodes.Status204NoContent);
+        account.MapDelete("/sessions/{sessionId}", DeleteSession).Produces(StatusCodes.Status204NoContent);
 
         // The role-resolution debug endpoint: what the permission engine will see for this caller.
-        account.MapGet("/roles", Roles);
+        account.MapGet("/roles", Roles).Produces<ResolvedRolesResponse>();
 
         // Server-to-server: a short-lived, stateless JWT the caller can hand to another process
         // (a Phase 7 function invocation, a backend job) to act as this user without sharing the
         // session secret itself. Requires a real session to mint — see AccountJwtService's remarks
         // on why the minted JWT itself then satisfies less than a full session does.
-        account.MapPost("/jwts", CreateJwt);
+        account.MapPost("/jwts", CreateJwt).Produces<JwtResponse>();
 
-        account.MapPost("/verification", SendVerification).RequireRateLimiting("auth-email");
-        account.MapPut("/verification", ConfirmVerification).RequireRateLimiting("auth");
-        account.MapPost("/recovery", SendRecovery).RequireRateLimiting("auth-email");
-        account.MapPut("/recovery", ConfirmRecovery).RequireRateLimiting("auth");
+        account.MapPost("/verification", SendVerification).RequireRateLimiting("auth-email")
+            .Produces(StatusCodes.Status204NoContent);
+        account.MapPut("/verification", ConfirmVerification).RequireRateLimiting("auth")
+            .Produces<AppUserResponse>();
+        account.MapPost("/recovery", SendRecovery).RequireRateLimiting("auth-email")
+            .Produces(StatusCodes.Status204NoContent);
+        account.MapPut("/recovery", ConfirmRecovery).RequireRateLimiting("auth")
+            .Produces(StatusCodes.Status204NoContent);
 
         // Browser-navigated OAuth endpoints: no headers available, so the project rides the
         // query string / route and the rest of the state rides a signed cookie.
-        api.MapGet("/v1/account/sessions/oauth2/{provider}", OAuthStart).RequireRateLimiting("auth");
-        api.MapGet("/v1/account/sessions/oauth2/callback/{provider}/{projectId}", OAuthCallback);
+        // Both legs of the OAuth dance answer with a 302 to the provider / the app's redirect URL —
+        // there is no JSON body to describe on either.
+        api.MapGet("/v1/account/sessions/oauth2/{provider}", OAuthStart).RequireRateLimiting("auth")
+            .Produces(StatusCodes.Status302Found);
+        api.MapGet("/v1/account/sessions/oauth2/callback/{provider}/{projectId}", OAuthCallback)
+            .Produces(StatusCodes.Status302Found);
     }
 
     // ---- signup / login / sessions ---------------------------------------------------------
@@ -123,11 +134,8 @@ public static class AccountEndpoints
             .Where(s => s.UserId == user.Id)
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new
-        {
-            total = sessions.Count,
-            sessions = sessions.Select(s => SessionResponse.From(s, current.Id)),
-        });
+        return Results.Ok(new SessionListResponse(
+            sessions.Count, [.. sessions.Select(s => SessionResponse.From(s, current.Id))]));
     }
 
     private static async Task<IResult> DeleteCurrentSession(
@@ -162,18 +170,16 @@ public static class AccountEndpoints
     {
         var principal = AppPrincipalFilter.Current(http);
         var roles = await RequestRoles.GetAsync(http, resolver);
-        return Results.Ok(new
-        {
+        return Results.Ok(new ResolvedRolesResponse(
             roles,
-            principal = principal switch
+            principal switch
             {
                 RequestPrincipal.AppUser => "user",
                 RequestPrincipal.JwtUser => "user",
                 RequestPrincipal.Key => "key",
                 _ => "guest",
             },
-            scopes = principal is RequestPrincipal.Key(var key) ? key.Scopes : null,
-        });
+            principal is RequestPrincipal.Key(var key) ? key.Scopes : null));
     }
 
     private static IResult CreateJwt(CreateJwtRequest req, HttpContext http, AccountJwtService jwts)
@@ -184,7 +190,7 @@ public static class AccountEndpoints
         var maxSeconds = (int)AccountJwtService.DefaultLifetime.TotalSeconds;
         var seconds = req.DurationSeconds is { } d ? Math.Clamp(d, 1, maxSeconds) : maxSeconds;
         var jwt = jwts.Mint(project.Id, user.Id, TimeSpan.FromSeconds(seconds));
-        return Results.Ok(new { jwt });
+        return Results.Ok(new JwtResponse(jwt));
     }
 
     // ---- account updates ---------------------------------------------------------------------

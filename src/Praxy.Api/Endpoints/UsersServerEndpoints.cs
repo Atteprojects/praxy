@@ -28,15 +28,15 @@ public static class UsersServerEndpoints
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
             .AddEndpointFilter<AppPrincipalFilter>();
 
-        users.MapGet("", List);
-        users.MapPost("", Create);
-        users.MapGet("/{userId}", Get);
-        users.MapDelete("/{userId}", Delete);
-        users.MapPatch("/{userId}/status", UpdateStatus);
-        users.MapPatch("/{userId}/labels", UpdateLabels);
-        users.MapGet("/{userId}/sessions", ListSessions);
-        users.MapDelete("/{userId}/sessions", DeleteAllSessions);
-        users.MapDelete("/{userId}/sessions/{sessionId}", DeleteSession);
+        users.MapGet("", List).Produces<AppUserListResponse>();
+        users.MapPost("", Create).Produces<AppUserResponse>(StatusCodes.Status201Created);
+        users.MapGet("/{userId}", Get).Produces<AppUserResponse>();
+        users.MapDelete("/{userId}", Delete).Produces(StatusCodes.Status204NoContent);
+        users.MapPatch("/{userId}/status", UpdateStatus).Produces<AppUserResponse>();
+        users.MapPatch("/{userId}/labels", UpdateLabels).Produces<AppUserResponse>();
+        users.MapGet("/{userId}/sessions", ListSessions).Produces<SessionListResponse>();
+        users.MapDelete("/{userId}/sessions", DeleteAllSessions).Produces(StatusCodes.Status204NoContent);
+        users.MapDelete("/{userId}/sessions/{sessionId}", DeleteSession).Produces(StatusCodes.Status204NoContent);
     }
 
     private static async Task<IResult> List(HttpContext http, PraxyDb db, CancellationToken ct)
@@ -51,7 +51,7 @@ public static class UsersServerEndpoints
 
         var total = await query.CountAsync(ct);
         var page = await query.OrderByDescending(u => u.CreatedAt).Skip(offset).Take(limit).ToListAsync(ct);
-        return Results.Ok(new { total, users = page.Select(AppUserResponse.From) });
+        return Results.Ok(new AppUserListResponse(total, [.. page.Select(AppUserResponse.From)]));
     }
 
     private static async Task<IResult> Create(
@@ -122,7 +122,7 @@ public static class UsersServerEndpoints
             .Where(s => s.UserId == user.Id)
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new { total = sessions.Count, sessions = sessions.Select(s => SessionResponse.From(s)) });
+        return Results.Ok(new SessionListResponse(sessions.Count, [.. sessions.Select(s => SessionResponse.From(s))]));
     }
 
     private static async Task<IResult> DeleteAllSessions(

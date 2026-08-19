@@ -56,6 +56,18 @@ public sealed record FunctionExecutionResponse(
         e.Errors, e.DurationMs, e.ColdStart, e.TriggeredBy, e.CreatedAt, e.CompletedAt);
 }
 
+public sealed record FunctionListResponse(int Total, IReadOnlyList<FunctionResponse> Functions);
+
+public sealed record FunctionRuntimeListResponse(IReadOnlyList<FunctionRuntimeResponse> Runtimes);
+
+public sealed record FunctionEnvVarListResponse(int Total, IReadOnlyList<FunctionEnvVarResponse> Vars);
+
+public sealed record FunctionDeploymentListResponse(
+    int Total, IReadOnlyList<FunctionDeploymentResponse> Deployments);
+
+public sealed record FunctionExecutionListResponse(
+    int Total, IReadOnlyList<FunctionExecutionResponse> Executions);
+
 /// <summary>
 /// Functions (Phase 7): console admin surface for deploying/configuring/inspecting functions, plus
 /// the data-plane invocation endpoint app users and API keys call. Same operator-filter chain and
@@ -76,25 +88,41 @@ public static class FunctionEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapGet("", ListFunctions);
-        admin.MapGet("/runtimes", ListRuntimes);
-        admin.MapPost("", CreateFunction);
-        admin.MapGet("/{functionId}", GetFunction);
-        admin.MapPatch("/{functionId}", UpdateFunction);
-        admin.MapDelete("/{functionId}", DeleteFunction);
+        admin.MapGet("", ListFunctions)
+            .Produces<FunctionListResponse>();
+        admin.MapGet("/runtimes", ListRuntimes)
+            .Produces<FunctionRuntimeListResponse>();
+        admin.MapPost("", CreateFunction)
+            .Produces<FunctionResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{functionId}", GetFunction)
+            .Produces<FunctionResponse>();
+        admin.MapPatch("/{functionId}", UpdateFunction)
+            .Produces<FunctionResponse>();
+        admin.MapDelete("/{functionId}", DeleteFunction)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{functionId}/env", ListEnvVars);
-        admin.MapPut("/{functionId}/env/{envKey}", SetEnvVar);
-        admin.MapDelete("/{functionId}/env/{envKey}", DeleteEnvVar);
+        admin.MapGet("/{functionId}/env", ListEnvVars)
+            .Produces<FunctionEnvVarListResponse>();
+        admin.MapPut("/{functionId}/env/{envKey}", SetEnvVar)
+            .Produces<FunctionEnvVarResponse>();
+        admin.MapDelete("/{functionId}/env/{envKey}", DeleteEnvVar)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{functionId}/deployments", ListDeployments);
-        admin.MapPost("/{functionId}/deployments", CreateDeployment);
-        admin.MapGet("/{functionId}/deployments/{deploymentId}", GetDeployment);
-        admin.MapPost("/{functionId}/deployments/{deploymentId}/activate", ActivateDeployment);
+        admin.MapGet("/{functionId}/deployments", ListDeployments)
+            .Produces<FunctionDeploymentListResponse>();
+        admin.MapPost("/{functionId}/deployments", CreateDeployment)
+            .Produces<FunctionDeploymentResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{functionId}/deployments/{deploymentId}", GetDeployment)
+            .Produces<FunctionDeploymentResponse>();
+        admin.MapPost("/{functionId}/deployments/{deploymentId}/activate", ActivateDeployment)
+            .Produces<FunctionDeploymentResponse>();
 
-        admin.MapGet("/{functionId}/executions", ListExecutions);
-        admin.MapGet("/{functionId}/executions/{executionId}", GetExecution);
-        admin.MapPost("/{functionId}/executions", ConsoleInvoke);
+        admin.MapGet("/{functionId}/executions", ListExecutions)
+            .Produces<FunctionExecutionListResponse>();
+        admin.MapGet("/{functionId}/executions/{executionId}", GetExecution)
+            .Produces<FunctionExecutionResponse>();
+        admin.MapPost("/{functionId}/executions", ConsoleInvoke)
+            .Produces<FunctionExecutionResponse>();
 
         // Tighter than the rest of the data plane: every permitted request here can start a
         // container, so this is the one bucket where the limit is about capacity, not just abuse.
@@ -103,7 +131,9 @@ public static class FunctionEndpoints
             .AddEndpointFilter<AppPrincipalFilter>()
             .RequireRateLimiting("functions");
 
-        dataPlane.MapPost("/{functionId}/executions", Invoke);
+        dataPlane.MapPost("/{functionId}/executions", Invoke)
+            .Produces<FunctionExecutionResponse>()
+            .Produces<FunctionExecutionResponse>(StatusCodes.Status202Accepted);
     }
 
     // ---- functions ------------------------------------------------------------------------------
@@ -112,7 +142,8 @@ public static class FunctionEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await functions.ListAsync(project.Id, ct);
-        return Results.Ok(new { total = list.Count, functions = list.Select(f => FunctionResponse.From(f, functions.IsWarm(f))) });
+        return Results.Ok(new FunctionListResponse(
+            list.Count, [.. list.Select(f => FunctionResponse.From(f, functions.IsWarm(f)))]));
     }
 
     /// <summary>
@@ -122,11 +153,9 @@ public static class FunctionEndpoints
     /// actual pin, not a stale guess.
     /// </summary>
     private static IResult ListRuntimes(FunctionsOptions options) =>
-        Results.Ok(new
-        {
-            runtimes = FunctionRuntimes.All.Select(r => new FunctionRuntimeResponse(
-                r, r == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage)),
-        });
+        Results.Ok(new FunctionRuntimeListResponse(
+            [.. FunctionRuntimes.All.Select(r => new FunctionRuntimeResponse(
+                r, r == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage))]));
 
     private static async Task<IResult> CreateFunction(
         CreateFunctionRequest req, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
@@ -181,7 +210,7 @@ public static class FunctionEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var list = await functions.ListEnvVarsAsync(fn.Id, ct);
-        return Results.Ok(new { total = list.Count, vars = list.Select(FunctionEnvVarResponse.From) });
+        return Results.Ok(new FunctionEnvVarListResponse(list.Count, [.. list.Select(FunctionEnvVarResponse.From)]));
     }
 
     private static async Task<IResult> SetEnvVar(
@@ -212,7 +241,8 @@ public static class FunctionEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var list = await functions.ListDeploymentsAsync(fn.Id, ct);
-        return Results.Ok(new { total = list.Count, deployments = list.Select(FunctionDeploymentResponse.From) });
+        return Results.Ok(new FunctionDeploymentListResponse(
+            list.Count, [.. list.Select(FunctionDeploymentResponse.From)]));
     }
 
     private static async Task<IResult> CreateDeployment(
@@ -257,7 +287,7 @@ public static class FunctionEndpoints
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var (limit, offset) = ListParams(http);
         var (total, page) = await functions.ListExecutionsAsync(fn.Id, limit, offset, ct);
-        return Results.Ok(new { total, executions = page.Select(FunctionExecutionResponse.From) });
+        return Results.Ok(new FunctionExecutionListResponse(total, [.. page.Select(FunctionExecutionResponse.From)]));
     }
 
     private static async Task<IResult> GetExecution(

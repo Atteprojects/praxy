@@ -31,17 +31,22 @@ public static class TeamEndpoints
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
             .AddEndpointFilter<AppPrincipalFilter>();
 
-        teams.MapPost("", Create);
-        teams.MapGet("", List);
-        teams.MapGet("/{teamId}", Get);
-        teams.MapPatch("/{teamId}", Update);
-        teams.MapDelete("/{teamId}", Delete);
+        teams.MapPost("", Create).Produces<TeamResponse>(StatusCodes.Status201Created);
+        teams.MapGet("", List).Produces<TeamListResponse>();
+        teams.MapGet("/{teamId}", Get).Produces<TeamResponse>();
+        teams.MapPatch("/{teamId}", Update).Produces<TeamResponse>();
+        teams.MapDelete("/{teamId}", Delete).Produces(StatusCodes.Status204NoContent);
 
-        teams.MapPost("/{teamId}/memberships", CreateMembership);
-        teams.MapGet("/{teamId}/memberships", ListMemberships);
-        teams.MapPatch("/{teamId}/memberships/{membershipId}", UpdateMembershipRoles);
-        teams.MapPatch("/{teamId}/memberships/{membershipId}/status", AcceptMembership).RequireRateLimiting("auth");
-        teams.MapDelete("/{teamId}/memberships/{membershipId}", DeleteMembership);
+        teams.MapPost("/{teamId}/memberships", CreateMembership)
+            .Produces<MembershipResponse>(StatusCodes.Status201Created);
+        teams.MapGet("/{teamId}/memberships", ListMemberships).Produces<MembershipListResponse>();
+        teams.MapPatch("/{teamId}/memberships/{membershipId}", UpdateMembershipRoles)
+            .Produces<MembershipResponse>();
+        teams.MapPatch("/{teamId}/memberships/{membershipId}/status", AcceptMembership)
+            .RequireRateLimiting("auth")
+            .Produces<AcceptedMembershipResponse>();
+        teams.MapDelete("/{teamId}/memberships/{membershipId}", DeleteMembership)
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     private static async Task<IResult> Create(
@@ -60,11 +65,8 @@ public static class TeamEndpoints
         var (user, _) = AppPrincipalFilter.RequireUserOrScope(http, ApiKeyScopes.TeamsRead);
         var list = await teams.ListTeamsAsync(project.Id, user?.User.Id, ct);
         var counts = await MemberCountsAsync(db, list.Select(t => t.Id), ct);
-        return Results.Ok(new
-        {
-            total = list.Count,
-            teams = list.Select(t => TeamResponse.From(t, counts.GetValueOrDefault(t.Id))),
-        });
+        return Results.Ok(new TeamListResponse(
+            list.Count, [.. list.Select(t => TeamResponse.From(t, counts.GetValueOrDefault(t.Id)))]));
     }
 
     private static async Task<IResult> Get(
@@ -133,11 +135,8 @@ public static class TeamEndpoints
     {
         var (team, _) = await RequireTeamAccessAsync(teamId, http, teams, ApiKeyScopes.TeamsRead, ct);
         var memberships = await teams.ListMembershipsAsync(team.Id, ct);
-        return Results.Ok(new
-        {
-            total = memberships.Count,
-            memberships = memberships.Select(MembershipResponse.From),
-        });
+        return Results.Ok(new MembershipListResponse(
+            memberships.Count, [.. memberships.Select(MembershipResponse.From)]));
     }
 
     private static async Task<IResult> UpdateMembershipRoles(
@@ -170,11 +169,8 @@ public static class TeamEndpoints
             http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.UserAgent, ct);
 
         AppSessionCookie.Set(http, project.Id, session.Token, session.Session.ExpiresAt);
-        return Results.Ok(new
-        {
-            membership = MembershipResponse.From(membership),
-            session = CreatedSessionResponse.From(session),
-        });
+        return Results.Ok(new AcceptedMembershipResponse(
+            MembershipResponse.From(membership), CreatedSessionResponse.From(session)));
     }
 
     private static async Task<IResult> DeleteMembership(

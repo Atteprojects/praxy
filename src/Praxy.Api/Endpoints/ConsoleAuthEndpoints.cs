@@ -11,19 +11,24 @@ public sealed record ClaimRequest(string Email, string Password, string? Name, s
 
 public sealed record LoginRequest(string Email, string Password);
 
+/// <summary>The session token is returned in the body as well as the cookie — SDKs use the header form.</summary>
+public sealed record ConsoleSessionResponse(string Token, DateTimeOffset ExpiresAt);
+
+public sealed record ConsoleSignInResponse(ConsoleAccount Account, ConsoleSessionResponse Session);
+
 public static class ConsoleAuthEndpoints
 {
     public static void Map(IEndpointRouteBuilder api)
     {
         var console = api.MapGroup("/v1/console");
 
-        console.MapPost("/claim", Claim);
-        console.MapPost("/sessions", Login);
+        console.MapPost("/claim", Claim).Produces<ConsoleSignInResponse>(StatusCodes.Status201Created);
+        console.MapPost("/sessions", Login).Produces<ConsoleSignInResponse>(StatusCodes.Status201Created);
 
         var authed = console.MapGroup("")
             .AddEndpointFilter<RequireOperatorFilter>();
-        authed.MapGet("/account", Account);
-        authed.MapDelete("/sessions/current", Logout);
+        authed.MapGet("/account", Account).Produces<ConsoleAccount>();
+        authed.MapDelete("/sessions/current", Logout).Produces(StatusCodes.Status204NoContent);
     }
 
     /// <summary>First account wins the instance. Closed (409) forever after.</summary>
@@ -49,7 +54,8 @@ public static class ConsoleAuthEndpoints
         await db.SaveChangesAsync(ct);
 
         SessionCookie.Set(http, session.Token, session.ExpiresAt);
-        return Results.Created("/v1/console/account", new { account = session.Account, session = new { token = session.Token, expiresAt = session.ExpiresAt } });
+        return Results.Created("/v1/console/account", new ConsoleSignInResponse(
+            session.Account, new ConsoleSessionResponse(session.Token, session.ExpiresAt)));
     }
 
     private static async Task<IResult> Login(
@@ -58,7 +64,8 @@ public static class ConsoleAuthEndpoints
         var session = await auth.LoginAsync(
             req.Email, req.Password, ClientIp(http), http.Request.Headers.UserAgent, ct);
         SessionCookie.Set(http, session.Token, session.ExpiresAt);
-        return Results.Created("/v1/console/account", new { account = session.Account, session = new { token = session.Token, expiresAt = session.ExpiresAt } });
+        return Results.Created("/v1/console/account", new ConsoleSignInResponse(
+            session.Account, new ConsoleSessionResponse(session.Token, session.ExpiresAt)));
     }
 
     private static IResult Account(HttpContext http) =>

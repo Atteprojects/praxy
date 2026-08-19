@@ -45,6 +45,11 @@ public sealed record WebhookDeliveryAttemptResponse(
 /// the actual dispatch/delivery pipeline lives in the <c>Praxy.Webhooks</c> hosted services and
 /// never routes through HTTP.
 /// </summary>
+public sealed record WebhookListResponse(int Total, IReadOnlyList<WebhookResponse> Webhooks);
+
+public sealed record WebhookDeliveryListResponse(
+    int Total, IReadOnlyList<WebhookDeliveryResponse> Deliveries);
+
 public static class WebhookEndpoints
 {
     public static void Map(IEndpointRouteBuilder api)
@@ -53,15 +58,23 @@ public static class WebhookEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapGet("", ListWebhooks);
-        admin.MapPost("", CreateWebhook);
-        admin.MapGet("/{webhookId}", GetWebhook);
-        admin.MapPatch("/{webhookId}", UpdateWebhook);
-        admin.MapDelete("/{webhookId}", DeleteWebhook);
+        admin.MapGet("", ListWebhooks)
+            .Produces<WebhookListResponse>();
+        admin.MapPost("", CreateWebhook)
+            .Produces<WebhookResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{webhookId}", GetWebhook)
+            .Produces<WebhookResponse>();
+        admin.MapPatch("/{webhookId}", UpdateWebhook)
+            .Produces<WebhookResponse>();
+        admin.MapDelete("/{webhookId}", DeleteWebhook)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{webhookId}/deliveries", ListDeliveries);
-        admin.MapGet("/{webhookId}/deliveries/{deliveryId}", GetDelivery);
-        admin.MapPost("/{webhookId}/deliveries/{deliveryId}/redeliver", Redeliver);
+        admin.MapGet("/{webhookId}/deliveries", ListDeliveries)
+            .Produces<WebhookDeliveryListResponse>();
+        admin.MapGet("/{webhookId}/deliveries/{deliveryId}", GetDelivery)
+            .Produces<WebhookDeliveryResponse>();
+        admin.MapPost("/{webhookId}/deliveries/{deliveryId}/redeliver", Redeliver)
+            .Produces<WebhookDeliveryResponse>(StatusCodes.Status202Accepted);
     }
 
     // ---- subscriptions --------------------------------------------------------------------------
@@ -71,7 +84,7 @@ public static class WebhookEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await webhooks.ListAsync(project.Id, ct);
-        return Results.Ok(new { total = list.Count, webhooks = list.Select(WebhookResponse.From) });
+        return Results.Ok(new WebhookListResponse(list.Count, [.. list.Select(WebhookResponse.From)]));
     }
 
     private static async Task<IResult> CreateWebhook(
@@ -126,7 +139,7 @@ public static class WebhookEndpoints
         var subscription = await FindAsync(webhooks, project.Id, webhookId, ct);
         var (limit, offset) = ListParams(http);
         var (total, page) = await deliveries.ListAsync(subscription.Id, limit, offset, ct);
-        return Results.Ok(new { total, deliveries = page.Select(WebhookDeliveryResponse.From) });
+        return Results.Ok(new WebhookDeliveryListResponse(total, [.. page.Select(WebhookDeliveryResponse.From)]));
     }
 
     private static async Task<IResult> GetDelivery(

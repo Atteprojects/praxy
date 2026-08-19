@@ -12,6 +12,8 @@ public sealed record OrganizationResponse(string Id, string Name, DateTimeOffset
     public static OrganizationResponse From(Organization o) => new(Ids.Wire(o.Id), o.Name, o.CreatedAt);
 }
 
+public sealed record OrganizationListResponse(int Total, IReadOnlyList<OrganizationResponse> Organizations);
+
 /// <summary>
 /// Read-only organization identity for the console: the home screen resolves the operator's
 /// organization so its name and id can head the projects list, and so the id can sit in the URL.
@@ -25,8 +27,8 @@ public static class ConsoleOrganizationEndpoints
         var organizations = api.MapGroup("/v1/console/organizations")
             .AddEndpointFilter<RequireOperatorFilter>();
 
-        organizations.MapGet("", List);
-        organizations.MapGet("/{organizationId}", Get);
+        organizations.MapGet("", List).Produces<OrganizationListResponse>();
+        organizations.MapGet("/{organizationId}", Get).Produces<OrganizationResponse>();
     }
 
     private static async Task<IResult> List(HttpContext http, PraxyDb db, CancellationToken ct)
@@ -35,7 +37,7 @@ public static class ConsoleOrganizationEndpoints
         var list = await AccessibleOrganizations(db, op.Account.Id)
             .OrderBy(o => o.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new { total = list.Count, organizations = list.Select(OrganizationResponse.From) });
+        return Results.Ok(new OrganizationListResponse(list.Count, [.. list.Select(OrganizationResponse.From)]));
     }
 
     private static async Task<IResult> Get(
