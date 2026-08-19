@@ -73,19 +73,24 @@ export function ProjectLayout() {
 
   const features = capabilities.data.features;
   const items = NAV.filter((item) => !item.feature || features[item.feature]);
+  // The tables panel is the only thing that makes room tight enough to be worth losing labels.
+  const collapsed = Boolean(databaseId);
 
   return (
     <div className="flex min-h-dvh">
       <nav
-        className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-16 shrink-0 flex-col items-center gap-1 border-r border-ink-800 bg-ink-900/50 py-4 md:flex"
+        className={`sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 py-4 md:flex ${
+          collapsed ? "w-16 items-center gap-1" : "w-52 px-3"
+        }`}
         aria-label="Project"
       >
         {items.map((item, i) => (
-          <RailEntry
+          <NavEntry
             key={item.to}
             item={item}
             projectId={projectId}
-            dividerBefore={i > 0 && items[i - 1].group !== item.group}
+            collapsed={collapsed}
+            startsGroup={i === 0 || items[i - 1].group !== item.group}
           />
         ))}
       </nav>
@@ -122,11 +127,11 @@ export function ProjectLayout() {
               <IdChip id={project.data.id} />
             </span>
             {items.map((item, i) => (
-              <DrawerEntry
+              <NavEntry
                 key={item.to}
                 item={item}
                 projectId={projectId}
-                labelBefore={i === 0 || items[i - 1].group !== item.group ? item.group : undefined}
+                startsGroup={i === 0 || items[i - 1].group !== item.group}
               />
             ))}
           </div>
@@ -136,60 +141,58 @@ export function ProjectLayout() {
   );
 }
 
-function RailEntry({
-  item,
-  projectId,
-  dividerBefore,
-}: {
-  item: NavItem;
-  projectId: string;
-  dividerBefore: boolean;
-}) {
-  return (
-    <>
-      {dividerBefore ? <span className="my-1.5 h-px w-6 shrink-0 bg-ink-800" /> : null}
-      <Link
-        to={item.to}
-        params={{ projectId }}
-        activeOptions={{ exact: item.exact ?? false }}
-        aria-label={item.label}
-        className="group relative flex size-10 shrink-0 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100"
-        activeProps={{ className: "bg-ink-800 text-ink-100" }}
-      >
-        <span className="[&>svg]:size-[18px]">{item.icon}</span>
-        {/* Hover label — the rail's only affordance for what each glyph means, so it carries the
-            keyboard chord as well. */}
-        <span
-          role="tooltip"
-          className="pointer-events-none invisible absolute left-full z-50 ml-2 flex items-center gap-2 rounded-md border border-ink-700 bg-ink-850 px-2 py-1 text-xs whitespace-nowrap text-ink-100 opacity-0 shadow-lg shadow-black/40 transition-opacity group-hover:visible group-hover:opacity-100"
-        >
-          {item.label}
-          {item.kbd ? <Kbd>{item.kbd}</Kbd> : null}
-        </span>
-      </Link>
-    </>
-  );
-}
-
 const GROUP_LABELS: Record<NavItem["group"], string | null> = {
   top: null,
   build: "Build",
   manage: "Manage",
 };
 
-function DrawerEntry({
+/**
+ * One nav entry, drawn either as a labelled row or as a bare glyph. Collapsed, the group boundary
+ * becomes a short rule instead of a heading, and the label moves into a hover tooltip that also
+ * carries the keyboard chord — otherwise the rail gives no clue what each glyph does.
+ */
+function NavEntry({
   item,
   projectId,
-  labelBefore,
+  collapsed,
+  startsGroup,
 }: {
   item: NavItem;
   projectId: string;
-  labelBefore?: NavItem["group"];
+  collapsed?: boolean;
+  startsGroup: boolean;
 }) {
-  const heading = labelBefore ? GROUP_LABELS[labelBefore] : null;
+  const heading = GROUP_LABELS[item.group];
+
+  if (collapsed) {
+    return (
+      <>
+        {startsGroup && heading ? <span className="my-1.5 h-px w-6 shrink-0 bg-ink-800" /> : null}
+        <Link
+          to={item.to}
+          params={{ projectId }}
+          activeOptions={{ exact: item.exact ?? false }}
+          aria-label={item.label}
+          className="group relative flex size-10 shrink-0 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100"
+          activeProps={{ className: "bg-ink-800 text-ink-100" }}
+        >
+          <span className="[&>svg]:size-[18px]">{item.icon}</span>
+          <span
+            role="tooltip"
+            className="pointer-events-none invisible absolute left-full z-50 ml-2 flex items-center gap-2 rounded-md border border-ink-700 bg-ink-850 px-2 py-1 text-xs whitespace-nowrap text-ink-100 opacity-0 shadow-lg shadow-black/40 transition-opacity group-hover:visible group-hover:opacity-100"
+          >
+            {item.label}
+            {item.kbd ? <Kbd>{item.kbd}</Kbd> : null}
+          </span>
+        </Link>
+      </>
+    );
+  }
+
   return (
     <>
-      {heading ? (
+      {startsGroup && heading ? (
         <span className="mt-5 mb-1 block px-3 text-[11px] font-medium tracking-widest text-ink-500 uppercase">
           {heading}
         </span>
@@ -203,6 +206,7 @@ function DrawerEntry({
       >
         <span className="shrink-0 [&>svg]:size-4">{item.icon}</span>
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {item.kbd ? <Kbd>{item.kbd}</Kbd> : null}
       </Link>
     </>
   );
