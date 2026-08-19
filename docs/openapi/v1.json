@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:5090/"
+      "url": "http://127.0.0.1:5099/"
     }
   ],
   "paths": {
@@ -4815,6 +4815,7 @@
           "entrypoint",
           "timeoutSeconds",
           "events",
+          "execute",
           "schedule"
         ],
         "type": "object",
@@ -4841,6 +4842,15 @@
             "format": "int32"
           },
           "events": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "execute": {
             "type": [
               "null",
               "array"
@@ -5438,6 +5448,7 @@
           "entrypoint",
           "timeoutSeconds",
           "events",
+          "execute",
           "schedule",
           "enabled"
         ],
@@ -5465,6 +5476,15 @@
             "format": "int32"
           },
           "events": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "execute": {
             "type": [
               "null",
               "array"

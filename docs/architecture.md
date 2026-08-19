@@ -286,8 +286,12 @@ That is the minimum, not a full Messaging module.
 **API keys** authenticate server-side callers at project scope with an explicit scope list, and may optionally bypass
 row permissions — that bypass is exactly the flag that leaks data when it defaults wrong, so default it off.
 
-**Rate limiting:** ASP.NET Core's built-in rate limiter, keyed per IP, per user and per endpoint. Memory-backed on a
-single node, Redis-backed for multi-node. Auth endpoints get much tighter limits than the rest.
+**Rate limiting:** ASP.NET Core's built-in rate limiter. Buckets partition on **project + caller identity** (the
+presented API key or session, hashed), falling back to the source address only for callers that present neither —
+a shared NAT must not mean a shared budget. Memory-backed on a single node, Redis-backed for multi-node. Auth
+endpoints get much tighter limits than the rest; the data plane carries its own ceilings (rows, function
+invocation, realtime ticket minting), with function invocation tightest because each permitted request can start a
+container. Every limit is configurable (`Praxy:RateLimits:*`, see [self-host.md](self-host.md#configuration)).
 
 ---
 
@@ -393,7 +397,8 @@ Being a self-hosted product means these are features:
 | SQL injection through table/column keys | Generated physical identifiers, metadata-only lookup, regex validation and quoting at emit time, parameterized values everywhere |
 | Cross-tenant data access | Schema per database, project resolved once per request and carried in an immutable request context; fully-qualified identifiers so `search_path` can never rescue a mistake |
 | Defence in depth for the above | **v1.1:** a low-privilege Postgres role per project, applied with `SET LOCAL ROLE` per transaction, so the database refuses cross-schema access even if application code slips |
-| Resource exhaustion | Caps on tables, columns and indexes per project; query limits; rate limits; WebSocket connection quotas; `statement_timeout` on every connection |
+| Resource exhaustion | Caps on tables, columns and indexes per project; query limits; rate limits on auth **and the whole data plane** (rows, function invocation, realtime tickets); WebSocket connection quotas; `statement_timeout` on every connection |
+| Unauthorized function execution | Per-function `execute` role list resolved through the one role resolver; empty by default, so a new function is reachable by nobody. API keys need the `functions.execute` scope *and* a matching role |
 | Account enumeration | Constant-time comparisons, uniform responses and timing on login, signup and recovery |
 | Cross-origin abuse | Per-project platform allowlist enforced as a CORS origin check |
 | Slow-consumer memory exhaustion | Bounded per-connection channels with disconnect-on-overflow |
