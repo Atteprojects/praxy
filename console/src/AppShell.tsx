@@ -1,4 +1,5 @@
-import { Link, Navigate, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useAccount, useLogout, useProject } from "./api/queries";
 import { FullPageSpinner, IdChip, Kbd, Logo } from "./components/ui";
 import { CommandPalette } from "./palette/CommandPalette";
@@ -11,9 +12,19 @@ export function AppShell() {
   const routerState = useRouterState();
   const projectId = routerState.location.pathname.match(/^\/project\/([^/]+)/)?.[1];
 
+  // Redirect from an effect rather than by rendering <Navigate>. That component re-issues its
+  // navigation whenever its props *identity* changes, and JSX hands it a new props object on
+  // every render — while this shell re-renders on every router state change (useRouterState).
+  // The two fed each other: render → navigate → state change → render → navigate, a loop that
+  // pegged the renderer, so a signed-out visitor got a frozen spinner instead of the login page.
+  useEffect(() => {
+    if (account.data === null) void navigate({ to: "/login", replace: true });
+  }, [account.data, navigate]);
+
   if (account.isPending) return <FullPageSpinner />;
   if (account.isError) throw account.error;
-  if (account.data === null) return <Navigate to="/login" />;
+  // The effect above is on its way to /login; hold the spinner for the frame in between.
+  if (account.data === null) return <FullPageSpinner />;
 
   return (
     <div className="min-h-dvh">
