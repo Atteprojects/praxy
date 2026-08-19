@@ -28,6 +28,17 @@ export interface Account {
   createdAt: string;
 }
 
+export interface Organization {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface OrganizationList {
+  total: number;
+  organizations: Organization[];
+}
+
 export interface Project {
   id: string;
   name: string;

@@ -34,9 +34,9 @@ export function ProjectOverviewPage() {
 }
 
 /**
- * Org-level quota usage (roadmap Phase 9), surfaced without an org switcher: organizations are
- * still hidden in this UI, so this shows only what this project's own numbers are against the
- * effective limit (org override, else instance default) — no org identity, no cross-project view.
+ * Org-level quota usage (roadmap Phase 9). The owning organization is named on the console home,
+ * but there is still no org switcher and no cross-project view: this shows this project's own
+ * numbers against the effective limit (org override, else instance default).
  */
 function QuotaCard({ projectId }: { projectId: string }) {
   const quotas = useQuotas(projectId);

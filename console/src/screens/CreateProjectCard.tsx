@@ -5,8 +5,9 @@ import { useCreateProject } from "../api/queries";
 import { ErrorNote, Field, Logo } from "../components/ui";
 
 /**
- * The chrome-less centered create-project card — the whole screen for a fresh
- * instance's happy path (orgs stay invisible). Also opened from the project list.
+ * The chrome-less centered create-project card — the whole screen for a fresh instance's happy
+ * path, where the owning org is deliberately left off (there is nothing for it to own yet).
+ * Also opened from the organization's projects page.
  */
 export function CreateProjectCard({ standalone = false }: { standalone?: boolean }) {
   const create = useCreateProject();

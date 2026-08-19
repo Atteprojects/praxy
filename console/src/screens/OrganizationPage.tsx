@@ -1,29 +1,65 @@
-import { Link } from "@tanstack/react-router";
+import { Link, Navigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useProjects } from "../api/queries";
-import { FullPageSpinner, IdChip } from "../components/ui";
+import { useOrganization, useOrganizations, useProjects } from "../api/queries";
+import { FullPageSpinner, IdChip, PageHeader } from "../components/ui";
 import { STR } from "../strings";
 import { CreateProjectCard } from "./CreateProjectCard";
 
-export function ProjectListPage() {
+/**
+ * The post-login landing route. The org id is not on the session, so the console has to resolve it
+ * (list orgs, take the first — there is exactly one) before it can build the URL. That resolution
+ * is a spinner, never a glimpse of the project list at a bare "/": rendering here and then jumping
+ * would flash a screen the user never asked for.
+ *
+ * "/" stays the canonical entry point — the login redirects, the logo and every "back to projects"
+ * link still point at it, and bookmarks keep working — it just forwards to the resolved org.
+ */
+export function HomeRedirect() {
+  const organizations = useOrganizations();
+
+  if (organizations.isPending) return <FullPageSpinner />;
+  if (organizations.isError) throw organizations.error;
+
+  const organization = organizations.data.organizations[0];
+  if (!organization)
+    throw new Error(`This account belongs to no ${STR.organization}. The instance claim did not complete.`);
+
+  return (
+    <Navigate to="/organization/$organizationId" params={{ organizationId: organization.id }} replace />
+  );
+}
+
+/** The projects list, rendered as its owning organization's page: name on top, id in the URL. */
+export function OrganizationPage() {
+  const { organizationId } = useParams({ strict: false }) as { organizationId: string };
+  const organization = useOrganization(organizationId);
   const projects = useProjects();
   const [creating, setCreating] = useState(false);
 
-  if (projects.isPending) return <FullPageSpinner />;
+  if (organization.isPending || projects.isPending) return <FullPageSpinner />;
+  if (organization.isError) throw organization.error;
   if (projects.isError) throw projects.error;
 
-  // Empty instance: no chrome, just the create card — the Appwrite onboarding
-  // pattern, minus the org ceremony.
-  if (projects.data.total === 0) return <CreateProjectCard standalone />;
+  // Single-org today, but the page claims these projects belong to *this* org, so it filters
+  // rather than trusting the list to be org-wide.
+  const owned = projects.data.projects.filter((project) => project.organizationId === organizationId);
+
+  // Empty instance: no chrome, just the create card — the Appwrite onboarding pattern, minus the
+  // org ceremony. A first-run screen is the wrong place to introduce a heading nobody asked about.
+  if (owned.length === 0) return <CreateProjectCard standalone />;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">{STR.projects}</h1>
-        <button type="button" onClick={() => setCreating(true)} className="btn-primary">
-          + Create project
-        </button>
-      </div>
+      <PageHeader
+        title={organization.data.name}
+        chips={<IdChip id={organization.data.id} />}
+        description={`${STR.projects} in this ${STR.organization}.`}
+        actions={
+          <button type="button" onClick={() => setCreating(true)} className="btn-primary">
+            + Create project
+          </button>
+        }
+      />
 
       {creating ? (
         <div
@@ -35,7 +71,7 @@ export function ProjectListPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {projects.data.projects.map((project) => (
+        {owned.map((project) => (
           <Link
             key={project.id}
             to="/project/$projectId"

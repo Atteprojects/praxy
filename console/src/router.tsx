@@ -21,9 +21,9 @@ import { MessagesPage } from "./screens/MessagesPage";
 import { MessagingProvidersPage } from "./screens/MessagingProvidersPage";
 import { MessagingTemplatesPage } from "./screens/MessagingTemplatesPage";
 import { MessagingTopicsPage } from "./screens/MessagingTopicsPage";
+import { HomeRedirect, OrganizationPage } from "./screens/OrganizationPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
-import { ProjectListPage } from "./screens/ProjectListPage";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
 import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
@@ -61,10 +61,19 @@ const shellRoute = createRoute({
   component: AppShell,
 });
 
-const projectListRoute = createRoute({
+// "/" resolves the operator's organization and forwards to its page, so the owning org is always
+// in the URL. It stays a route (rather than moving the home screen) because the login redirects,
+// the header logo and existing bookmarks all point at it.
+const homeRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/",
-  component: ProjectListPage,
+  component: HomeRedirect,
+});
+
+const organizationRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "/organization/$organizationId",
+  component: OrganizationPage,
 });
 
 // Everything project-scoped renders inside the sidebar layout; entries appear as the
@@ -240,7 +249,8 @@ const platformsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   shellRoute.addChildren([
-    projectListRoute,
+    homeRoute,
+    organizationRoute,
     projectRoute.addChildren([
       projectOverviewRoute,
       usersRoute,

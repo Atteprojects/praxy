@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
-import type { Account, Capabilities, Project, ProjectList, QuotaSnapshot } from "./types";
+import type {
+  Account,
+  Capabilities,
+  Organization,
+  OrganizationList,
+  Project,
+  ProjectList,
+  QuotaSnapshot,
+} from "./types";
 
 export function useCapabilities() {
   return useQuery({
@@ -24,6 +32,26 @@ export function useAccount() {
     },
     staleTime: 30_000,
     retry: false,
+  });
+}
+
+/**
+ * The organizations the operator belongs to — exactly one today. The console home resolves it to
+ * build the org-scoped URL, so this is on the critical path of the first screen after login.
+ */
+export function useOrganizations() {
+  return useQuery({
+    queryKey: ["organizations"],
+    queryFn: () => api<OrganizationList>("/console/organizations"),
+    staleTime: 60_000,
+  });
+}
+
+export function useOrganization(organizationId: string) {
+  return useQuery({
+    queryKey: ["organizations", organizationId],
+    queryFn: () => api<Organization>(`/console/organizations/${organizationId}`),
+    staleTime: 60_000,
   });
 }
 
