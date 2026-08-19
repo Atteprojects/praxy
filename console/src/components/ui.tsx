@@ -111,6 +111,37 @@ const FOCUSABLE =
 const dialogStack: symbol[] = [];
 
 /**
+ * Scroll-lock state is shared, not per-dialog. Each dialog used to save and restore
+ * `document.body.style` itself, which broke as soon as two were open: closing a sheet and the
+ * confirm modal inside it in the same tick could restore them out of order, and the body was left
+ * permanently locked. Reference-counting means the lock is applied once on the way in and released
+ * once the last dialog is gone, whatever order they unmount in.
+ */
+let scrollLockCount = 0;
+let savedBodyStyle: { overflow: string; paddingRight: string } | null = null;
+
+function acquireScrollLock() {
+  if (scrollLockCount++ > 0) return;
+  savedBodyStyle = {
+    overflow: document.body.style.overflow,
+    paddingRight: document.body.style.paddingRight,
+  };
+  // Compensate for the vanishing scrollbar so the page behind doesn't jump sideways.
+  const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+  document.body.style.overflow = "hidden";
+  if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+}
+
+function releaseScrollLock() {
+  if (--scrollLockCount > 0) return;
+  scrollLockCount = 0;
+  if (!savedBodyStyle) return;
+  document.body.style.overflow = savedBodyStyle.overflow;
+  document.body.style.paddingRight = savedBodyStyle.paddingRight;
+  savedBodyStyle = null;
+}
+
+/**
  * Shared chrome for `Modal` and `Sheet`: reliable Escape, a focus trap, focus restore on close,
  * and a background scroll lock.
  *
@@ -128,12 +159,7 @@ function useDialogChrome(onClose: () => void) {
     const token = Symbol("dialog");
     dialogStack.push(token);
     const previouslyFocused = document.activeElement as HTMLElement | null;
-
-    // Compensate for the vanishing scrollbar so the page behind doesn't jump sideways.
-    const { overflow, paddingRight } = document.body.style;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+    acquireScrollLock();
 
     function onKeyDown(event: KeyboardEvent) {
       if (dialogStack[dialogStack.length - 1] !== token) return;
@@ -173,8 +199,7 @@ function useDialogChrome(onClose: () => void) {
       cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", onKeyDown, true);
       dialogStack.splice(dialogStack.indexOf(token), 1);
-      document.body.style.overflow = overflow;
-      document.body.style.paddingRight = paddingRight;
+      releaseScrollLock();
       previouslyFocused?.focus?.();
     };
   }, []);
@@ -223,12 +248,15 @@ export function Sheet({
   children,
   footer,
   side = "right",
+  size = "md",
 }: {
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   side?: "left" | "right";
+  /** `lg` for sheets carrying a table or a JSON dump; `md` suits a plain form or a nav list. */
+  size?: "md" | "lg";
 }) {
   const ref = useDialogChrome(onClose);
   const [titleId] = useState(() => `dialog-title-${++dialogTitleSeq}`);
@@ -246,7 +274,9 @@ export function Sheet({
         role="dialog"
         aria-modal
         aria-labelledby={titleId}
-        className={`flex h-full w-full max-w-md flex-col bg-ink-900 shadow-2xl shadow-black/50 outline-none ${
+        className={`flex h-full w-full flex-col bg-ink-900 shadow-2xl shadow-black/50 outline-none ${
+          size === "lg" ? "max-w-xl" : "max-w-md"
+        } ${
           side === "left"
             ? "animate-sheet-in-left border-r border-ink-800"
             : "animate-sheet-in-right border-l border-ink-800"
