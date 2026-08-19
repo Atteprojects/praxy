@@ -575,3 +575,21 @@ export interface QuotaSnapshot {
   busiestTableIndexes: number;
   indexesPerTableMax: number;
 }
+
+// ---- Audit log ----
+
+/** Actor is opaque (`admin:<id>` or `key:<id>`) — no endpoint resolves it to a name. */
+export interface AuditLogEntry {
+  id: string;
+  projectId: string | null;
+  actor: string;
+  action: string;
+  resource: string;
+  ip: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogList {
+  total: number;
+  entries: AuditLogEntry[];
+}

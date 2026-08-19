@@ -127,6 +127,15 @@ export function PlatformsIcon(props: IconProps) {
   );
 }
 
+export function AuditIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 1.75h6.5L13 4.25V13a1.25 1.25 0 0 1-1.25 1.25h-6.5A1.25 1.25 0 0 1 4 13z" stroke="currentColor" />
+      <path d="M5.75 7h4.5M5.75 9.5h4.5M5.75 12h2.5" stroke="currentColor" />
+    </Icon>
+  );
+}
+
 export function MenuIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -68,11 +68,12 @@ public static class UsersServerEndpoints
     }
 
     private static async Task<IResult> Create(
-        ServerCreateUserRequest req, HttpContext http, AppAuthService auth, CancellationToken ct)
+        ServerCreateUserRequest req, HttpContext http, PraxyDb db, AppAuthService auth, CancellationToken ct)
     {
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
         var user = await auth.CreateUserAsync(project, req.Email, req.Password, req.Name ?? "", emailVerified: false, ct);
+        await AuditAsync(db, http, project.Id, "users.create", $"user/{Ids.Wire(user.Id)}", ct);
         return Results.Created($"/v1/users/{Ids.Wire(user.Id)}", AppUserResponse.From(user));
     }
 
@@ -90,6 +91,7 @@ public static class UsersServerEndpoints
         var user = await FindUserAsync(http, db, userId, ct);
         db.Users.Remove(user);
         await db.SaveChangesAsync(ct);
+        await AuditAsync(db, http, project.Id, "users.delete", $"user/{Ids.Wire(user.Id)}", ct);
         await bus.PublishAsync(new PraxyEvent(
             Ids.Wire(Ids.NewUuid()), DateTimeOffset.UtcNow, project.Id,
             $"users.{Ids.Wire(user.Id)}.delete", [$"user:{Ids.Wire(user.Id)}"], null), ct);
@@ -105,6 +107,7 @@ public static class UsersServerEndpoints
         user.Status = req.Status;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await AuditAsync(db, http, project.Id, req.Status ? "users.unblock" : "users.block", $"user/{Ids.Wire(user.Id)}", ct);
         await bus.PublishAsync(new PraxyEvent(
             Ids.Wire(Ids.NewUuid()), DateTimeOffset.UtcNow, project.Id,
             $"users.{Ids.Wire(user.Id)}.update.status", [$"user:{Ids.Wire(user.Id)}"], null), ct);
@@ -121,6 +124,7 @@ public static class UsersServerEndpoints
         user.Labels = req.Labels;
         user.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+        await AuditAsync(db, http, project.Id, "users.labels", $"user/{Ids.Wire(user.Id)}", ct);
         await bus.PublishAsync(new PraxyEvent(
             Ids.Wire(Ids.NewUuid()), DateTimeOffset.UtcNow, project.Id,
             $"users.{Ids.Wire(user.Id)}.update.labels", [$"user:{Ids.Wire(user.Id)}"], null), ct);
@@ -138,7 +142,9 @@ public static class UsersServerEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
         var user = await FindUserAsync(http, db, userId, ct);
-        return Results.Ok(AppUserResponse.From(await auth.AdminUpdateEmailAsync(project, user, req.Email, ct)));
+        var updated = await auth.AdminUpdateEmailAsync(project, user, req.Email, ct);
+        await AuditAsync(db, http, project.Id, "users.email.update", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
     }
 
     private static async Task<IResult> UpdateName(
@@ -148,7 +154,9 @@ public static class UsersServerEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
         var user = await FindUserAsync(http, db, userId, ct);
-        return Results.Ok(AppUserResponse.From(await auth.UpdateNameAsync(project.Id, user, req.Name, ct)));
+        var updated = await auth.UpdateNameAsync(project.Id, user, req.Name, ct);
+        await AuditAsync(db, http, project.Id, "users.name.update", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
     }
 
     /// <summary>Sets a password without the old one — and revokes every session, as the console does.</summary>
@@ -159,7 +167,9 @@ public static class UsersServerEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
         var user = await FindUserAsync(http, db, userId, ct);
-        return Results.Ok(AppUserResponse.From(await auth.AdminResetPasswordAsync(project, user, req.Password, ct)));
+        var updated = await auth.AdminResetPasswordAsync(project, user, req.Password, ct);
+        await AuditAsync(db, http, project.Id, "users.password.reset", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
     }
 
     private static async Task<IResult> UpdateVerification(
@@ -169,8 +179,10 @@ public static class UsersServerEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
         var user = await FindUserAsync(http, db, userId, ct);
-        return Results.Ok(AppUserResponse.From(
-            await auth.AdminSetEmailVerifiedAsync(project.Id, user, req.EmailVerified, ct)));
+        var updated = await auth.AdminSetEmailVerifiedAsync(project.Id, user, req.EmailVerified, ct);
+        await AuditAsync(db, http, project.Id,
+            req.EmailVerified ? "users.verification.grant" : "users.verification.revoke", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
     }
 
     private static async Task<IResult> ListSessions(string userId, HttpContext http, PraxyDb db, CancellationToken ct)
@@ -191,6 +203,7 @@ public static class UsersServerEndpoints
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
         var user = await FindUserAsync(http, db, userId, ct);
         await auth.DeleteAllSessionsAsync(project.Id, user, ct);
+        await AuditAsync(db, http, project.Id, "sessions.delete_all", $"user/{Ids.Wire(user.Id)}", ct);
         return Results.NoContent();
     }
 
@@ -203,10 +216,35 @@ public static class UsersServerEndpoints
         if (!Ids.TryParseWire(sessionId, out var parsed))
             throw PraxyException.NotFound(ErrorTypes.UserSessionNotFound, "Session not found.");
         await auth.DeleteSessionAsync(project.Id, user, parsed, ct);
+        await AuditAsync(db, http, project.Id, "sessions.delete", $"session/{sessionId}", ct);
         return Results.NoContent();
     }
 
     // ---- helpers -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// The server surface writes audit entries now too — a <c>users.write</c> key can reset a
+    /// password or change an email exactly like a console operator, and a read surface that silently
+    /// covered only console actions would mislead by omission. Actor is <c>key:&lt;id&gt;</c>: every
+    /// caller here has already passed <see cref="AppPrincipalFilter.RequireScope"/>, which only ever
+    /// resolves a <see cref="RequestPrincipal.Key"/>.
+    /// </summary>
+    private static async Task AuditAsync(
+        PraxyDb db, HttpContext http, string projectId, string action, string resource, CancellationToken ct)
+    {
+        if (AppPrincipalFilter.Current(http) is not RequestPrincipal.Key(var apiKey))
+            throw new InvalidOperationException("Server user-write endpoints require a key principal.");
+        db.AuditLog.Add(new AuditLogEntry
+        {
+            Id = Ids.NewUuid(),
+            ProjectId = projectId,
+            Actor = $"key:{Ids.Wire(apiKey.Id)}",
+            Action = action,
+            Resource = resource,
+            Ip = http.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync(ct);
+    }
 
     internal static async Task<User> FindUserAsync(HttpContext http, PraxyDb db, string userId, CancellationToken ct)
     {

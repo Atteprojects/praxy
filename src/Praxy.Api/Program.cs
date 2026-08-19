@@ -380,6 +380,7 @@ try
     TeamEndpoints.Map(app);
     UsersServerEndpoints.Map(app);
     ConsoleAuthAdminEndpoints.Map(app);
+    AuditEndpoints.Map(app);
     DatabaseEndpoints.Map(app);
     ConsoleDatabaseEndpoints.Map(app);
     RowEndpoints.Map(app);

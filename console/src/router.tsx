@@ -7,6 +7,7 @@ import {
 import { AppShell } from "./AppShell";
 import { ErrorNote } from "./components/ui";
 import { ApiKeysPage } from "./screens/ApiKeysPage";
+import { AuditLogPage } from "./screens/AuditLogPage";
 import { AuthSettingsPage } from "./screens/AuthSettingsPage";
 import { ColumnsPage } from "./screens/ColumnsPage";
 import { DatabaseIndexPage, DatabaseLayout } from "./screens/DatabaseLayout";
@@ -246,6 +247,12 @@ const platformsRoute = createRoute({
   component: PlatformsPage,
 });
 
+const auditRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "audit",
+  component: AuditLogPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   shellRoute.addChildren([
@@ -276,6 +283,7 @@ const routeTree = rootRoute.addChildren([
       messagingProvidersRoute,
       apiKeysRoute,
       platformsRoute,
+      auditRoute,
     ]),
   ]),
 ]);
