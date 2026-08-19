@@ -30,7 +30,7 @@ public class FunctionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     public async Task Deploy_from_console_invoke_sync_and_async_and_trigger_via_row_create()
     {
         var (operatorToken, projectId) = await SetupProjectAsync();
-        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "databases.read", "databases.write", "functions.execute");
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "databases.read", "databases.write", "execution.write");
 
         var indexJs = """
             module.exports = async (context) => ({
@@ -64,7 +64,7 @@ public class FunctionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         // execution simply has no "errors" key, not a present-with-null one.
         Assert.False(syncExecution.TryGetProperty("errors", out _));
 
-        // Async invoke via the data-plane endpoint (API key, functions.execute scope): the initial
+        // Async invoke via the data-plane endpoint (API key, execution.write scope): the initial
         // response is just the queued row — the stored result must be polled for, and it must
         // actually be stored, not discarded (the roadmap's explicit async/sync distinction).
         // The key's scope is necessary but no longer sufficient — the function has to grant a role
@@ -131,6 +131,61 @@ public class FunctionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.False(fn.TryGetProperty("activeDeploymentId", out _));
     }
 
+    /// <summary>
+    /// The server management surface end to end, real Docker build included: before this, deploying
+    /// or activating a function always needed a console operator's browser session, no matter how the
+    /// function itself was invoked. One key with functions.read/write + execution.write does the
+    /// whole create-deploy-activate-invoke cycle no differently than the console does it.
+    /// </summary>
+    [Fact]
+    public async Task A_functions_write_key_deploys_activates_and_the_function_runs_for_real()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, key) = await CreateApiKeyAsync(operatorToken, projectId, "functions.read", "functions.write", "execution.write");
+
+        var create = await Client.SendAsync(DataPlane(HttpMethod.Post, "/v1/functions", projectId, apiKey: key,
+            body: new
+            {
+                key = "server-greeter", name = "server-greeter", runtime = "node", entrypoint = "index.js",
+                timeoutSeconds = 15, execute = new[] { "any" },
+            }));
+        Assert.Equal(201, (int)create.StatusCode);
+        var functionId = (await ReadJson(create)).GetProperty("id").GetString()!;
+
+        var indexJs = """
+            module.exports = async (context) => ({
+              statusCode: 200,
+              body: JSON.stringify({ hello: "from the server api" }),
+              headers: {},
+            });
+            """;
+        var upload = new HttpRequestMessage(HttpMethod.Post, $"/v1/functions/{functionId}/deployments")
+        {
+            Content = new ByteArrayContent(BuildTar(("index.js", indexJs))),
+        };
+        upload.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-tar");
+        upload.Headers.Add("X-Praxy-Project", projectId);
+        upload.Headers.Add("X-Praxy-Key", key);
+        var deploymentResponse = await Client.SendAsync(upload);
+        Assert.Equal(201, (int)deploymentResponse.StatusCode);
+        var deploymentId = (await ReadJson(deploymentResponse)).GetProperty("id").GetString()!;
+
+        var deployment = await WaitForServerDeploymentStatusAsync(projectId, key, functionId, deploymentId, "ready");
+        Assert.Equal("ready", deployment.GetProperty("status").GetString());
+
+        var activate = await Client.SendAsync(DataPlane(HttpMethod.Post,
+            $"/v1/functions/{functionId}/deployments/{deploymentId}/activate", projectId, apiKey: key));
+        Assert.Equal(200, (int)activate.StatusCode);
+
+        var invoke = await Client.SendAsync(DataPlane(HttpMethod.Post,
+            $"/v1/functions/{functionId}/executions", projectId, apiKey: key,
+            body: new { method = "GET", path = "/" }));
+        Assert.Equal(200, (int)invoke.StatusCode);
+        var execution = await ReadJson(invoke);
+        Assert.Equal("completed", execution.GetProperty("status").GetString());
+        Assert.Contains("from the server api", execution.GetProperty("responseBody").GetString());
+    }
+
     // ---- helpers ------------------------------------------------------------------------------
 
     private async Task<string> CreateFunctionAsync(
@@ -173,6 +228,22 @@ public class FunctionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         {
             var deployment = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,
                 $"/v1/console/projects/{projectId}/functions/{functionId}/deployments/{deploymentId}", operatorToken)));
+            var status = deployment.GetProperty("status").GetString();
+            if (status == targetStatus || status == "failed")
+                return deployment;
+            await Task.Delay(500);
+        }
+        throw new TimeoutException($"Deployment never reached status '{targetStatus}'.");
+    }
+
+    private async Task<JsonElement> WaitForServerDeploymentStatusAsync(
+        string projectId, string apiKey, string functionId, string deploymentId, string targetStatus)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(120);
+        while (DateTime.UtcNow < deadline)
+        {
+            var deployment = await ReadJson(await Client.SendAsync(DataPlane(HttpMethod.Get,
+                $"/v1/functions/{functionId}/deployments/{deploymentId}", projectId, apiKey: apiKey)));
             var status = deployment.GetProperty("status").GetString();
             if (status == targetStatus || status == "failed")
                 return deployment;
