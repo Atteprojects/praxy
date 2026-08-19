@@ -138,7 +138,8 @@ address only for callers that present neither an API key nor a session. That mat
 a corporate proxy or a mobile carrier gateway, where thousands of unrelated clients share one
 address and would otherwise share one budget. A tripped limit is always loud: `429` (never the
 framework's `503` default) with `Retry-After` and the `RateLimit-Limit`/`-Remaining`/`-Reset`
-triplet.
+triplet. Those headers appear on the 429 only, not on successful responses — see the known
+limitation in [api-reference.md](api-reference.md).
 
 **Org-level quotas** (`Praxy:Quotas:*` above) are the instance-wide defaults. An individual
 organization's `organizations.limits` jsonb column can override any of them per-dimension
