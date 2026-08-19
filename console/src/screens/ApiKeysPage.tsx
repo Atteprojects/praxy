@@ -9,7 +9,7 @@ import {
 
 const ALL_SCOPES = [
   "users.read", "users.write", "teams.read", "teams.write", "databases.read", "databases.write",
-  "functions.execute",
+  "functions.read", "functions.write", "execution.read", "execution.write",
 ] as const;
 
 const HEADERS = ["Name", "ID", "Scopes", "Last used", "Created", ""];
