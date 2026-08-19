@@ -5,8 +5,30 @@ import { useLogout, useProjects } from "../api/queries";
 import { Kbd } from "../components/ui";
 
 /**
+ * Every project-scoped destination the palette and the `g` chords both offer.
+ *
+ * This list is the single source of truth for the two. They used to be hand-maintained in
+ * parallel: the sidebar rendered `g w` / `g f` / `g m` hints next to Webhooks, Functions and
+ * Messaging, but the chord handler only ever learned the Phase 0–4 keys, so those three shortcuts
+ * silently did nothing and the palette had no entries for them either. Adding a route here now
+ * wires the chord, the palette entry and the shortcut hint at once.
+ */
+const DESTINATIONS = [
+  { key: "o", label: "Go to overview", to: "/project/$projectId" },
+  { key: "u", label: "Go to users", to: "/project/$projectId/auth/users" },
+  { key: "t", label: "Go to teams", to: "/project/$projectId/auth/teams" },
+  { key: "s", label: "Go to auth settings", to: "/project/$projectId/auth/settings" },
+  { key: "d", label: "Go to databases", to: "/project/$projectId/databases" },
+  { key: "r", label: "Go to realtime", to: "/project/$projectId/realtime" },
+  { key: "w", label: "Go to webhooks", to: "/project/$projectId/webhooks" },
+  { key: "f", label: "Go to functions", to: "/project/$projectId/functions" },
+  { key: "m", label: "Go to messaging", to: "/project/$projectId/messaging" },
+  { key: "k", label: "Go to API keys", to: "/project/$projectId/api-keys" },
+  { label: "Go to platforms", to: "/project/$projectId/platforms" },
+] as const;
+
+/**
  * ⌘K palette shell with `g`-prefixed navigation chords (g p → projects, g o → overview).
- * Phase 0 ships the shell; each phase adds its commands.
  */
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -40,14 +62,8 @@ export function CommandPalette() {
         if (pendingChord.current) window.clearTimeout(pendingChord.current);
         if (e.key === "p") void navigate({ to: "/" });
         if (!currentProjectId) return;
-        const params = { projectId: currentProjectId };
-        if (e.key === "o") void navigate({ to: "/project/$projectId", params });
-        if (e.key === "u") void navigate({ to: "/project/$projectId/auth/users", params });
-        if (e.key === "t") void navigate({ to: "/project/$projectId/auth/teams", params });
-        if (e.key === "s") void navigate({ to: "/project/$projectId/auth/settings", params });
-        if (e.key === "k") void navigate({ to: "/project/$projectId/api-keys", params });
-        if (e.key === "d") void navigate({ to: "/project/$projectId/databases", params });
-        if (e.key === "r") void navigate({ to: "/project/$projectId/realtime", params });
+        const destination = DESTINATIONS.find((d) => "key" in d && d.key === e.key);
+        if (destination) void navigate({ to: destination.to, params: { projectId: currentProjectId } });
         return;
       }
       if (e.key === "g") {
@@ -92,90 +108,19 @@ export function CommandPalette() {
             <PaletteItem onSelect={() => run(() => void navigate({ to: "/" }))} shortcut="g p">
               Go to projects
             </PaletteItem>
-            {currentProjectId ? (
-              <>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() => void navigate({ to: "/project/$projectId", params: { projectId: currentProjectId } }))
-                  }
-                  shortcut="g o"
-                >
-                  Go to overview
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({ to: "/project/$projectId/auth/users", params: { projectId: currentProjectId } }),
-                    )
-                  }
-                  shortcut="g u"
-                >
-                  Go to users
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({ to: "/project/$projectId/auth/teams", params: { projectId: currentProjectId } }),
-                    )
-                  }
-                  shortcut="g t"
-                >
-                  Go to teams
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({
-                        to: "/project/$projectId/auth/settings",
-                        params: { projectId: currentProjectId },
-                      }),
-                    )
-                  }
-                  shortcut="g s"
-                >
-                  Go to auth settings
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({ to: "/project/$projectId/api-keys", params: { projectId: currentProjectId } }),
-                    )
-                  }
-                  shortcut="g k"
-                >
-                  Go to API keys
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({ to: "/project/$projectId/databases", params: { projectId: currentProjectId } }),
-                    )
-                  }
-                  shortcut="g d"
-                >
-                  Go to databases
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({ to: "/project/$projectId/realtime", params: { projectId: currentProjectId } }),
-                    )
-                  }
-                  shortcut="g r"
-                >
-                  Go to realtime
-                </PaletteItem>
-                <PaletteItem
-                  onSelect={() =>
-                    run(() =>
-                      void navigate({ to: "/project/$projectId/platforms", params: { projectId: currentProjectId } }),
-                    )
-                  }
-                >
-                  Go to platforms
-                </PaletteItem>
-              </>
-            ) : null}
+            {currentProjectId
+              ? DESTINATIONS.map((destination) => (
+                  <PaletteItem
+                    key={destination.to}
+                    onSelect={() =>
+                      run(() => void navigate({ to: destination.to, params: { projectId: currentProjectId } }))
+                    }
+                    shortcut={"key" in destination ? `g ${destination.key}` : undefined}
+                  >
+                    {destination.label}
+                  </PaletteItem>
+                ))
+              : null}
             {projects.data?.projects.map((project) => (
               <PaletteItem
                 key={project.id}
