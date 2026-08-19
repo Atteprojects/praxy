@@ -67,6 +67,15 @@ public class FunctionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         // Async invoke via the data-plane endpoint (API key, functions.execute scope): the initial
         // response is just the queued row — the stored result must be polled for, and it must
         // actually be stored, not discarded (the roadmap's explicit async/sync distinction).
+        // The key's scope is necessary but no longer sufficient — the function has to grant a role
+        // the key resolves to (`any`), the same way a key needs a table permission as well as a
+        // databases.* scope. FunctionExecutePermissionTests covers the gate itself; this proves a
+        // granted role really does reach a real container.
+        var granted = await Client.SendAsync(Authed(HttpMethod.Patch,
+            $"/v1/console/projects/{projectId}/functions/{functionId}", operatorToken,
+            new { execute = new[] { "any" } }));
+        Assert.Equal(200, (int)granted.StatusCode);
+
         var asyncResponse = await Client.SendAsync(DataPlane(HttpMethod.Post,
             $"/v1/functions/{functionId}/executions?async=true", projectId, apiKey: apiKey,
             body: new { method = "GET", path = "/async-hello" }));
@@ -126,11 +135,15 @@ public class FunctionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 
     private async Task<string> CreateFunctionAsync(
         string operatorToken, string projectId, string key, string runtime, string entrypoint,
-        string[]? events = null, string? schedule = null)
+        string[]? events = null, string? schedule = null, string[]? execute = null)
     {
         var response = await Client.SendAsync(Authed(HttpMethod.Post,
             $"/v1/console/projects/{projectId}/functions", operatorToken,
-            new { key, name = key, runtime, entrypoint, timeoutSeconds = 15, events = events ?? [], schedule }));
+            new
+            {
+                key, name = key, runtime, entrypoint, timeoutSeconds = 15, events = events ?? [], schedule,
+                execute = execute ?? [],
+            }));
         Assert.Equal(201, (int)response.StatusCode);
         var body = await ReadJson(response);
         return body.GetProperty("id").GetString()!;
