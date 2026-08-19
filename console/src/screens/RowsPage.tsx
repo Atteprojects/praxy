@@ -6,7 +6,9 @@ import {
   useBulkDeleteRows, useCreateRow, useDeleteRow, useRows, useUpdateRow, type SortState,
 } from "../api/rows";
 import type { ColumnSchema, ColumnType, QueryFilter, Row } from "../api/types";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { DataGrid, type DataGridColumn } from "../components/DataGrid";
+import { AddRoleButton, RoleLabel } from "../components/RolePicker";
 import { EmptyState, ErrorNote, Field, FullPageSpinner, Sheet, Spinner } from "../components/ui";
 import { TableDetailHeader } from "./TableDetailHeader";
 
@@ -495,6 +497,7 @@ function CreateRowSheet({
   return (
     <Sheet
       title="Create row"
+      size="lg"
       onClose={onClose}
       footer={
         <button type="submit" form="create-row-form" className="btn-primary w-full" disabled={create.isPending}>
@@ -550,8 +553,6 @@ function RowSheet({
 }) {
   const [tab, setTab] = useState<"json" | "permissions">("json");
   const [copied, setCopied] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [newRole, setNewRole] = useState("");
   const update = useUpdateRow(projectId, databaseId, tableId);
   const timerRef = useRef<number | null>(null);
 
@@ -583,7 +584,7 @@ function RowSheet({
   const roles = [...new Set(row.$permissions.map((p) => /\("(.+)"\)$/.exec(p)?.[1]).filter((r): r is string => !!r))];
 
   return (
-    <Sheet title="Row" onClose={onClose}>
+    <Sheet title="Row" size="lg" onClose={onClose}>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex gap-1">
           <button
@@ -637,51 +638,47 @@ function RowSheet({
             </p>
           ) : (
             <>
-              <table className="mb-3 w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-ink-800 text-xs text-ink-500 uppercase">
-                    <th className="py-2 pr-4 font-medium">Role</th>
-                    <th className="px-2 py-2 text-center font-medium">read</th>
-                    <th className="px-2 py-2 text-center font-medium">update</th>
-                    <th className="px-2 py-2 text-center font-medium">delete</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-ink-800/60">
-                  {roles.length === 0 ? (
-                    <tr><td colSpan={4} className="py-4 text-center text-xs text-ink-500">No row-level grants. Table-level permissions still apply.</td></tr>
-                  ) : (
-                    roles.map((role) => (
-                      <tr key={role}>
-                        <td className="py-2 pr-4 font-mono text-xs text-ink-200">{role}</td>
-                        {(["read", "update", "delete"] as const).map((action) => (
-                          <td key={action} className="px-2 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              className="accent-iris-500"
-                              checked={row.$permissions.includes(`${action}("${role}")`)}
-                              onChange={(e) => setPermission(action, role, e.target.checked)}
-                            />
+              <div className="mb-3 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-ink-800 text-xs text-ink-500 uppercase">
+                      <th className="py-2 pr-4 font-medium">Role</th>
+                      <th className="px-2 py-2 text-center font-medium">read</th>
+                      <th className="px-2 py-2 text-center font-medium">update</th>
+                      <th className="px-2 py-2 text-center font-medium">delete</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-800/60">
+                    {roles.length === 0 ? (
+                      <tr><td colSpan={4} className="py-4 text-center text-xs text-ink-500">No row-level grants. Table-level permissions still apply.</td></tr>
+                    ) : (
+                      roles.map((role) => (
+                        <tr key={role}>
+                          <td className="py-2 pr-4">
+                            <RoleLabel projectId={projectId} role={role} />
                           </td>
-                        ))}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              <div className="flex gap-2">
-                <input
-                  className="input-base flex-1 font-mono text-xs"
-                  placeholder='user:<id> · team:<id>/<role> · label:<name>'
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
+                          {(["read", "update", "delete"] as const).map((action) => (
+                            <td key={action} className="px-2 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                className="accent-iris-500"
+                                checked={row.$permissions.includes(`${action}("${role}")`)}
+                                onChange={(e) => setPermission(action, role, e.target.checked)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end">
+                <AddRoleButton
+                  projectId={projectId}
+                  existingRoles={roles}
+                  onPick={(role: string) => setPermission("read", role, true)}
                 />
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 text-xs"
-                  onClick={() => { if (newRole.trim()) { setPermission("read", newRole.trim(), true); setNewRole(""); } }}
-                >
-                  + Add role
-                </button>
               </div>
             </>
           )}
@@ -690,16 +687,20 @@ function RowSheet({
 
       <div className="mt-8 border-t border-coral-400/20 pt-5">
         <h3 className="mb-2 text-sm font-medium text-coral-400">Danger zone</h3>
-        <button
-          type="button"
-          className={`btn-ghost border ${confirmingDelete ? "border-coral-400 text-coral-400" : "border-ink-700"}`}
-          onClick={() => {
-            if (!confirmingDelete) { setConfirmingDelete(true); setTimeout(() => setConfirmingDelete(false), 3000); return; }
-            void onDelete(rowId);
-          }}
-        >
-          {confirmingDelete ? "Click again to delete" : "Delete row"}
-        </button>
+        <ConfirmButton
+          label="Delete row"
+          title="Delete row?"
+          confirmLabel="Delete row"
+          successMessage="Row deleted."
+          className="btn-ghost border border-ink-700 text-coral-400"
+          body={
+            <>
+              Row <span className="font-mono text-ink-300">{rowId}</span> is removed permanently. Subscribers on
+              this table receive a delete event.
+            </>
+          }
+          onConfirm={() => onDelete(rowId)}
+        />
       </div>
     </Sheet>
   );

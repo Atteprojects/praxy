@@ -5,6 +5,8 @@ import { ApiError } from "../api/client";
 import {
   useDeleteTable, useTable, useTablePermissions, useUpdateTablePermissions,
 } from "../api/databases";
+import { AddRoleButton, RoleLabel } from "../components/RolePicker";
+import { useToast } from "../components/toast";
 import { ErrorNote, FullPageSpinner, Spinner, Toggle } from "../components/ui";
 import { TableDetailHeader } from "./TableDetailHeader";
 
@@ -46,9 +48,9 @@ export function TableSettingsPage() {
   const update = useUpdateTablePermissions(projectId, databaseId, tableId);
   const deleteTable = useDeleteTable(projectId, databaseId);
 
-  const [newRole, setNewRole] = useState("");
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [confirmName, setConfirmName] = useState("");
+  const toast = useToast();
   const error = update.error instanceof ApiError ? update.error : null;
 
   if (table.isPending || permissions.isPending) return <FullPageSpinner />;
@@ -67,23 +69,33 @@ export function TableSettingsPage() {
     update.mutate({ permissions: withoutRole(current, role) });
   }
 
-  function addRole() {
-    const role = newRole.trim();
-    if (!role || matrix.has(role)) return;
+  function addRole(role: string) {
+    if (matrix.has(role)) return;
+    // A new role starts with read only — the matrix is where you widen it.
     update.mutate({ permissions: [...current, `read("${role}")`] });
-    setNewRole("");
   }
 
   function applyPreset(preset: "public-read" | "owner-only") {
+    const replaces = roles.length > 0 ? " Replaced the existing grants." : "";
     if (preset === "public-read") {
-      update.mutate({ rowSecurity: false, permissions: ['read("any")'] });
+      update.mutate(
+        { rowSecurity: false, permissions: ['read("any")'] },
+        { onSuccess: () => toast.success(`Anyone can now read this table.${replaces}`) },
+      );
     } else {
-      update.mutate({ rowSecurity: true, permissions: ['create("users")'] });
+      update.mutate(
+        { rowSecurity: true, permissions: ['create("users")'] },
+        { onSuccess: () => toast.success(`Signed-in users can create rows and see only their own.${replaces}`) },
+      );
     }
   }
 
   function applyTeamAccess(teamId: string) {
-    update.mutate({ rowSecurity: false, permissions: [`read("team:${teamId}")`, `write("team:${teamId}")`] });
+    const name = teams.data?.teams.find((t) => t.id === teamId)?.name ?? "the team";
+    update.mutate(
+      { rowSecurity: false, permissions: [`read("team:${teamId}")`, `write("team:${teamId}")`] },
+      { onSuccess: () => toast.success(`Full access granted to ${name}.`) },
+    );
     setTeamPickerOpen(false);
   }
 
@@ -176,7 +188,9 @@ export function TableSettingsPage() {
                 ) : (
                   roles.map((role) => (
                     <tr key={role}>
-                      <td className="py-2 pr-4 font-mono text-xs text-ink-200">{role}</td>
+                      <td className="py-2 pr-4">
+                        <RoleLabel projectId={projectId} role={role} />
+                      </td>
                       {ACTIONS.map((action) => (
                         <td key={action} className="px-2 py-2 text-center">
                           <input
@@ -203,17 +217,8 @@ export function TableSettingsPage() {
             </table>
           </div>
 
-          <div className="mt-4 flex gap-2">
-            <input
-              className="input-base flex-1 font-mono text-xs"
-              placeholder='any · guests · users · user:<id> · team:<id>/<role> · label:<name>'
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRole())}
-            />
-            <button type="button" className="btn-ghost border border-ink-700 text-xs" onClick={addRole}>
-              + Add role
-            </button>
+          <div className="mt-4 flex justify-end">
+            <AddRoleButton projectId={projectId} existingRoles={roles} onPick={addRole} />
           </div>
           {update.isPending ? <p className="mt-2 text-xs text-ink-500"><Spinner className="mr-1 inline size-3" />Saving…</p> : null}
         </section>
