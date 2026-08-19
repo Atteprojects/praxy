@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export function Logo({ size = 22 }: { size?: number }) {
   return (
@@ -101,19 +101,111 @@ export function Badge({ tone = "ink", children }: { tone?: keyof typeof badgeTon
   );
 }
 
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/**
+ * Only the topmost open dialog reacts to Escape, so closing a modal opened from inside a sheet
+ * doesn't tear down both at once.
+ */
+const dialogStack: symbol[] = [];
+
+/**
+ * Shared chrome for `Modal` and `Sheet`: reliable Escape, a focus trap, focus restore on close,
+ * and a background scroll lock.
+ *
+ * Escape used to be an `onKeyDown` on the backdrop div. React keydown only fires for events that
+ * bubble out of the focused node, and the div isn't focusable — so Escape worked when a field
+ * inside happened to hold focus and did nothing otherwise (the mobile nav sheet, which autofocuses
+ * nothing, could never be closed with the keyboard). Listening on `document` fixes that for real.
+ */
+function useDialogChrome(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const token = Symbol("dialog");
+    dialogStack.push(token);
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    // Compensate for the vanishing scrollbar so the page behind doesn't jump sideways.
+    const { overflow, paddingRight } = document.body.style;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (dialogStack[dialogStack.length - 1] !== token) return;
+
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !ref.current) return;
+
+      const focusable = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (element) => element.offsetParent !== null,
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!event.shiftKey && (active === last || !ref.current.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && (active === first || !ref.current.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown, true);
+
+    // Let any `autoFocus` inside run first; only take focus ourselves if nothing claimed it.
+    const focusFrame = requestAnimationFrame(() => {
+      if (ref.current && !ref.current.contains(document.activeElement)) ref.current.focus();
+    });
+
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", onKeyDown, true);
+      dialogStack.splice(dialogStack.indexOf(token), 1);
+      document.body.style.overflow = overflow;
+      document.body.style.paddingRight = paddingRight;
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  return ref;
+}
+
+let dialogTitleSeq = 0;
+
 /** Modal shell: backdrop click and Escape close it; content stops propagation. */
 export function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) {
+  const ref = useDialogChrome(onClose);
+  const [titleId] = useState(() => `dialog-title-${++dialogTitleSeq}`);
+
   return (
     <div
       className="animate-backdrop-in fixed inset-0 z-40 grid place-items-center bg-ink-950/70 p-4 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      onKeyDown={(e) => e.key === "Escape" && onClose()}
-      role="dialog"
-      aria-modal
     >
-      <div className="surface animate-modal-in flex max-h-[85vh] w-full max-w-md flex-col p-5 sm:p-6">
+      <div
+        ref={ref}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-labelledby={titleId}
+        className="surface animate-modal-in flex max-h-[85vh] w-full max-w-md flex-col p-5 outline-none sm:p-6"
+      >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold tracking-tight">
+            {title}
+          </h2>
           <button type="button" className="btn-ghost p-2 text-ink-500" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -138,25 +230,32 @@ export function Sheet({
   footer?: ReactNode;
   side?: "left" | "right";
 }) {
+  const ref = useDialogChrome(onClose);
+  const [titleId] = useState(() => `dialog-title-${++dialogTitleSeq}`);
+
   return (
     <div
       className={`animate-backdrop-in fixed inset-0 z-40 flex bg-ink-950/70 backdrop-blur-sm ${
         side === "left" ? "justify-start" : "justify-end"
       }`}
       onClick={(e) => e.target === e.currentTarget && onClose()}
-      onKeyDown={(e) => e.key === "Escape" && onClose()}
-      role="dialog"
-      aria-modal
     >
       <div
-        className={`flex h-full w-full max-w-md flex-col bg-ink-900 shadow-2xl shadow-black/50 ${
+        ref={ref}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-labelledby={titleId}
+        className={`flex h-full w-full max-w-md flex-col bg-ink-900 shadow-2xl shadow-black/50 outline-none ${
           side === "left"
             ? "animate-sheet-in-left border-r border-ink-800"
             : "animate-sheet-in-right border-l border-ink-800"
         }`}
       >
         <div className="flex items-center justify-between border-b border-ink-800 px-6 py-4">
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold tracking-tight">
+            {title}
+          </h2>
           <button type="button" className="btn-ghost p-2 text-ink-500" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -319,4 +418,42 @@ export function timeAgo(iso: string | null | undefined): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 30 * 86400) return `${Math.floor(seconds / 86400)}d ago`;
   return new Date(iso).toLocaleDateString();
+}
+
+/**
+ * The one page-header shape every screen uses: title (with optional trailing chips), an optional
+ * description, an optional control cluster on the right, and an optional tab row underneath.
+ *
+ * Screens used to hand-roll this, and drifted: list screens put their primary action inline with
+ * the title, while tabbed screens (Messaging) pushed it onto a separate right-aligned row below
+ * the tabs, so the "create" button moved between screens.
+ */
+export function PageHeader({
+  title,
+  chips,
+  description,
+  actions,
+  tabs,
+}: {
+  title: ReactNode;
+  chips?: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  tabs?: ReactNode;
+}) {
+  return (
+    <div className="mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+            {chips}
+          </div>
+          {description ? <p className="mt-1.5 max-w-prose text-sm text-ink-500">{description}</p> : null}
+        </div>
+        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
+      {tabs ? <div className="mt-5">{tabs}</div> : null}
+    </div>
+  );
 }
