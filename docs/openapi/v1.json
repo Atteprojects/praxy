@@ -98,10 +98,32 @@
         }
       }
     },
-    "/": {
+    "/console": {
       "get": {
         "tags": [
           "Praxy.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/console/{path}": {
+      "get": {
+        "tags": [
+          "Praxy.Api"
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1616,6 +1638,26 @@
             "description": "OK"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "DatabaseEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     },
     "/v1/databases/{databaseId}/tables": {
@@ -2320,6 +2362,26 @@
     },
     "/v1/console/projects/{projectId}/databases/{databaseId}": {
       "get": {
+        "tags": [
+          "ConsoleDatabaseEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
@@ -3619,6 +3681,18 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/functions/runtimes": {
+      "get": {
+        "tags": [
+          "FunctionEndpoints"
+        ],
         "responses": {
           "200": {
             "description": "OK"
