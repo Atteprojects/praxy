@@ -20,7 +20,8 @@ public static class RowEndpoints
     {
         var group = api.MapGroup("/v1/databases")
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
-            .AddEndpointFilter<AppPrincipalFilter>();
+            .AddEndpointFilter<AppPrincipalFilter>()
+            .RequireRateLimiting("data-plane");
 
         group.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow);
         group.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows);

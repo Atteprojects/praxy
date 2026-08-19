@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -200,9 +202,15 @@ try
     builder.Services.AddScoped<MessagesService>();
     builder.Services.AddHostedService<MessageSendWorker>();
 
-    // Tight buckets on auth endpoints, partitioned on project (or key) before IP — a spoofable
-    // source address alone never carves out someone else's budget. Limits are configurable and
-    // loud when tripped: 429 (NOT the 503 default), Retry-After, RateLimit-*.
+    // Tight buckets on auth endpoints, looser but real ceilings on the rest of the data plane,
+    // partitioned on project + caller identity (key or session) before IP — a spoofable source
+    // address alone never carves out someone else's budget, and one NAT'd office does not share a
+    // single bucket. Limits are configurable and loud when tripped: 429 (NOT the 503 default),
+    // Retry-After, RateLimit-*.
+    //
+    // The data-plane defaults are ceilings against runaway clients and abuse, not throttles tuned
+    // for a particular app's traffic — a self-hoster who needs more raises them. `functions` is the
+    // tightest of the three because each permitted request can start a container.
     var rateLimits = new Dictionary<string, (int PermitLimit, int WindowSeconds)>
     {
         ["auth"] = (
@@ -211,6 +219,15 @@ try
         ["auth-email"] = (
             builder.Configuration.GetValue("Praxy:RateLimits:AuthEmail:PermitLimit", 5),
             builder.Configuration.GetValue("Praxy:RateLimits:AuthEmail:WindowSeconds", 600)),
+        ["data-plane"] = (
+            builder.Configuration.GetValue("Praxy:RateLimits:DataPlane:PermitLimit", 600),
+            builder.Configuration.GetValue("Praxy:RateLimits:DataPlane:WindowSeconds", 60)),
+        ["functions"] = (
+            builder.Configuration.GetValue("Praxy:RateLimits:Functions:PermitLimit", 60),
+            builder.Configuration.GetValue("Praxy:RateLimits:Functions:WindowSeconds", 60)),
+        ["realtime"] = (
+            builder.Configuration.GetValue("Praxy:RateLimits:Realtime:PermitLimit", 60),
+            builder.Configuration.GetValue("Praxy:RateLimits:Realtime:WindowSeconds", 60)),
     };
     builder.Services.AddRateLimiter(options =>
     {
@@ -235,9 +252,23 @@ try
                 "Rate limit exceeded. Try again later."), ct);
         };
 
+        // Identity before IP: a presented API key or session token is a far better bucket than a
+        // source address (shared NATs, proxies). Hashed because the partition key is a dictionary
+        // key held in memory — a raw secret has no business sitting there. Anonymous callers still
+        // fall back to the address, which is all they have.
+        static string CallerKey(HttpContext http)
+        {
+            var token = http.Request.Headers[AppPrincipalFilter.KeyHeader].FirstOrDefault()
+                        ?? http.Request.Headers[AppPrincipalFilter.SessionHeader].FirstOrDefault();
+            if (string.IsNullOrEmpty(token))
+                return $"ip:{http.Connection.RemoteIpAddress?.ToString() ?? "-"}";
+            var digest = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+            return $"tok:{Convert.ToHexString(digest.AsSpan(0, 8))}";
+        }
+
         static string PartitionKey(HttpContext http) =>
             $"{http.Request.Headers[DataPlaneEndpoints.ProjectHeader].FirstOrDefault() ?? http.Request.Query["project"].FirstOrDefault() ?? "-"}" +
-            $"|{http.Connection.RemoteIpAddress?.ToString() ?? "-"}";
+            $"|{CallerKey(http)}";
 
         foreach (var (name, limits) in rateLimits)
             options.AddPolicy(name, http => RateLimitPartition.GetFixedWindowLimiter(

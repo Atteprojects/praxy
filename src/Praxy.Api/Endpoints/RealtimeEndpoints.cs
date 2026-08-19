@@ -27,9 +27,13 @@ public static class RealtimeEndpoints
     {
         api.MapGet("/v1/realtime", HandleSocket);
 
+        // Ticket minting is the non-browser path onto a socket, so it is the cheapest place to
+        // mass-produce connections from — bounded here, on top of the per-project connection quota
+        // the socket handler already enforces.
         var ticket = api.MapGroup("/v1/realtime")
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
-            .AddEndpointFilter<AppPrincipalFilter>();
+            .AddEndpointFilter<AppPrincipalFilter>()
+            .RequireRateLimiting("realtime");
         ticket.MapPost("/ticket", CreateTicket);
 
         // The realtime inspector's live connection count (project overview stat tile).
