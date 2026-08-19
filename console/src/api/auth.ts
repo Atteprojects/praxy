@@ -75,6 +75,68 @@ export function useUpdateUserLabels(projectId: string, userId: string) {
   });
 }
 
+/**
+ * Changing the address resets `emailVerified` server-side — the `users/verified` permission role
+ * may only sit on an address someone has proved they own. The screen says so before the click.
+ */
+export function useUpdateUserEmail(projectId: string, userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (email: string) =>
+      api<AppUser>(`${base(projectId)}/users/${userId}/email`, { method: "PATCH", body: { email } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "users"] }),
+  });
+}
+
+export function useUpdateUserName(projectId: string, userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      api<AppUser>(`${base(projectId)}/users/${userId}/name`, { method: "PATCH", body: { name } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "users"] }),
+  });
+}
+
+/** An operator-set password revokes every session, so the sessions list refetches with it. */
+export function useResetUserPassword(projectId: string, userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (password: string) =>
+      api<AppUser>(`${base(projectId)}/users/${userId}/password`, {
+        method: "PATCH",
+        body: { password },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "users"] }),
+  });
+}
+
+export function useUpdateUserVerification(projectId: string, userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (emailVerified: boolean) =>
+      api<AppUser>(`${base(projectId)}/users/${userId}/verification`, {
+        method: "PATCH",
+        body: { emailVerified },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "users"] }),
+  });
+}
+
+/**
+ * Resends the verification mail. The redirect URL is ours to supply and is checked against the
+ * project's platform allowlist server-side — an unregistered hostname comes back as a field error.
+ */
+export function useSendUserVerification(projectId: string, userId: string) {
+  return useMutation({
+    mutationFn: (url: string) =>
+      api<void>(`${base(projectId)}/users/${userId}/verification`, { method: "POST", body: { url } }),
+  });
+}
+
 export function useDeleteUser(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
