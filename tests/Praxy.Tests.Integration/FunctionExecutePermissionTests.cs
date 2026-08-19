@@ -90,7 +90,7 @@ public class FunctionExecutePermissionTests(PostgresContainerFixture pg) : AuthT
     {
         var (operatorToken, projectId) = await SetupProjectAsync();
         var functionId = await CreateFunctionAsync(operatorToken, projectId, "greeter");
-        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "functions.execute");
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "execution.write");
 
         await AssertError(await Invoke(projectId, functionId, apiKey: apiKey), 401, Denied);
 
@@ -122,7 +122,7 @@ public class FunctionExecutePermissionTests(PostgresContainerFixture pg) : AuthT
 
         var created = await Client.SendAsync(Authed(
             HttpMethod.Post, $"/v1/console/projects/{projectId}/keys", operatorToken,
-            new { name = "trusted server", scopes = new[] { "functions.execute" }, bypassRowPermissions = true }));
+            new { name = "trusted server", scopes = new[] { "execution.write" }, bypassRowPermissions = true }));
         Assert.Equal(201, (int)created.StatusCode);
         var apiKey = (await ReadJson(created)).GetProperty("secret").GetString()!;
 

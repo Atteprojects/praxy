@@ -84,15 +84,15 @@ public class FunctionExecutionReadTests(PostgresContainerFixture pg) : AuthTestB
 
     /// <summary>
     /// The actual regression test for the TriggeredBy fix: before it, every API key recorded the bare
-    /// literal "key", so any key holding functions.execute could read any other key's execution.
+    /// literal "key", so any key holding functions.execute (execution.write today) could read any other key's execution.
     /// </summary>
     [Fact]
     public async Task A_key_reads_its_own_triggered_execution_but_not_a_different_keys()
     {
         var (operatorToken, projectId) = await SetupProjectAsync();
         var functionId = await CreateFunctionAsync(operatorToken, projectId, "greeter");
-        var (ownKeyId, ownSecret) = await CreateApiKeyAsync(operatorToken, projectId, "functions.execute");
-        var (_, otherSecret) = await CreateApiKeyAsync(operatorToken, projectId, "functions.execute");
+        var (ownKeyId, ownSecret) = await CreateApiKeyAsync(operatorToken, projectId, "execution.write");
+        var (_, otherSecret) = await CreateApiKeyAsync(operatorToken, projectId, "execution.write");
         var executionId = await SeedExecutionAsync(projectId, functionId, $"key:{ownKeyId}");
 
         var ownRead = await Client.SendAsync(DataPlane(
@@ -132,7 +132,7 @@ public class FunctionExecutionReadTests(PostgresContainerFixture pg) : AuthTestB
 
         var created = await Client.SendAsync(Authed(
             HttpMethod.Post, $"/v1/console/projects/{projectId}/keys", operatorToken,
-            new { name = "trusted server", scopes = new[] { "functions.execute" }, bypassRowPermissions = true }));
+            new { name = "trusted server", scopes = new[] { "execution.write" }, bypassRowPermissions = true }));
         Assert.Equal(201, (int)created.StatusCode);
         var bypassSecret = (await ReadJson(created)).GetProperty("secret").GetString()!;
 
