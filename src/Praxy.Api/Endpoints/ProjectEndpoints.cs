@@ -11,10 +11,13 @@ namespace Praxy.Api.Endpoints;
 public sealed record CreateProjectRequest(string Name, string? ProjectId);
 
 public sealed record ProjectResponse(
-    string Id, string Name, Guid? OrganizationId, DateTimeOffset? LastPingAt, DateTimeOffset CreatedAt)
+    string Id, string Name, string? OrganizationId, DateTimeOffset? LastPingAt, DateTimeOffset CreatedAt)
 {
+    // organizationId is hex32 like every other uuid-keyed id on the wire (it used to leak the raw
+    // dashed Guid, the one exception in the API). Null only for the reserved console project,
+    // which no operator can see anyway.
     public static ProjectResponse From(Project p) =>
-        new(p.Id, p.Name, p.OrganizationId, p.LastPingAt, p.CreatedAt);
+        new(p.Id, p.Name, p.OrganizationId is { } org ? Ids.Wire(org) : null, p.LastPingAt, p.CreatedAt);
 }
 
 public static class ProjectEndpoints
@@ -110,8 +113,9 @@ public static class ProjectEndpoints
     }
 
     /// <summary>
-    /// Org-level quotas surfaced without an org switcher (roadmap Phase 9): the operator's own
-    /// project's usage against the effective limits (org override, else instance default).
+    /// Org-level quotas reached through a project (roadmap Phase 9): this project's usage against
+    /// the effective limits (org override, else instance default). The console shows the owning
+    /// organization on its home screen, but quotas still have no org-id entry point.
     /// </summary>
     private static async Task<IResult> GetQuotas(HttpContext http, QuotaService quotas, CancellationToken ct)
     {
