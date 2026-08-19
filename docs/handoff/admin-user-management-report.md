@@ -187,10 +187,11 @@ d381b8d refactor(test): share the second-operator helper from ApiTestBase
 Ordered so every commit is green on its own: the OpenAPI snapshot ships with the endpoints that
 generate it, and the tests land after the surface they exercise.
 
-## Not deployed
+## Deployed
 
-`praxycore.dev` is untouched. The procedure is in `docs/self-host.md`'s Upgrading section and needs
-an SSH key that lives on the owner's own machine.
+`praxycore.dev` is on `0dd499a` — backup `20260819T200003Z` taken first, api container rebuilt at
+20:02 UTC, no migration to apply, no errors since restart. (This section said "not deployed" when
+first written; the deploy happened afterwards and the heading was not updated.)
 
 One local side effect worth knowing: `src/Praxy.Api/wwwroot` (gitignored console build output) was
 rebuilt from this branch for the click-test, so a still-running dev API on 5090 serves the new
