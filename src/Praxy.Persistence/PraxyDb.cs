@@ -231,7 +231,12 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Action).HasMaxLength(128);
             e.Property(x => x.Resource).HasMaxLength(256);
             e.Property(x => x.Ip).HasMaxLength(64);
-            e.HasIndex(x => x.ProjectId);
+            // The read surface's one real query: a project's entries newest-first, optionally
+            // narrowed by actor/action/resource. Postgres scans a leading-columns btree backwards
+            // just as fast as forwards, so this single composite covers "newest first" without a
+            // separate DESC index; the narrowing filters apply as a bounded scan within the project,
+            // not a second index, which is enough at this table's scale.
+            e.HasIndex(x => new { x.ProjectId, x.CreatedAt });
         });
 
         b.Entity<WebhookSubscription>(e =>
