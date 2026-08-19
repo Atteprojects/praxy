@@ -101,7 +101,7 @@ export function TableSettingsPage() {
           <h2 className="mb-1 text-sm font-medium text-ink-100">Row security</h2>
           <p className="mb-3 text-xs text-ink-500">
             Off (default): only the table-level matrix below governs access — every row is treated the
-            same. On: rows also carry their own per-row grants (set at row creation, Phase 3), and the
+            same. On: rows also carry their own per-row grants, set when the row is created, and the
             table-level matrix becomes the fallback for actions no row grant covers.
           </p>
           <Toggle

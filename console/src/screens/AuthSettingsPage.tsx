@@ -2,7 +2,9 @@ import { useParams } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useAuthSettings, useUpdateAuthSettings } from "../api/auth";
 import { ApiError } from "../api/client";
-import { ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
+import {
+  ErrorNote, Field, FullPageSpinner, PageHeader, Spinner, Toggle,
+} from "../components/ui";
 
 /**
  * Method toggles, Google credentials, session limit, password policy. Minimal options by
@@ -54,7 +56,10 @@ export function AuthSettingsPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">Auth settings</h1>
+      <PageHeader
+        title="Auth settings"
+        description="Which sign-in methods this project's apps accept, and the session and password rules applied to them."
+      />
 
       <div className="space-y-6">
         <section className="surface p-5">

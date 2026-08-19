@@ -4,7 +4,7 @@ import { useCreateFunction, useFunctionRuntimes, useFunctions } from "../api/fun
 import { ApiError } from "../api/client";
 import { FUNCTION_RUNTIMES, type FunctionRuntime } from "../api/types";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
 } from "../components/ui";
 
 const EVENT_PRESETS = [
@@ -45,12 +45,15 @@ export function FunctionsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Functions</h1>
-        <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-          + Create function
-        </button>
-      </div>
+      <PageHeader
+        title="Functions"
+        description="Code deployed to this project, built into a container image and run on demand or on a schedule."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Create function
+          </button>
+        }
+      />
 
       {creating ? <CreateFunctionModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
 

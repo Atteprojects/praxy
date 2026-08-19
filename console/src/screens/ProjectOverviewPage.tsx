@@ -1,7 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useConnectionCount, useProject, useQuotas } from "../api/queries";
-import { FullPageSpinner } from "../components/ui";
+import { FullPageSpinner, IdChip, PageHeader } from "../components/ui";
 
 export function ProjectOverviewPage() {
   const { projectId } = useParams({ strict: false }) as { projectId: string };
@@ -14,14 +14,21 @@ export function ProjectOverviewPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-semibold tracking-tight">{project.data.name}</h1>
-      <p className="mb-8 text-sm text-ink-500">
-        Created {new Date(project.data.createdAt).toLocaleString()}
-      </p>
+      <PageHeader
+        title={project.data.name}
+        chips={<IdChip id={project.data.id} />}
+        description={`Created ${new Date(project.data.createdAt).toLocaleString()}`}
+      />
 
-      {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
-      <ConnectionsTile projectId={project.data.id} />
-      <QuotaCard projectId={project.data.id} />
+      {/* Two columns from `lg` up: the connection state and its live counter on the left, usage on
+          the right. Stacked full-width cards left most of a desktop viewport empty. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
+          <ConnectionsTile projectId={project.data.id} />
+        </div>
+        <QuotaCard projectId={project.data.id} />
+      </div>
     </div>
   );
 }
@@ -44,7 +51,7 @@ function QuotaCard({ projectId }: { projectId: string }) {
   ];
 
   return (
-    <div className="surface mt-4 max-w-2xl p-6">
+    <div className="surface p-6">
       <h2 className="mb-4 text-lg font-medium">Usage</h2>
       <div className="space-y-3">
         {rows.map((row) => (
@@ -85,7 +92,7 @@ function ConnectionsTile({ projectId }: { projectId: string }) {
     <Link
       to="/project/$projectId/realtime"
       params={{ projectId }}
-      className="surface mt-4 flex max-w-2xl items-center justify-between p-6 transition-colors hover:border-ink-600"
+      className="surface flex items-center justify-between p-6 transition-colors hover:border-ink-600"
     >
       <div>
         <h2 className="text-lg font-medium">Realtime</h2>
@@ -104,7 +111,7 @@ function WaitingCard({ projectId }: { projectId: string }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="surface max-w-2xl p-6">
+    <div className="surface p-6">
       <div className="mb-4 flex items-center gap-3">
         <span className="size-2.5 rounded-full bg-amber-400 animate-ping-pulse" />
         <h2 className="text-lg font-medium">Waiting for your first ping…</h2>
@@ -134,15 +141,14 @@ function WaitingCard({ projectId }: { projectId: string }) {
 
 function ConnectedCard({ lastPingAt }: { lastPingAt: string }) {
   return (
-    <div className="surface max-w-2xl p-6">
+    <div className="surface p-6">
       <div className="mb-2 flex items-center gap-3">
         <span className="size-2.5 rounded-full bg-mint-400" />
         <h2 className="text-lg font-medium">Connected</h2>
       </div>
       <p className="text-sm text-ink-400">
-        Last ping {new Date(lastPingAt).toLocaleString()}. Head to Auth to create your first
-        users and teams, or Databases to model your data — messaging, functions and webhooks
-        arrive in upcoming phases.
+        Last ping {new Date(lastPingAt).toLocaleString()}. Head to Users and Teams to manage who can
+        sign in, Databases to model your data, or Functions, Webhooks and Messaging to react to it.
       </p>
     </div>
   );

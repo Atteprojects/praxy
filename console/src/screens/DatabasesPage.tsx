@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useCreateDatabase, useDatabases } from "../api/databases";
 import { ApiError } from "../api/client";
 import {
-  DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner,
+  DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner,
 } from "../components/ui";
 import { STR } from "../strings";
 
@@ -19,12 +19,15 @@ export function DatabasesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">{STR.databases}</h1>
-        <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-          + Create database
-        </button>
-      </div>
+      <PageHeader
+        title={STR.databases}
+        description="Each database gets its own isolated Postgres schema. Tables, columns and rows live inside one."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Create database
+          </button>
+        }
+      />
 
       {creating ? <CreateDatabaseModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
 

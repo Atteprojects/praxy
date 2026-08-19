@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useCreateUser, useProjectUsers } from "../api/auth";
 import { ApiError } from "../api/client";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
 } from "../components/ui";
 import { STR } from "../strings";
 
@@ -20,20 +20,23 @@ export function UsersPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{STR.users}</h1>
-        <div className="flex items-center gap-2">
-          <input
-            className="input-base w-56"
-            placeholder="Search email or name…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-            + Create user
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={STR.users}
+        description="Everyone who can sign in to this project's apps. Labels here become label:<name> permission roles."
+        actions={
+          <>
+            <input
+              className="input-base w-56"
+              placeholder="Search email or name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+              + Create user
+            </button>
+          </>
+        }
+      />
 
       {creating ? <CreateUserModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
 

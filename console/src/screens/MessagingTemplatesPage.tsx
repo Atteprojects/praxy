@@ -27,12 +27,11 @@ export function MessagingTemplatesPage() {
 
   return (
     <div>
-      <MessagingTabs projectId={projectId} active="templates" />
-      <p className="mb-6 max-w-xl text-xs text-ink-500">
-        Praxy's own verification, recovery and invitation emails render through these templates.
-        Leave a template untouched and it uses Praxy's default text — no project needs to configure
-        anything for auth email to keep working.
-      </p>
+      <MessagingTabs
+        projectId={projectId}
+        active="templates"
+        description="Praxy's own verification, recovery and invitation emails render through these templates. Leave a template untouched and it uses Praxy's default text — no project needs to configure anything for auth email to keep working."
+      />
       <div className="max-w-3xl space-y-6">
         {templates.data.templates.map((template) => (
           <TemplateCard key={template.key} projectId={projectId} template={template} />

@@ -1,23 +1,34 @@
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { PageHeader } from "../components/ui";
 
 /** Shared top-tab header for Messaging's four sibling areas — same shape as FunctionDetailHeader, but project-scoped rather than resource-scoped since there's no single parent record to hang tabs off. */
 export function MessagingTabs({
   projectId,
   active,
+  description,
+  actions,
 }: {
   projectId: string;
   active: "messages" | "topics" | "templates" | "providers";
+  /** Sub-area blurb — rendered under the title so it can't drift into the action row. */
+  description?: ReactNode;
+  actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6">
-      <h1 className="mb-4 text-2xl font-semibold tracking-tight">Messaging</h1>
-      <div className="flex gap-1 border-b border-ink-800" role="tablist">
-        <TabLink to="/project/$projectId/messaging" label="Messages" active={active === "messages"} projectId={projectId} />
-        <TabLink to="/project/$projectId/messaging/topics" label="Topics" active={active === "topics"} projectId={projectId} />
-        <TabLink to="/project/$projectId/messaging/templates" label="Templates" active={active === "templates"} projectId={projectId} />
-        <TabLink to="/project/$projectId/messaging/providers" label="Providers" active={active === "providers"} projectId={projectId} />
-      </div>
-    </div>
+    <PageHeader
+      title="Messaging"
+      description={description}
+      actions={actions}
+      tabs={
+        <div className="flex gap-1 border-b border-ink-800" role="tablist">
+          <TabLink to="/project/$projectId/messaging" label="Messages" active={active === "messages"} projectId={projectId} />
+          <TabLink to="/project/$projectId/messaging/topics" label="Topics" active={active === "topics"} projectId={projectId} />
+          <TabLink to="/project/$projectId/messaging/templates" label="Templates" active={active === "templates"} projectId={projectId} />
+          <TabLink to="/project/$projectId/messaging/providers" label="Providers" active={active === "providers"} projectId={projectId} />
+        </div>
+      }
+    />
   );
 }
 

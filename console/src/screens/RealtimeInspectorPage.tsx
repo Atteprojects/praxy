@@ -2,7 +2,9 @@ import { useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataGridColumn } from "../components/DataGrid";
 import { DataGrid } from "../components/DataGrid";
-import { Badge, EmptyState, Sheet } from "../components/ui";
+import {
+  Badge, EmptyState, PageHeader, Sheet,
+} from "../components/ui";
 import { STR } from "../strings";
 
 interface InspectorEvent {
@@ -118,15 +120,11 @@ export function RealtimeInspectorPage() {
 
   return (
     <div>
-      <div className="mb-1 flex items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{STR.realtime}</h1>
-        <StatusBadge status={status} />
-      </div>
-      <p className="mb-6 text-sm text-ink-500">
-        A live tail of every row event on this project, as seen through a bypass-everything
-        connection — permission filtering for real subscribers happens the same way, just scoped
-        to their own roles.
-      </p>
+      <PageHeader
+        title={STR.realtime}
+        chips={<StatusBadge status={status} />}
+        description="A live tail of every row event on this project, as seen through a bypass-everything connection — permission filtering for real subscribers happens the same way, just scoped to their own roles."
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input

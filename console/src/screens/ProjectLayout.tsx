@@ -67,7 +67,9 @@ export function ProjectLayout() {
           <span className="truncate text-sm font-medium text-ink-200">{project.data.name}</span>
         </div>
 
-        <main className="px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-10">
+        {/* Capped so tables don't stretch to unreadable line lengths on an ultrawide display,
+            and centred once the viewport outgrows the cap. */}
+        <main className="mx-auto max-w-[100rem] px-4 py-6 sm:px-6 sm:py-8 md:px-8 md:py-10">
           <Outlet />
         </main>
       </div>

@@ -53,13 +53,16 @@ export function MessagesPage() {
 
   return (
     <div>
-      <MessagingTabs projectId={projectId} active="messages" />
-
-      <div className="mb-4 flex justify-end">
-        <button type="button" className="btn-primary" onClick={() => setComposing(true)}>
-          + Compose
-        </button>
-      </div>
+      <MessagingTabs
+        projectId={projectId}
+        active="messages"
+        description="Every message sent from this project, with its delivery status per target."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setComposing(true)}>
+            + Compose
+          </button>
+        }
+      />
 
       {composing ? <ComposeModal projectId={projectId} onClose={() => setComposing(false)} onSent={(id) => setSelectedId(id)} /> : null}
 
