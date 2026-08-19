@@ -15,10 +15,32 @@ public static class ApiKeyScopes
     public const string TeamsWrite = "teams.write";
     public const string DatabasesRead = "databases.read";
     public const string DatabasesWrite = "databases.write";
-    public const string FunctionsExecute = "functions.execute";
+
+    /// <summary>Read a function's definition, env var keys (never values), and deployments.</summary>
+    public const string FunctionsRead = "functions.read";
+
+    /// <summary>Create/update/delete functions, set/unset env vars, upload and activate deployments.</summary>
+    public const string FunctionsWrite = "functions.write";
+
+    /// <summary>
+    /// Read execution results. Broader than a caller's own execution — the same grant
+    /// <see cref="Endpoints.FunctionEndpoints.GetDataPlaneExecution"/> gives a bypass key, now
+    /// available to any key an operator explicitly trusts with this scope, matching Appwrite's
+    /// "read your project's execution logs". A key without it can still read back an execution it
+    /// itself triggered, same as an app user or JWT — see <see cref="ExecutionWrite"/>.
+    /// </summary>
+    public const string ExecutionRead = "execution.read";
+
+    /// <summary>
+    /// Trigger a function. Named to match Appwrite and this class's own noun.verb convention —
+    /// renamed from the original <c>functions.execute</c> (2026-08-19); <c>RenameFunctionsExecuteScope</c>
+    /// migrates any key already holding the old string.
+    /// </summary>
+    public const string ExecutionWrite = "execution.write";
 
     public static readonly IReadOnlyList<string> All =
-        [UsersRead, UsersWrite, TeamsRead, TeamsWrite, DatabasesRead, DatabasesWrite, FunctionsExecute];
+        [UsersRead, UsersWrite, TeamsRead, TeamsWrite, DatabasesRead, DatabasesWrite,
+         FunctionsRead, FunctionsWrite, ExecutionRead, ExecutionWrite];
 }
 
 /// <summary>
