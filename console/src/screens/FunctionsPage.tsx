@@ -96,6 +96,9 @@ export function FunctionsPage() {
                   ) : (
                     <Badge tone="amber">no deployment</Badge>
                   )}
+                  {/* Deny-by-default is the correct state, but it must be visible from the list:
+                      after upgrading, every pre-existing function lands here until granted. */}
+                  {fn.execute.length === 0 ? <Badge tone="amber">no execute access</Badge> : null}
                 </div>
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(fn.createdAt)}</td>

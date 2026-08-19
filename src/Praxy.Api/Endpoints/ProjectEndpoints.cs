@@ -20,6 +20,8 @@ public sealed record ProjectResponse(
         new(p.Id, p.Name, p.OrganizationId is { } org ? Ids.Wire(org) : null, p.LastPingAt, p.CreatedAt);
 }
 
+public sealed record ProjectListResponse(int Total, IReadOnlyList<ProjectResponse> Projects);
+
 public static class ProjectEndpoints
 {
     public static void Map(IEndpointRouteBuilder api)
@@ -27,10 +29,12 @@ public static class ProjectEndpoints
         var projects = api.MapGroup("/v1/console/projects")
             .AddEndpointFilter<RequireOperatorFilter>();
 
-        projects.MapGet("", List);
-        projects.MapPost("", Create);
-        projects.MapGet("/{projectId}", Get);
-        projects.MapGet("/{projectId}/quotas", GetQuotas).AddEndpointFilter<ConsoleProjectFilter>();
+        projects.MapGet("", List).Produces<ProjectListResponse>();
+        projects.MapPost("", Create).Produces<ProjectResponse>(StatusCodes.Status201Created);
+        projects.MapGet("/{projectId}", Get).Produces<ProjectResponse>();
+        projects.MapGet("/{projectId}/quotas", GetQuotas)
+            .AddEndpointFilter<ConsoleProjectFilter>()
+            .Produces<QuotaSnapshot>();
     }
 
     private static async Task<IResult> List(HttpContext http, PraxyDb db, CancellationToken ct)
@@ -39,7 +43,7 @@ public static class ProjectEndpoints
         var list = await AccessibleProjects(db, op.Account.Id)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(ct);
-        return Results.Ok(new { total = list.Count, projects = list.Select(ProjectResponse.From) });
+        return Results.Ok(new ProjectListResponse(list.Count, [.. list.Select(ProjectResponse.From)]));
     }
 
     private static async Task<IResult> Create(

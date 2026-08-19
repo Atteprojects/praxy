@@ -7,8 +7,8 @@ generation (architecture.md §8) — never hand-maintained, so it can't drift fr
 
 Run the API in the `Development` environment (`dotnet run --project src/Praxy.Api` with no
 `ASPNETCORE_ENVIRONMENT` override does this by default) and open **`/scalar/v1`** — a full
-interactive UI: every endpoint, request/response schemas, and a "Try it" panel that fires real
-requests against your running instance. The raw document is at `/openapi/v1.json`.
+interactive UI: every endpoint, its request and response schemas, and a "Try it" panel that fires
+real requests against your running instance. The raw document is at `/openapi/v1.json`.
 
 Both are **deliberately unavailable outside Development** (`Program.cs` gates them behind
 `app.Environment.IsDevelopment()`) — they disclose the full API surface including every internal
@@ -38,4 +38,33 @@ curl -sS http://localhost:5090/openapi/v1.json -o docs/openapi/v1.json
 ```
 
 Commit the updated file as part of the release. It's plain generated JSON — diffs are meaningful
-(a route added/removed/reshaped shows up directly) and easy to review before tagging.
+(a route added/removed/reshaped shows up directly) and easy to review before tagging. The document
+is host-independent: `servers` is pinned to a relative `/`, so regenerating from any port produces
+the same file, and a reader importing it points at their own instance rather than a developer's
+localhost.
+
+## What the document guarantees
+
+`OpenApiDocumentTests` asserts these at build time, so they can't quietly rot:
+
+- **Every operation documents a response.** Either a success status carrying a schema, or one of the
+  statuses that legitimately has no body — 204 (deleted), 302 (redirect), 101 (the realtime
+  WebSocket upgrade). An endpoint added without a `.Produces<T>()` fails the test rather than
+  shipping undocumented.
+- **Every operation documents the error envelope**, as OpenAPI's `default` response pointing at
+  `#/components/schemas/ErrorEnvelope`. Every non-2xx response in Praxy is that envelope — error
+  `type` strings are public API, so the shape carrying them belongs in the published reference
+  rather than being reverse-engineered from a live instance. (`/v1/health` is the one exception: it
+  is liveness for load balancers and never returns the envelope.)
+- **Rate-limited operations document their 429** and the `Retry-After` / `RateLimit-*` headers a
+  client is expected to act on.
+- **The committed snapshot matches what the code generates**, so "forgot to regenerate" fails a test
+  instead of silently publishing a stale reference.
+
+### Known limitation
+
+`RateLimit-Limit`/`-Remaining`/`-Reset` are emitted **only on the 429 itself**, not on successful
+responses, so a client discovers the ceiling by hitting it rather than pacing itself in advance.
+Emitting live remaining-permit counts would mean wrapping .NET's rate limiter in custom middleware
+and tracking window state separately — `FixedWindowRateLimiter` does not expose it. Documented here
+rather than half-built.

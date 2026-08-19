@@ -17,6 +17,9 @@ namespace Praxy.Functions;
 /// </summary>
 public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool, FunctionBuildSignal buildSignal, FunctionsOptions options)
 {
+    /// <summary>Cap on a function's execute list — a bound like every other limit, not a silent free-for-all.</summary>
+    public const int MaxExecuteRoles = 100;
+
     // ---- functions --------------------------------------------------------------------------
 
     public Task<List<FunctionDef>> ListAsync(string projectId, CancellationToken ct) =>
@@ -31,9 +34,9 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
 
     public async Task<FunctionDef> CreateAsync(
         string projectId, string key_, string name, string runtime, string entrypoint, int timeoutSeconds,
-        string[] events, string? schedule, CancellationToken ct)
+        string[] events, string[] execute, string? schedule, CancellationToken ct)
     {
-        var fields = Validate(key_, name, runtime, entrypoint, timeoutSeconds, events, schedule, out var nextRun);
+        var fields = Validate(key_, name, runtime, entrypoint, timeoutSeconds, events, execute, schedule, out var nextRun);
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid function payload.", fields);
 
@@ -47,6 +50,7 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
             Entrypoint = entrypoint.Trim(),
             TimeoutSeconds = timeoutSeconds,
             Events = [.. events.Select(e => e.Trim())],
+            Execute = NormalizeExecute(execute),
             Schedule = schedule,
             NextScheduledRunAt = nextRun,
         };
@@ -69,13 +73,13 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
     /// clears the schedule, anything else is a new cron expression.
     /// </summary>
     public async Task<FunctionDef> UpdateAsync(
-        FunctionDef fn, string? name, string? entrypoint, int? timeoutSeconds, string[]? events, string? schedule,
-        bool? enabled, CancellationToken ct)
+        FunctionDef fn, string? name, string? entrypoint, int? timeoutSeconds, string[]? events, string[]? execute,
+        string? schedule, bool? enabled, CancellationToken ct)
     {
         var effectiveSchedule = schedule switch { null => fn.Schedule, "" => null, var s => s };
         var fields = Validate(
             fn.Key, name ?? fn.Name, fn.Runtime, entrypoint ?? fn.Entrypoint, timeoutSeconds ?? fn.TimeoutSeconds,
-            events ?? fn.Events, effectiveSchedule, out var nextRun);
+            events ?? fn.Events, execute ?? fn.Execute, effectiveSchedule, out var nextRun);
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid function payload.", fields);
 
@@ -87,6 +91,8 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
             fn.TimeoutSeconds = t;
         if (events is not null)
             fn.Events = [.. events.Select(e => e.Trim())];
+        if (execute is not null)
+            fn.Execute = NormalizeExecute(execute);
         if (schedule is not null)
         {
             fn.Schedule = effectiveSchedule;
@@ -109,7 +115,7 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
 
     private static Dictionary<string, string[]> Validate(
         string key_, string name, string runtime, string entrypoint, int timeoutSeconds, string[] events,
-        string? schedule, out DateTimeOffset? nextScheduledRunAt)
+        string[] execute, string? schedule, out DateTimeOffset? nextScheduledRunAt)
     {
         nextScheduledRunAt = null;
         var fields = new Dictionary<string, string[]>();
@@ -127,6 +133,11 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
         if (events.Any(ev => !IsValidEventPattern(ev)))
             fields["events"] = ["Each pattern must be dot-separated segments of letters, digits, underscore or '*' (e.g. 'databases.*.tables.*.rows.*.create')."];
 
+        if (execute.Length > MaxExecuteRoles)
+            fields["execute"] = [$"At most {MaxExecuteRoles} roles."];
+        else if (execute.Any(r => r is null || !Roles.IsValid(r.Trim())))
+            fields["execute"] = ["Each entry must be a role: any, guests, users, users/verified, user:<id>[/verified], team:<id>[/<role>], member:<id> or label:<name>."];
+
         if (!string.IsNullOrWhiteSpace(schedule))
         {
             try
@@ -141,6 +152,17 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
 
         return fields;
     }
+
+    /// <summary>
+    /// Whether <paramref name="callerRoles"/> may invoke <paramref name="fn"/> over the data plane.
+    /// An empty <c>Execute</c> list denies everyone — the deny-by-default state every function is
+    /// created in.
+    /// </summary>
+    public static bool CanExecute(FunctionDef fn, IEnumerable<string> callerRoles) =>
+        fn.Execute.Intersect(callerRoles).Any();
+
+    private static string[] NormalizeExecute(string[] execute) =>
+        [.. execute.Select(r => r.Trim()).Distinct()];
 
     private static bool IsValidEventPattern(string pattern) =>
         !string.IsNullOrWhiteSpace(pattern) &&

@@ -75,6 +75,106 @@ public class RateLimitTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     }
 }
 
+/// <summary>
+/// The data plane's own ceilings. Before these existed only the auth endpoints opted into rate
+/// limiting, so row CRUD, function invocation and realtime ticket minting were unbounded — and
+/// function invocation is the one that starts a container per permitted request.
+///
+/// These tests deliberately hit routes that 404: the limiter is middleware and runs before the
+/// endpoint, so a request consumes its permit whatever the handler goes on to return. What is under
+/// test is that the bucket is attached at all, and which bucket it is.
+/// </summary>
+public class DataPlaneRateLimitTests(PostgresContainerFixture pg) : AuthTestBase(pg)
+{
+    private const string MissingId = "0195a1b2c3d4e5f6a7b8c9d0e1f2a3b4";
+
+    protected override IDictionary<string, string?>? ExtraSettings => new Dictionary<string, string?>(
+        base.ExtraSettings ?? new Dictionary<string, string?>())
+    {
+        ["Praxy:RateLimits:DataPlane:PermitLimit"] = "3",
+        ["Praxy:RateLimits:DataPlane:WindowSeconds"] = "60",
+        ["Praxy:RateLimits:Functions:PermitLimit"] = "2",
+        ["Praxy:RateLimits:Functions:WindowSeconds"] = "60",
+        ["Praxy:RateLimits:Realtime:PermitLimit"] = "2",
+        ["Praxy:RateLimits:Realtime:WindowSeconds"] = "60",
+    };
+
+    private HttpRequestMessage Rows(string projectId, string? sessionToken = null) =>
+        DataPlane(HttpMethod.Get, $"/v1/databases/{MissingId}/tables/{MissingId}/rows", projectId, sessionToken);
+
+    [Fact]
+    public async Task Row_endpoints_are_bounded()
+    {
+        var (_, projectId) = await SetupProjectAsync();
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(404, (int)(await Client.SendAsync(Rows(projectId))).StatusCode);
+
+        var limited = await Client.SendAsync(Rows(projectId));
+        await AssertError(limited, 429, "general_rate_limit_exceeded");
+        Assert.Equal("3", limited.Headers.GetValues("RateLimit-Limit").Single());
+        Assert.True(limited.Headers.Contains("Retry-After"));
+    }
+
+    /// <summary>
+    /// Functions get their own, tighter bucket rather than sharing the data plane's — exhausting
+    /// the function budget must not also lock out row reads, and vice versa.
+    /// </summary>
+    [Fact]
+    public async Task Function_invocation_has_its_own_tighter_bucket()
+    {
+        var (_, projectId) = await SetupProjectAsync();
+
+        for (var i = 0; i < 2; i++)
+        {
+            var allowed = await Client.SendAsync(DataPlane(
+                HttpMethod.Post, $"/v1/functions/{MissingId}/executions", projectId,
+                body: new { method = "GET", path = "/" }));
+            Assert.Equal(404, (int)allowed.StatusCode);
+        }
+
+        var limited = await Client.SendAsync(DataPlane(
+            HttpMethod.Post, $"/v1/functions/{MissingId}/executions", projectId,
+            body: new { method = "GET", path = "/" }));
+        await AssertError(limited, 429, "general_rate_limit_exceeded");
+        Assert.Equal("2", limited.Headers.GetValues("RateLimit-Limit").Single());
+
+        // The row bucket is untouched by the exhausted function bucket.
+        Assert.Equal(404, (int)(await Client.SendAsync(Rows(projectId))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Realtime_ticket_minting_is_bounded()
+    {
+        var (_, projectId) = await SetupProjectAsync();
+
+        for (var i = 0; i < 2; i++)
+            await Client.SendAsync(DataPlane(HttpMethod.Post, "/v1/realtime/ticket", projectId));
+
+        var limited = await Client.SendAsync(DataPlane(HttpMethod.Post, "/v1/realtime/ticket", projectId));
+        await AssertError(limited, 429, "general_rate_limit_exceeded");
+    }
+
+    /// <summary>
+    /// Buckets partition on caller identity before source address, so one heavy client cannot spend
+    /// everyone else's budget — the shape that matters behind a NAT or a mobile carrier gateway,
+    /// where every request arrives from one address.
+    /// </summary>
+    [Fact]
+    public async Task Two_sessions_on_one_address_do_not_share_a_bucket()
+    {
+        var (_, projectId) = await SetupProjectAsync();
+        var (heavy, _) = await SignupAsync(projectId, "heavy@example.com");
+        var (quiet, _) = await SignupAsync(projectId, "quiet@example.com");
+
+        for (var i = 0; i < 3; i++)
+            await Client.SendAsync(Rows(projectId, heavy));
+        await AssertError(await Client.SendAsync(Rows(projectId, heavy)), 429, "general_rate_limit_exceeded");
+
+        Assert.Equal(404, (int)(await Client.SendAsync(Rows(projectId, quiet))).StatusCode);
+    }
+}
+
 public class CorsTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
     private static HttpRequestMessage WithOrigin(HttpRequestMessage request, string origin)

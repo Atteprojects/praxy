@@ -96,3 +96,16 @@ public sealed record SchemaJobResponse(
         }
     }
 }
+
+// ---- list response shapes -------------------------------------------------------------------
+// Named so the generated OpenAPI document describes them; wire shape unchanged.
+
+public sealed record DatabaseListResponse(int Total, IReadOnlyList<DatabaseResponse> Databases);
+
+public sealed record TableListResponse(int Total, IReadOnlyList<TableResponse> Tables);
+
+public sealed record ColumnListResponse(int Total, IReadOnlyList<ColumnResponse> Columns);
+
+public sealed record IndexListResponse(int Total, IReadOnlyList<IndexResponse> Indexes);
+
+public sealed record SchemaJobListResponse(int Total, IReadOnlyList<SchemaJobResponse> Jobs);

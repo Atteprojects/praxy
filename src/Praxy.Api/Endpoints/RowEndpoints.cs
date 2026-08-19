@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Praxy.Api.Infrastructure;
 using Praxy.Auth;
 using Praxy.Core;
@@ -20,13 +21,18 @@ public static class RowEndpoints
     {
         var group = api.MapGroup("/v1/databases")
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
-            .AddEndpointFilter<AppPrincipalFilter>();
+            .AddEndpointFilter<AppPrincipalFilter>()
+            .RequireRateLimiting("data-plane");
 
-        group.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow);
-        group.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows);
-        group.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow);
-        group.MapPatch("/{databaseId}/tables/{tableId}/rows/{rowId}", UpdateRow);
-        group.MapDelete("/{databaseId}/tables/{tableId}/rows/{rowId}", DeleteRow);
+        // A row is an open JSON object — its columns are defined at runtime, so the schema is
+        // `object` with the documented `$`-prefixed system fields, not a fixed record.
+        group.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow)
+            .Produces<JsonObject>(StatusCodes.Status201Created);
+        group.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows).Produces<RowListResponse>();
+        group.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow).Produces<JsonObject>();
+        group.MapPatch("/{databaseId}/tables/{tableId}/rows/{rowId}", UpdateRow).Produces<JsonObject>();
+        group.MapDelete("/{databaseId}/tables/{tableId}/rows/{rowId}", DeleteRow)
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     private static async Task<IResult> CreateRow(

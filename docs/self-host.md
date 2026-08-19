@@ -117,6 +117,9 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Webhooks:AllowPrivateNetworkTargets` | `false` | Same SSRF guard for webhook delivery targets. |
 | `Praxy:RateLimits:Auth:PermitLimit` / `:WindowSeconds` | 10 / 60 | Login, signup, OAuth-start, token-exchange, membership-accept. |
 | `Praxy:RateLimits:AuthEmail:PermitLimit` / `:WindowSeconds` | 5 / 600 | Verification and recovery email sends. |
+| `Praxy:RateLimits:DataPlane:PermitLimit` / `:WindowSeconds` | 600 / 60 | Row CRUD (`/v1/databases/.../rows`). A ceiling against runaway clients, not a per-app throttle — raise it if a legitimate client needs more. |
+| `Praxy:RateLimits:Functions:PermitLimit` / `:WindowSeconds` | 60 / 60 | Function invocation (`POST /v1/functions/{id}/executions`). Deliberately tighter than the rest of the data plane: each permitted request can start a container. |
+| `Praxy:RateLimits:Realtime:PermitLimit` / `:WindowSeconds` | 60 / 60 | Realtime ticket minting. Complements `Praxy:Realtime:MaxConnectionsPerProject`, which bounds live sockets rather than the rate they're requested at. |
 | `Praxy:Quotas:MaxProjects` | 100 | Projects per organization (org-overridable, see below). |
 | `Praxy:Quotas:MaxDatabasesPerProject` | 20 | Databases per project (org-overridable). |
 | `Praxy:Quotas:MaxTablesPerDatabase` | 200 | Tables per database (org-overridable). |
@@ -129,6 +132,14 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Functions:*` | see `docs/handoff/phase-7-report.md` | Docker endpoint, base images, build/execution timeouts, warm pool size, resource limits. |
 | `Praxy:Functions:DockerNetwork` | `""` | Docker network function containers join instead of publishing a host port; required when `api` itself runs in a container (this repo's own compose file sets it to `praxy-functions`) — see [Functions and the Docker socket](#functions-and-the-docker-socket). |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
+
+Every rate-limit bucket is partitioned on **project + caller identity**, falling back to the source
+address only for callers that present neither an API key nor a session. That matters behind a NAT,
+a corporate proxy or a mobile carrier gateway, where thousands of unrelated clients share one
+address and would otherwise share one budget. A tripped limit is always loud: `429` (never the
+framework's `503` default) with `Retry-After` and the `RateLimit-Limit`/`-Remaining`/`-Reset`
+triplet. Those headers appear on the 429 only, not on successful responses — see the known
+limitation in [api-reference.md](api-reference.md).
 
 **Org-level quotas** (`Praxy:Quotas:*` above) are the instance-wide defaults. An individual
 organization's `organizations.limits` jsonb column can override any of them per-dimension
@@ -162,6 +173,24 @@ all. `Praxy:Functions:DockerNetwork` defaults to empty, which falls back to the 
 behavior — correct only when `api` runs bare on the host (`dotnet run`, e.g. local development), not
 inside Compose. If you run `api` in a container outside this repo's own compose file, set this to
 whatever Docker network that container and its Docker daemon's function containers share.
+
+### Who can invoke a function
+
+Each function carries an `execute` list of roles (`any`, `guests`, `users`, `users/verified`,
+`user:<id>`, `team:<id>[/<role>]`, `member:<id>`, `label:<name>` — the same vocabulary table
+permissions use). A caller reaching `POST /v1/functions/{id}/executions` must resolve to one of
+them, and **an empty list denies everyone**, which is the state every newly created function starts
+in.
+
+- **API keys** need the `functions.execute` scope *and* a matching role. A key resolves to the role
+  `any`, so a key can only reach functions that grant `any` — unless it was created with
+  `bypassRowPermissions`, the existing "trusted server, skip the permission layer" flag, which skips
+  this gate too.
+- **Not gated:** invoking from the console (the operator is already authenticated on the project —
+  this is what keeps a deny-by-default function testable), event triggers, and cron schedules. Those
+  are operator-configured server-side paths with no external caller to authorize.
+- Authorization runs *before* the enabled/deployed checks, so an unauthorized caller gets the same
+  `401` whether or not the function exists in a runnable state.
 
 ## Backup and restore
 
@@ -220,6 +249,18 @@ same row content and `_created_at` timestamp — as before the simulated disaste
 `docs/handoff/phase-9-report.md` for the full transcript.
 
 ## Upgrading
+
+> **Breaking change when upgrading past v0.1.0 — function execute permissions.**
+> Functions now carry an `execute` role list and **a function nobody has been granted is invokable
+> by nobody**, the same deny-by-default posture a new table has. Before this change, any caller
+> holding a project id could invoke any enabled function; the migration backfills existing
+> functions to *deny* rather than migrating that hole forward silently.
+>
+> After upgrading, open **Functions → (a function) → Settings → Execute access** and grant the
+> roles each one needs — `any` reproduces the old behaviour, `users` restricts to signed-in app
+> users. Functions with nothing granted are flagged `no execute access` in the functions list.
+> Invoking from the console, event triggers and cron schedules are **not** affected and keep
+> working through the upgrade untouched.
 
 Upgrading is: take a backup (above — migrations are forward-only, there is no `down`), then
 `docker compose pull && docker compose up -d` (or rebuild from a newer tag). That's the whole

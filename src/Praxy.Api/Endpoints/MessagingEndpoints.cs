@@ -82,6 +82,23 @@ public sealed record MessageTargetResponse(
 /// data-plane endpoints this phase, same boundary Webhooks drew (sending is an operator action, not
 /// something app users or API keys trigger).
 /// </summary>
+public sealed record MessagingProviderListResponse(
+    int Total, IReadOnlyList<MessagingProviderResponse> Providers);
+
+public sealed record MessagingTopicListResponse(int Total, IReadOnlyList<MessagingTopicResponse> Topics);
+
+public sealed record MessagingSubscriberListResponse(
+    int Total, IReadOnlyList<MessagingSubscriberResponse> Subscribers);
+
+/// <summary>Templates are a fixed keyed set, so there is no total to report.</summary>
+public sealed record MessagingTemplateListResponse(IReadOnlyList<MessagingTemplateResponse> Templates);
+
+public sealed record MessageListResponse(int Total, IReadOnlyList<MessageResponse> Messages);
+
+/// <summary>A message with its per-target delivery outcomes — the composer's detail view.</summary>
+public sealed record MessageDetailResponse(
+    MessageResponse Message, IReadOnlyList<MessageTargetResponse> Targets);
+
 public static class MessagingEndpoints
 {
     public static void Map(IEndpointRouteBuilder api)
@@ -90,29 +107,49 @@ public static class MessagingEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapGet("/providers", ListProviders);
-        admin.MapPost("/providers", CreateProvider);
-        admin.MapGet("/providers/{providerId}", GetProvider);
-        admin.MapPatch("/providers/{providerId}", UpdateProvider);
-        admin.MapDelete("/providers/{providerId}", DeleteProvider);
+        admin.MapGet("/providers", ListProviders)
+            .Produces<MessagingProviderListResponse>();
+        admin.MapPost("/providers", CreateProvider)
+            .Produces<MessagingProviderResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/providers/{providerId}", GetProvider)
+            .Produces<MessagingProviderResponse>();
+        admin.MapPatch("/providers/{providerId}", UpdateProvider)
+            .Produces<MessagingProviderResponse>();
+        admin.MapDelete("/providers/{providerId}", DeleteProvider)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/topics", ListTopics);
-        admin.MapPost("/topics", CreateTopic);
-        admin.MapGet("/topics/{topicId}", GetTopic);
-        admin.MapPatch("/topics/{topicId}", UpdateTopic);
-        admin.MapDelete("/topics/{topicId}", DeleteTopic);
-        admin.MapGet("/topics/{topicId}/subscribers", ListSubscribers);
-        admin.MapPost("/topics/{topicId}/subscribers", Subscribe);
-        admin.MapDelete("/topics/{topicId}/subscribers/{subscriberId}", Unsubscribe);
+        admin.MapGet("/topics", ListTopics)
+            .Produces<MessagingTopicListResponse>();
+        admin.MapPost("/topics", CreateTopic)
+            .Produces<MessagingTopicResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/topics/{topicId}", GetTopic)
+            .Produces<MessagingTopicResponse>();
+        admin.MapPatch("/topics/{topicId}", UpdateTopic)
+            .Produces<MessagingTopicResponse>();
+        admin.MapDelete("/topics/{topicId}", DeleteTopic)
+            .Produces(StatusCodes.Status204NoContent);
+        admin.MapGet("/topics/{topicId}/subscribers", ListSubscribers)
+            .Produces<MessagingSubscriberListResponse>();
+        admin.MapPost("/topics/{topicId}/subscribers", Subscribe)
+            .Produces<MessagingSubscriberResponse>(StatusCodes.Status201Created);
+        admin.MapDelete("/topics/{topicId}/subscribers/{subscriberId}", Unsubscribe)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/templates", ListTemplates);
-        admin.MapGet("/templates/{key}", GetTemplate);
-        admin.MapPut("/templates/{key}", SetTemplate);
-        admin.MapDelete("/templates/{key}", ResetTemplate);
+        admin.MapGet("/templates", ListTemplates)
+            .Produces<MessagingTemplateListResponse>();
+        admin.MapGet("/templates/{key}", GetTemplate)
+            .Produces<MessagingTemplateResponse>();
+        admin.MapPut("/templates/{key}", SetTemplate)
+            .Produces<MessagingTemplateResponse>();
+        admin.MapDelete("/templates/{key}", ResetTemplate)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/messages", ListMessages);
-        admin.MapPost("/messages", CreateMessage);
-        admin.MapGet("/messages/{messageId}", GetMessage);
+        admin.MapGet("/messages", ListMessages)
+            .Produces<MessageListResponse>();
+        admin.MapPost("/messages", CreateMessage)
+            .Produces<MessageResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/messages/{messageId}", GetMessage)
+            .Produces<MessageDetailResponse>();
     }
 
     // ---- providers ------------------------------------------------------------------------------
@@ -121,7 +158,8 @@ public static class MessagingEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await providers.ListAsync(project.Id, ct);
-        return Results.Ok(new { total = list.Count, providers = list.Select(MessagingProviderResponse.From) });
+        return Results.Ok(new MessagingProviderListResponse(
+            list.Count, [.. list.Select(MessagingProviderResponse.From)]));
     }
 
     private static async Task<IResult> CreateProvider(
@@ -181,7 +219,8 @@ public static class MessagingEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await topics.ListAsync(project.Id, ct);
-        return Results.Ok(new { total = list.Count, topics = list.Select(x => MessagingTopicResponse.From(x.Topic, x.SubscriberCount)) });
+        return Results.Ok(new MessagingTopicListResponse(
+            list.Count, [.. list.Select(x => MessagingTopicResponse.From(x.Topic, x.SubscriberCount))]));
     }
 
     private static async Task<IResult> CreateTopic(
@@ -229,11 +268,8 @@ public static class MessagingEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var topic = await FindTopicAsync(topics, project.Id, topicId, ct);
         var list = await topics.ListSubscribersAsync(topic.Id, ct);
-        return Results.Ok(new
-        {
-            total = list.Count,
-            subscribers = list.Select(x => MessagingSubscriberResponse.From(x.Subscriber, x.Target)),
-        });
+        return Results.Ok(new MessagingSubscriberListResponse(
+            list.Count, [.. list.Select(x => MessagingSubscriberResponse.From(x.Subscriber, x.Target))]));
     }
 
     private static async Task<IResult> Subscribe(
@@ -270,7 +306,8 @@ public static class MessagingEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await templates.ListAsync(project.Id, ct);
-        return Results.Ok(new { templates = list.Select(x => MessagingTemplateResponse.From(x.Key, x.Template)) });
+        return Results.Ok(new MessagingTemplateListResponse(
+            [.. list.Select(x => MessagingTemplateResponse.From(x.Key, x.Template))]));
     }
 
     private static async Task<IResult> GetTemplate(
@@ -306,7 +343,7 @@ public static class MessagingEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var (limit, offset) = ListParams(http);
         var (total, page) = await messages.ListAsync(project.Id, limit, offset, ct);
-        return Results.Ok(new { total, messages = page.Select(MessageResponse.From) });
+        return Results.Ok(new MessageListResponse(total, [.. page.Select(MessageResponse.From)]));
     }
 
     private static async Task<IResult> CreateMessage(
@@ -327,7 +364,8 @@ public static class MessagingEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var message = await FindMessageAsync(messages, project.Id, messageId, ct);
         var targets = await messages.ListTargetsAsync(message.Id, ct);
-        return Results.Ok(new { message = MessageResponse.From(message), targets = targets.Select(MessageTargetResponse.From) });
+        return Results.Ok(new MessageDetailResponse(
+            MessageResponse.From(message), [.. targets.Select(MessageTargetResponse.From)]));
     }
 
     // ---- helpers --------------------------------------------------------------------------------

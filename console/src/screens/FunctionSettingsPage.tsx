@@ -5,6 +5,7 @@ import {
 } from "../api/functions";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { AddRoleButton, RoleLabel } from "../components/RolePicker";
 import { ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
 import { FunctionDetailHeader } from "./FunctionDetailHeader";
 
@@ -37,9 +38,19 @@ export function FunctionSettingsPage() {
   if (envVars.isError) throw envVars.error;
 
   const events = fn.data.events;
+  const execute = fn.data.execute;
 
   function toggleEvent(pattern: string, enabled: boolean) {
     update.mutate({ events: enabled ? [...events, pattern] : events.filter((p) => p !== pattern) });
+  }
+
+  function addExecuteRole(role: string) {
+    if (execute.includes(role)) return;
+    update.mutate({ execute: [...execute, role] });
+  }
+
+  function removeExecuteRole(role: string) {
+    update.mutate({ execute: execute.filter((r) => r !== role) });
   }
 
   async function onDeleteFunction() {
@@ -99,6 +110,42 @@ export function FunctionSettingsPage() {
                 </button>
               </div>
             </Field>
+          </div>
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">Execute access</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Who may invoke this function through the API
+            (<span className="font-mono">POST /v1/functions/{fn.data.id}/executions</span>). Invoking
+            from this console, event triggers and the schedule are unaffected.
+          </p>
+
+          {execute.length === 0 ? (
+            <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-400">
+              No roles granted — the API refuses every invocation of this function. Add a role below
+              to make it reachable.
+            </div>
+          ) : null}
+
+          <div className="divide-y divide-ink-800/60">
+            {execute.map((role) => (
+              <div key={role} className="flex items-center justify-between gap-3 py-2">
+                <RoleLabel projectId={projectId} role={role} />
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-ink-500 hover:text-coral-400 cursor-pointer"
+                  onClick={() => removeExecuteRole(role)}
+                  aria-label={`Remove ${role}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <AddRoleButton projectId={projectId} existingRoles={execute} onPick={addExecuteRole} />
           </div>
         </section>
 

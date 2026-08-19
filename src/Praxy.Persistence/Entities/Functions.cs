@@ -26,6 +26,19 @@ public class FunctionDef
     /// </summary>
     public string[] Events { get; set; } = [];
 
+    /// <summary>
+    /// Roles permitted to invoke this function over the data plane
+    /// (<c>POST /v1/functions/{functionId}/executions</c>). Empty means nobody — deny by default,
+    /// per roadmap rule 3, exactly like a freshly created table. Bare roles rather than
+    /// <c>action("role")</c> permission strings because a function has only one action; the role
+    /// vocabulary itself is the shared one (<c>Praxy.Core.Roles</c>).
+    ///
+    /// Deliberately does NOT gate the console's own invoke (operator-authenticated, the escape
+    /// hatch that keeps a function testable before any role is granted), event triggers, or cron
+    /// runs — those are operator-configured server-side paths with no external caller to authorize.
+    /// </summary>
+    public string[] Execute { get; set; } = [];
+
     /// <summary>Standard 5-field cron expression (parsed by Cronos), or null for no schedule.</summary>
     public string? Schedule { get; set; }
 

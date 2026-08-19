@@ -19,35 +19,59 @@ public static class ConsoleDatabaseEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapPost("", CreateDatabase);
-        admin.MapGet("", ListDatabases);
-        admin.MapGet("/{databaseId}", GetDatabase);
-        admin.MapDelete("/{databaseId}", DeleteDatabase);
+        admin.MapPost("", CreateDatabase)
+            .Produces<DatabaseResponse>(StatusCodes.Status201Created);
+        admin.MapGet("", ListDatabases)
+            .Produces<DatabaseListResponse>();
+        admin.MapGet("/{databaseId}", GetDatabase)
+            .Produces<DatabaseResponse>();
+        admin.MapDelete("/{databaseId}", DeleteDatabase)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapPost("/{databaseId}/tables", CreateTable);
-        admin.MapGet("/{databaseId}/tables", ListTables);
-        admin.MapGet("/{databaseId}/tables/{tableId}", GetTable);
-        admin.MapPatch("/{databaseId}/tables/{tableId}", UpdateTable);
-        admin.MapDelete("/{databaseId}/tables/{tableId}", DeleteTable);
+        admin.MapPost("/{databaseId}/tables", CreateTable)
+            .Produces<TableResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{databaseId}/tables", ListTables)
+            .Produces<TableListResponse>();
+        admin.MapGet("/{databaseId}/tables/{tableId}", GetTable)
+            .Produces<TableResponse>();
+        admin.MapPatch("/{databaseId}/tables/{tableId}", UpdateTable)
+            .Produces<TableResponse>();
+        admin.MapDelete("/{databaseId}/tables/{tableId}", DeleteTable)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{databaseId}/tables/{tableId}/permissions", GetPermissions);
-        admin.MapPatch("/{databaseId}/tables/{tableId}/permissions", UpdatePermissions);
+        admin.MapGet("/{databaseId}/tables/{tableId}/permissions", GetPermissions)
+            .Produces<TablePermissionsResponse>();
+        admin.MapPatch("/{databaseId}/tables/{tableId}/permissions", UpdatePermissions)
+            .Produces<TablePermissionsResponse>();
 
-        admin.MapPost("/{databaseId}/tables/{tableId}/columns/{type}", CreateColumn);
-        admin.MapGet("/{databaseId}/tables/{tableId}/columns", ListColumns);
-        admin.MapGet("/{databaseId}/tables/{tableId}/columns/{columnId}", GetColumn);
-        admin.MapPatch("/{databaseId}/tables/{tableId}/columns/{columnId}", UpdateColumn);
-        admin.MapDelete("/{databaseId}/tables/{tableId}/columns/{columnId}", DeleteColumn);
+        admin.MapPost("/{databaseId}/tables/{tableId}/columns/{type}", CreateColumn)
+            .Produces<ColumnResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{databaseId}/tables/{tableId}/columns", ListColumns)
+            .Produces<ColumnListResponse>();
+        admin.MapGet("/{databaseId}/tables/{tableId}/columns/{columnId}", GetColumn)
+            .Produces<ColumnResponse>();
+        admin.MapPatch("/{databaseId}/tables/{tableId}/columns/{columnId}", UpdateColumn)
+            .Produces<ColumnResponse>();
+        admin.MapDelete("/{databaseId}/tables/{tableId}/columns/{columnId}", DeleteColumn)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapPost("/{databaseId}/tables/{tableId}/indexes", CreateIndex);
-        admin.MapGet("/{databaseId}/tables/{tableId}/indexes", ListIndexes);
-        admin.MapGet("/{databaseId}/tables/{tableId}/indexes/{indexId}", GetIndex);
-        admin.MapDelete("/{databaseId}/tables/{tableId}/indexes/{indexId}", DeleteIndex);
+        admin.MapPost("/{databaseId}/tables/{tableId}/indexes", CreateIndex)
+            .Produces<IndexResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{databaseId}/tables/{tableId}/indexes", ListIndexes)
+            .Produces<IndexListResponse>();
+        admin.MapGet("/{databaseId}/tables/{tableId}/indexes/{indexId}", GetIndex)
+            .Produces<IndexResponse>();
+        admin.MapDelete("/{databaseId}/tables/{tableId}/indexes/{indexId}", DeleteIndex)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{databaseId}/jobs", ListJobs);
-        admin.MapGet("/{databaseId}/jobs/{jobId}", GetJob);
-        admin.MapPost("/{databaseId}/jobs/{jobId}/cancel", CancelJob);
-        admin.MapPost("/{databaseId}/jobs/{jobId}/retry", RetryJob);
+        admin.MapGet("/{databaseId}/jobs", ListJobs)
+            .Produces<SchemaJobListResponse>();
+        admin.MapGet("/{databaseId}/jobs/{jobId}", GetJob)
+            .Produces<SchemaJobResponse>();
+        admin.MapPost("/{databaseId}/jobs/{jobId}/cancel", CancelJob)
+            .Produces<SchemaJobResponse>();
+        admin.MapPost("/{databaseId}/jobs/{jobId}/retry", RetryJob)
+            .Produces<SchemaJobResponse>();
     }
 
     // ---- databases ------------------------------------------------------------------------------
@@ -66,7 +90,7 @@ public static class ConsoleDatabaseEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await databases.ListAsync(project.Id, ct);
-        return Results.Ok(new { total = list.Count, databases = list.Select(DatabaseResponse.From) });
+        return Results.Ok(new DatabaseListResponse(list.Count, [.. list.Select(DatabaseResponse.From)]));
     }
 
     private static async Task<IResult> GetDatabase(
@@ -108,7 +132,7 @@ public static class ConsoleDatabaseEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
         var list = await tables.ListAsync(database.Id, ct);
-        return Results.Ok(new { total = list.Count, tables = list.Select(TableResponse.From) });
+        return Results.Ok(new TableListResponse(list.Count, [.. list.Select(TableResponse.From)]));
     }
 
     private static async Task<IResult> GetTable(
@@ -201,7 +225,7 @@ public static class ConsoleDatabaseEndpoints
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
         var table = await SchemaLookup.TableAsync(tables, database.Id, tableId, ct);
         var list = await columns.ListAsync(table.Id, ct);
-        return Results.Ok(new { total = list.Count, columns = list.Select(ColumnResponse.From) });
+        return Results.Ok(new ColumnListResponse(list.Count, [.. list.Select(ColumnResponse.From)]));
     }
 
     private static async Task<IResult> GetColumn(
@@ -266,7 +290,7 @@ public static class ConsoleDatabaseEndpoints
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
         var table = await SchemaLookup.TableAsync(tables, database.Id, tableId, ct);
         var list = await indexes.ListAsync(table.Id, ct);
-        return Results.Ok(new { total = list.Count, indexes = list.Select(IndexResponse.From) });
+        return Results.Ok(new IndexListResponse(list.Count, [.. list.Select(IndexResponse.From)]));
     }
 
     private static async Task<IResult> GetIndex(
@@ -303,7 +327,7 @@ public static class ConsoleDatabaseEndpoints
         var tableId = http.Request.Query["tableId"].FirstOrDefault();
         Guid? tableFilter = Ids.TryParseWire(tableId, out var parsed) ? parsed : null;
         var list = await jobs.ListAsync(database.Id, tableFilter, ct);
-        return Results.Ok(new { total = list.Count, jobs = list.Select(SchemaJobResponse.From) });
+        return Results.Ok(new SchemaJobListResponse(list.Count, [.. list.Select(SchemaJobResponse.From)]));
     }
 
     private static async Task<IResult> GetJob(

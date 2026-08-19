@@ -9,10 +9,12 @@ using Praxy.Persistence.Entities;
 namespace Praxy.Api.Endpoints;
 
 public sealed record CreateFunctionRequest(
-    string Key, string Name, string Runtime, string Entrypoint, int? TimeoutSeconds, string[]? Events, string? Schedule);
+    string Key, string Name, string Runtime, string Entrypoint, int? TimeoutSeconds, string[]? Events,
+    string[]? Execute, string? Schedule);
 
 public sealed record UpdateFunctionRequest(
-    string? Name, string? Entrypoint, int? TimeoutSeconds, string[]? Events, string? Schedule, bool? Enabled);
+    string? Name, string? Entrypoint, int? TimeoutSeconds, string[]? Events, string[]? Execute, string? Schedule,
+    bool? Enabled);
 
 public sealed record SetEnvVarRequest(string Value);
 
@@ -22,12 +24,13 @@ public sealed record FunctionRuntimeResponse(string Id, string BaseImage);
 
 public sealed record FunctionResponse(
     string Id, string Key, string Name, string Runtime, string Entrypoint, int TimeoutSeconds, bool Enabled,
-    string[] Events, string? Schedule, DateTimeOffset? NextScheduledRunAt, string? ActiveDeploymentId, bool IsWarm,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    string[] Events, string[] Execute, string? Schedule, DateTimeOffset? NextScheduledRunAt,
+    string? ActiveDeploymentId, bool IsWarm, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static FunctionResponse From(FunctionDef f, bool isWarm) => new(
-        Ids.Wire(f.Id), f.Key, f.Name, f.Runtime, f.Entrypoint, f.TimeoutSeconds, f.Enabled, f.Events, f.Schedule,
-        f.NextScheduledRunAt, f.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isWarm, f.CreatedAt, f.UpdatedAt);
+        Ids.Wire(f.Id), f.Key, f.Name, f.Runtime, f.Entrypoint, f.TimeoutSeconds, f.Enabled, f.Events, f.Execute,
+        f.Schedule, f.NextScheduledRunAt, f.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isWarm,
+        f.CreatedAt, f.UpdatedAt);
 }
 
 public sealed record FunctionEnvVarResponse(string Key, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
@@ -53,12 +56,29 @@ public sealed record FunctionExecutionResponse(
         e.Errors, e.DurationMs, e.ColdStart, e.TriggeredBy, e.CreatedAt, e.CompletedAt);
 }
 
+public sealed record FunctionListResponse(int Total, IReadOnlyList<FunctionResponse> Functions);
+
+public sealed record FunctionRuntimeListResponse(IReadOnlyList<FunctionRuntimeResponse> Runtimes);
+
+public sealed record FunctionEnvVarListResponse(int Total, IReadOnlyList<FunctionEnvVarResponse> Vars);
+
+public sealed record FunctionDeploymentListResponse(
+    int Total, IReadOnlyList<FunctionDeploymentResponse> Deployments);
+
+public sealed record FunctionExecutionListResponse(
+    int Total, IReadOnlyList<FunctionExecutionResponse> Executions);
+
 /// <summary>
 /// Functions (Phase 7): console admin surface for deploying/configuring/inspecting functions, plus
 /// the data-plane invocation endpoint app users and API keys call. Same operator-filter chain and
 /// audit-log convention as <see cref="WebhookEndpoints"/> for the console half; the data-plane half
 /// mirrors <see cref="RowEndpoints"/>'s <c>AppPrincipalFilter</c> shape so a scoped user JWT can be
 /// minted for whichever caller triggered the invocation.
+///
+/// Data-plane invocation is authorized by the function's <c>execute</c> role list, which is empty on
+/// a new function — deny by default, the same posture a new table has. Server-side trigger paths
+/// (console invoke, event dispatch, cron) are operator-configured and carry no external caller, so
+/// they are not gated; see <see cref="RequireExecutePermissionAsync"/>.
 /// </summary>
 public static class FunctionEndpoints
 {
@@ -68,31 +88,52 @@ public static class FunctionEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapGet("", ListFunctions);
-        admin.MapGet("/runtimes", ListRuntimes);
-        admin.MapPost("", CreateFunction);
-        admin.MapGet("/{functionId}", GetFunction);
-        admin.MapPatch("/{functionId}", UpdateFunction);
-        admin.MapDelete("/{functionId}", DeleteFunction);
+        admin.MapGet("", ListFunctions)
+            .Produces<FunctionListResponse>();
+        admin.MapGet("/runtimes", ListRuntimes)
+            .Produces<FunctionRuntimeListResponse>();
+        admin.MapPost("", CreateFunction)
+            .Produces<FunctionResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{functionId}", GetFunction)
+            .Produces<FunctionResponse>();
+        admin.MapPatch("/{functionId}", UpdateFunction)
+            .Produces<FunctionResponse>();
+        admin.MapDelete("/{functionId}", DeleteFunction)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{functionId}/env", ListEnvVars);
-        admin.MapPut("/{functionId}/env/{envKey}", SetEnvVar);
-        admin.MapDelete("/{functionId}/env/{envKey}", DeleteEnvVar);
+        admin.MapGet("/{functionId}/env", ListEnvVars)
+            .Produces<FunctionEnvVarListResponse>();
+        admin.MapPut("/{functionId}/env/{envKey}", SetEnvVar)
+            .Produces<FunctionEnvVarResponse>();
+        admin.MapDelete("/{functionId}/env/{envKey}", DeleteEnvVar)
+            .Produces(StatusCodes.Status204NoContent);
 
-        admin.MapGet("/{functionId}/deployments", ListDeployments);
-        admin.MapPost("/{functionId}/deployments", CreateDeployment);
-        admin.MapGet("/{functionId}/deployments/{deploymentId}", GetDeployment);
-        admin.MapPost("/{functionId}/deployments/{deploymentId}/activate", ActivateDeployment);
+        admin.MapGet("/{functionId}/deployments", ListDeployments)
+            .Produces<FunctionDeploymentListResponse>();
+        admin.MapPost("/{functionId}/deployments", CreateDeployment)
+            .Produces<FunctionDeploymentResponse>(StatusCodes.Status201Created);
+        admin.MapGet("/{functionId}/deployments/{deploymentId}", GetDeployment)
+            .Produces<FunctionDeploymentResponse>();
+        admin.MapPost("/{functionId}/deployments/{deploymentId}/activate", ActivateDeployment)
+            .Produces<FunctionDeploymentResponse>();
 
-        admin.MapGet("/{functionId}/executions", ListExecutions);
-        admin.MapGet("/{functionId}/executions/{executionId}", GetExecution);
-        admin.MapPost("/{functionId}/executions", ConsoleInvoke);
+        admin.MapGet("/{functionId}/executions", ListExecutions)
+            .Produces<FunctionExecutionListResponse>();
+        admin.MapGet("/{functionId}/executions/{executionId}", GetExecution)
+            .Produces<FunctionExecutionResponse>();
+        admin.MapPost("/{functionId}/executions", ConsoleInvoke)
+            .Produces<FunctionExecutionResponse>();
 
+        // Tighter than the rest of the data plane: every permitted request here can start a
+        // container, so this is the one bucket where the limit is about capacity, not just abuse.
         var dataPlane = api.MapGroup("/v1/functions")
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
-            .AddEndpointFilter<AppPrincipalFilter>();
+            .AddEndpointFilter<AppPrincipalFilter>()
+            .RequireRateLimiting("functions");
 
-        dataPlane.MapPost("/{functionId}/executions", Invoke);
+        dataPlane.MapPost("/{functionId}/executions", Invoke)
+            .Produces<FunctionExecutionResponse>()
+            .Produces<FunctionExecutionResponse>(StatusCodes.Status202Accepted);
     }
 
     // ---- functions ------------------------------------------------------------------------------
@@ -101,7 +142,8 @@ public static class FunctionEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await functions.ListAsync(project.Id, ct);
-        return Results.Ok(new { total = list.Count, functions = list.Select(f => FunctionResponse.From(f, functions.IsWarm(f))) });
+        return Results.Ok(new FunctionListResponse(
+            list.Count, [.. list.Select(f => FunctionResponse.From(f, functions.IsWarm(f)))]));
     }
 
     /// <summary>
@@ -111,18 +153,17 @@ public static class FunctionEndpoints
     /// actual pin, not a stale guess.
     /// </summary>
     private static IResult ListRuntimes(FunctionsOptions options) =>
-        Results.Ok(new
-        {
-            runtimes = FunctionRuntimes.All.Select(r => new FunctionRuntimeResponse(
-                r, r == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage)),
-        });
+        Results.Ok(new FunctionRuntimeListResponse(
+            [.. FunctionRuntimes.All.Select(r => new FunctionRuntimeResponse(
+                r, r == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage))]));
 
     private static async Task<IResult> CreateFunction(
         CreateFunctionRequest req, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
         var fn = await functions.CreateAsync(
-            project.Id, req.Key, req.Name, req.Runtime, req.Entrypoint, req.TimeoutSeconds ?? 15, req.Events ?? [], req.Schedule, ct);
+            project.Id, req.Key, req.Name, req.Runtime, req.Entrypoint, req.TimeoutSeconds ?? 15, req.Events ?? [],
+            req.Execute ?? [], req.Schedule, ct);
         await AuditAsync(db, http, project.Id, "functions.create", $"function/{Ids.Wire(fn.Id)}", ct);
         return Results.Created(
             $"/v1/console/projects/{project.Id}/functions/{Ids.Wire(fn.Id)}", FunctionResponse.From(fn, false));
@@ -141,8 +182,14 @@ public static class FunctionEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var updated = await functions.UpdateAsync(
-            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Schedule, req.Enabled, ct);
-        await AuditAsync(db, http, project.Id, "functions.update", $"function/{functionId}", ct);
+            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled, ct);
+        // A permission change gets its own action string. The audit log records what was touched but
+        // not what it became, so folding "who may run this" into the same `functions.update` as a
+        // timeout tweak would make the one security-relevant edit here invisible to anyone reading
+        // the log later.
+        await AuditAsync(db, http, project.Id,
+            req.Execute is null ? "functions.update" : "functions.execute.update",
+            $"function/{functionId}", ct);
         return Results.Ok(FunctionResponse.From(updated, functions.IsWarm(updated)));
     }
 
@@ -163,7 +210,7 @@ public static class FunctionEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var list = await functions.ListEnvVarsAsync(fn.Id, ct);
-        return Results.Ok(new { total = list.Count, vars = list.Select(FunctionEnvVarResponse.From) });
+        return Results.Ok(new FunctionEnvVarListResponse(list.Count, [.. list.Select(FunctionEnvVarResponse.From)]));
     }
 
     private static async Task<IResult> SetEnvVar(
@@ -194,7 +241,8 @@ public static class FunctionEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var list = await functions.ListDeploymentsAsync(fn.Id, ct);
-        return Results.Ok(new { total = list.Count, deployments = list.Select(FunctionDeploymentResponse.From) });
+        return Results.Ok(new FunctionDeploymentListResponse(
+            list.Count, [.. list.Select(FunctionDeploymentResponse.From)]));
     }
 
     private static async Task<IResult> CreateDeployment(
@@ -239,7 +287,7 @@ public static class FunctionEndpoints
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var (limit, offset) = ListParams(http);
         var (total, page) = await functions.ListExecutionsAsync(fn.Id, limit, offset, ct);
-        return Results.Ok(new { total, executions = page.Select(FunctionExecutionResponse.From) });
+        return Results.Ok(new FunctionExecutionListResponse(total, [.. page.Select(FunctionExecutionResponse.From)]));
     }
 
     private static async Task<IResult> GetExecution(
@@ -252,6 +300,11 @@ public static class FunctionEndpoints
     }
 
     /// <summary>The console's "Run" / test-invoke button — always as trigger "http", never scoped to an app user (operators aren't app users, so no JWT is minted for it).</summary>
+    /// <summary>
+    /// The operator's own invoke. Deliberately NOT gated on the function's <c>execute</c> roles: the
+    /// caller is already an authenticated operator on this project, and this is the escape hatch that
+    /// keeps a freshly created (deny-by-default) function testable before any role is granted.
+    /// </summary>
     private static async Task<IResult> ConsoleInvoke(
         string functionId, InvokeFunctionRequest req, HttpContext http, PraxyDb db,
         FunctionsService functions, FunctionExecutionService runner, FunctionExecutionSignal signal, CancellationToken ct)
@@ -281,7 +334,8 @@ public static class FunctionEndpoints
     /// <summary>Data-plane invocation: app-user sessions, JWTs and API keys. Sync unless <c>?async=true</c>.</summary>
     private static async Task<IResult> Invoke(
         string functionId, InvokeFunctionRequest req, HttpContext http,
-        FunctionsService functions, FunctionExecutionService runner, FunctionExecutionSignal signal, CancellationToken ct)
+        FunctionsService functions, FunctionExecutionService runner, FunctionExecutionSignal signal,
+        IRoleResolver roleResolver, CancellationToken ct)
     {
         if (AppPrincipalFilter.Current(http) is RequestPrincipal.Key)
             AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsExecute);
@@ -290,6 +344,9 @@ public static class FunctionEndpoints
         if (!Ids.TryParseWire(functionId, out var parsed))
             throw PraxyException.NotFound(ErrorTypes.FunctionNotFound, "Function not found.");
         var fn = await functions.GetAsync(project.Id, parsed, ct);
+        // Authorize before reporting state: an unauthorized caller gets the same 401 whether or not
+        // the function is disabled or undeployed, rather than being told which.
+        await RequireExecutePermissionAsync(http, fn, roleResolver);
         RequireInvokable(fn);
 
         var isAsync = bool.TryParse(http.Request.Query["async"], out var a) && a;
@@ -321,6 +378,23 @@ public static class FunctionEndpoints
             throw new PraxyException(400, ErrorTypes.FunctionDisabled, "This function is disabled.");
         if (fn.ActiveDeploymentId is null)
             throw new PraxyException(400, ErrorTypes.FunctionNoActiveDeployment, "This function has no active deployment yet.");
+    }
+
+    /// <summary>
+    /// The data plane's authorization gate, mirroring <see cref="RowEndpoints"/>'s table-permission
+    /// check: roles come from THE role resolver (roadmap rule 2), and a function with an empty
+    /// <c>execute</c> list is reachable by nobody (rule 3). A key needs its <c>functions.execute</c>
+    /// scope <em>and</em> a matching role, exactly as a key needs both a <c>databases.*</c> scope and
+    /// a table permission — except a <c>BypassRowPermissions</c> key, which is already the documented
+    /// "trusted server, skip the permission layer" escape hatch on rows and means the same here.
+    /// </summary>
+    private static async Task RequireExecutePermissionAsync(HttpContext http, FunctionDef fn, IRoleResolver roleResolver)
+    {
+        if (AppPrincipalFilter.Current(http) is RequestPrincipal.Key(var apiKey) && apiKey.BypassRowPermissions)
+            return;
+        var roles = await RequestRoles.GetAsync(http, roleResolver);
+        if (!FunctionsService.CanExecute(fn, roles))
+            throw PraxyException.Unauthorized("Not permitted to execute this function.");
     }
 
     // ---- helpers --------------------------------------------------------------------------------

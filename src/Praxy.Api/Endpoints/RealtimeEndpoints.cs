@@ -19,30 +19,52 @@ namespace Praxy.Api.Endpoints;
 /// is what makes research/appwrite-api.md's "early subscribe before auth settles" race structural-
 /// ly impossible here rather than something to detect and queue around.
 /// </summary>
+/// <summary>Live socket count for the project — the overview's stat tile polls this.</summary>
+public sealed record RealtimeConnectionCountResponse(int Count);
+
+/// <summary>Single-use, short-lived credential a non-browser client swaps for a socket.</summary>
+public sealed record RealtimeTicketResponse(string Ticket, DateTimeOffset ExpiresAt);
+
 public static class RealtimeEndpoints
 {
     private const int MaxMessageBytes = 64 * 1024;
 
     public static void Map(IEndpointRouteBuilder api)
     {
-        api.MapGet("/v1/realtime", HandleSocket);
+        // A WebSocket upgrade, not a JSON endpoint: it answers 101 and the protocol takes over from
+        // there, so it has no response body to describe. Said out loud in the document rather than
+        // left blank, so a reader can tell this apart from an endpoint nobody documented.
+        api.MapGet("/v1/realtime", HandleSocket)
+            .WithSummary("WebSocket endpoint (upgrade required)")
+            .WithDescription(
+                "Upgrades to a WebSocket carrying the message-mode protocol "
+                + "(connected/subscribe/unsubscribe/ping/event). Authenticate with a session token, an "
+                + "API key, or a single-use ticket from POST /v1/realtime/ticket. A plain GET without "
+                + "an upgrade header is rejected.")
+            .Produces(StatusCodes.Status101SwitchingProtocols);
 
+        // Ticket minting is the non-browser path onto a socket, so it is the cheapest place to
+        // mass-produce connections from — bounded here, on top of the per-project connection quota
+        // the socket handler already enforces.
         var ticket = api.MapGroup("/v1/realtime")
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
-            .AddEndpointFilter<AppPrincipalFilter>();
-        ticket.MapPost("/ticket", CreateTicket);
+            .AddEndpointFilter<AppPrincipalFilter>()
+            .RequireRateLimiting("realtime");
+        ticket.MapPost("/ticket", CreateTicket)
+            .Produces<RealtimeTicketResponse>();
 
         // The realtime inspector's live connection count (project overview stat tile).
         api.MapGroup("/v1/console/projects/{projectId}")
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>()
-            .MapGet("/realtime/connections", GetConnectionCount);
+            .MapGet("/realtime/connections", GetConnectionCount)
+            .Produces<RealtimeConnectionCountResponse>();
     }
 
     private static IResult GetConnectionCount(HttpContext http, ConnectionRegistry registry)
     {
         var project = ConsoleProjectFilter.Current(http);
-        return Results.Ok(new { count = registry.CountForProject(project.Id) });
+        return Results.Ok(new RealtimeConnectionCountResponse(registry.CountForProject(project.Id)));
     }
 
     // ---- ticket mint ----------------------------------------------------------------------------
@@ -57,7 +79,7 @@ public static class RealtimeEndpoints
             _ => throw PraxyException.Unauthorized("Realtime tickets require a session or API key."),
         };
         var (value, expiresAt) = tickets.Mint(data);
-        return Results.Ok(new { ticket = value, expiresAt });
+        return Results.Ok(new RealtimeTicketResponse(value, expiresAt));
     }
 
     // ---- socket -----------------------------------------------------------------------------------

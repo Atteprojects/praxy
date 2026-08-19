@@ -391,6 +391,8 @@ export interface PraxyFunction {
   timeoutSeconds: number;
   enabled: boolean;
   events: string[];
+  /** Roles allowed to invoke over the data plane. Empty = nobody (deny by default). */
+  execute: string[];
   schedule: string | null;
   nextScheduledRunAt: string | null;
   activeDeploymentId: string | null;

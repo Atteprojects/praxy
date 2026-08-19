@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Praxy.Core;
 
 namespace Praxy.Tables;
 
@@ -66,29 +67,12 @@ public static partial class PermissionStrings
     }
 
     /// <summary>
-    /// Validates a role string's shape against architecture.md §4.3's grammar. Lenient on the
-    /// free-form parts (label names, team custom roles) — matching Phase 1's membership-roles
-    /// precedent of validating shape, not a closed vocabulary.
+    /// Validates a role string's shape against architecture.md §4.3's grammar. Delegates to
+    /// <see cref="Roles.IsValid"/> — function <c>execute</c> lists validate the same strings, and
+    /// two copies of this grammar would drift.
     /// </summary>
-    public static bool IsValidRole(string role) =>
-        role is "any" or "guests" or "users" or "users/verified" ||
-        UserRoleRegex().IsMatch(role) ||
-        TeamRoleRegex().IsMatch(role) ||
-        MemberRoleRegex().IsMatch(role) ||
-        LabelRoleRegex().IsMatch(role);
+    public static bool IsValidRole(string role) => Roles.IsValid(role);
 
     [GeneratedRegex("""^(?<action>read|create|update|delete|write)\("(?<role>[^"]+)"\)$""")]
     private static partial Regex PermissionRegex();
-
-    [GeneratedRegex("^user:[0-9a-f]{32}(/verified)?$")]
-    private static partial Regex UserRoleRegex();
-
-    [GeneratedRegex("^team:[0-9a-f]{32}(/[a-zA-Z0-9_-]{1,64})?$")]
-    private static partial Regex TeamRoleRegex();
-
-    [GeneratedRegex("^member:[0-9a-f]{32}$")]
-    private static partial Regex MemberRoleRegex();
-
-    [GeneratedRegex("^label:[a-zA-Z0-9_-]{1,64}$")]
-    private static partial Regex LabelRoleRegex();
 }
