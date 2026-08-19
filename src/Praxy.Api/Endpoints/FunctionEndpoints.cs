@@ -144,6 +144,44 @@ public static class FunctionEndpoints
         // feature. Scoped to the caller's own execution — see GetDataPlaneExecution.
         dataPlane.MapGet("/{functionId}/executions/{executionId}", GetDataPlaneExecution)
             .Produces<FunctionExecutionResponse>();
+        // execution.read only — see ListDataPlaneExecutions.
+        dataPlane.MapGet("/{functionId}/executions", ListDataPlaneExecutions)
+            .Produces<FunctionExecutionListResponse>();
+
+        // The server-side management surface: a functions.read/functions.write key manages
+        // functions exactly as a console operator does. Same group (rate limit included — a
+        // deployment upload builds a container image, just as costly as an invocation) and the
+        // same underlying FunctionsService calls the console handlers above use; a key never had
+        // any way to do this before, which meant a CI/CD pipeline deploying a new build always
+        // needed a human operator's browser session.
+        dataPlane.MapGet("", ServerListFunctions)
+            .Produces<FunctionListResponse>();
+        dataPlane.MapGet("/runtimes", ServerListRuntimes)
+            .Produces<FunctionRuntimeListResponse>();
+        dataPlane.MapPost("", ServerCreateFunction)
+            .Produces<FunctionResponse>(StatusCodes.Status201Created);
+        dataPlane.MapGet("/{functionId}", ServerGetFunction)
+            .Produces<FunctionResponse>();
+        dataPlane.MapPatch("/{functionId}", ServerUpdateFunction)
+            .Produces<FunctionResponse>();
+        dataPlane.MapDelete("/{functionId}", ServerDeleteFunction)
+            .Produces(StatusCodes.Status204NoContent);
+
+        dataPlane.MapGet("/{functionId}/env", ServerListEnvVars)
+            .Produces<FunctionEnvVarListResponse>();
+        dataPlane.MapPut("/{functionId}/env/{envKey}", ServerSetEnvVar)
+            .Produces<FunctionEnvVarResponse>();
+        dataPlane.MapDelete("/{functionId}/env/{envKey}", ServerDeleteEnvVar)
+            .Produces(StatusCodes.Status204NoContent);
+
+        dataPlane.MapGet("/{functionId}/deployments", ServerListDeployments)
+            .Produces<FunctionDeploymentListResponse>();
+        dataPlane.MapPost("/{functionId}/deployments", ServerCreateDeployment)
+            .Produces<FunctionDeploymentResponse>(StatusCodes.Status201Created);
+        dataPlane.MapGet("/{functionId}/deployments/{deploymentId}", ServerGetDeployment)
+            .Produces<FunctionDeploymentResponse>();
+        dataPlane.MapPost("/{functionId}/deployments/{deploymentId}/activate", ServerActivateDeployment)
+            .Produces<FunctionDeploymentResponse>();
     }
 
     // ---- functions ------------------------------------------------------------------------------
@@ -348,7 +386,7 @@ public static class FunctionEndpoints
         IRoleResolver roleResolver, CancellationToken ct)
     {
         if (AppPrincipalFilter.Current(http) is RequestPrincipal.Key)
-            AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsExecute);
+            AppPrincipalFilter.RequireScope(http, ApiKeyScopes.ExecutionWrite);
 
         var project = DataPlaneEndpoints.CurrentProject(http);
         if (!Ids.TryParseWire(functionId, out var parsed))
@@ -376,13 +414,18 @@ public static class FunctionEndpoints
     }
 
     /// <summary>
-    /// The data plane's own execution read — the other half of async invocation. Scoped to
+    /// The data plane's own execution read — the other half of async invocation. Default scope is
     /// "your own execution only": a caller may read an execution whose stored
     /// <see cref="FunctionExecution.TriggeredBy"/> matches their own <see cref="CallerIdentity"/>,
     /// nothing wider. The looser alternative — anyone holding the function's <c>execute</c> role may
     /// read any execution of it — was rejected: two unrelated app users who both satisfy
     /// <c>execute("users")</c> on a public function would otherwise be able to read each other's
     /// request bodies, response bodies and logs. Own-execution-only never crosses that line.
+    ///
+    /// A key explicitly holding <see cref="ApiKeyScopes.ExecutionRead"/> (or bypass) gets the wider
+    /// read Appwrite's equivalent scope implies — any execution of the function, not just its own —
+    /// because that grant is an operator's own deliberate choice on a key they issued, not something
+    /// an app-facing <c>execute</c> role can trigger on someone else's behalf.
     ///
     /// A caller who fails the check gets the same <see cref="ErrorTypes.FunctionExecutionNotFound"/>
     /// a nonexistent id would produce — never a distinguishable 401 — so this endpoint cannot be used
@@ -397,21 +440,187 @@ public static class FunctionEndpoints
     private static async Task<IResult> GetDataPlaneExecution(
         string functionId, string executionId, HttpContext http, FunctionsService functions, CancellationToken ct)
     {
-        if (AppPrincipalFilter.Current(http) is RequestPrincipal.Key)
-            AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsExecute);
+        var principal = AppPrincipalFilter.Current(http);
+        if (principal is RequestPrincipal.Key)
+            RequireAnyScope(http, ApiKeyScopes.ExecutionRead, ApiKeyScopes.ExecutionWrite);
 
         var project = DataPlaneEndpoints.CurrentProject(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var execution = await FindExecutionAsync(functions, fn.Id, executionId, ct);
 
-        // The same "trusted server, skip the permission layer" escape hatch RequireExecutePermissionAsync
-        // already grants a bypass key for invocation — a key trusted to invoke anything and bypass row
-        // permissions entirely is trusted to read back an execution it didn't itself trigger.
-        var isBypassKey = AppPrincipalFilter.Current(http) is RequestPrincipal.Key(var apiKey) && apiKey.BypassRowPermissions;
-        if (!isBypassKey && execution.TriggeredBy != CallerIdentity(http))
+        // A bypass key, or one an operator explicitly trusted with execution.read, may read any
+        // execution of this function — everyone else (app users, JWTs, and a key holding only
+        // execution.write) is limited to the execution they themselves triggered.
+        var hasBroadReadAccess = principal is RequestPrincipal.Key(var apiKey)
+            && (apiKey.BypassRowPermissions || apiKey.Scopes.Contains(ApiKeyScopes.ExecutionRead));
+        if (!hasBroadReadAccess && execution.TriggeredBy != CallerIdentity(http))
             throw PraxyException.NotFound(ErrorTypes.FunctionExecutionNotFound, "Execution not found.");
 
         return Results.Ok(FunctionExecutionResponse.From(execution));
+    }
+
+    /// <summary>
+    /// The broad execution list Appwrite's <c>execution.read</c> implies — every execution of the
+    /// function, not just the caller's own. Deliberately key-only (no app-user/JWT path): an app
+    /// user listing every execution of a function it can merely invoke would be the same cross-caller
+    /// leak <see cref="GetDataPlaneExecution"/>'s own-execution default exists to prevent. A key only
+    /// gets here because an operator explicitly granted it this scope.
+    /// </summary>
+    private static async Task<IResult> ListDataPlaneExecutions(
+        string functionId, HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.ExecutionRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var (limit, offset) = ListParams(http);
+        var (total, page) = await functions.ListExecutionsAsync(fn.Id, limit, offset, ct);
+        return Results.Ok(new FunctionExecutionListResponse(total, [.. page.Select(FunctionExecutionResponse.From)]));
+    }
+
+    // ---- server-side function management (functions.read / functions.write keys) ----------------
+
+    private static async Task<IResult> ServerListFunctions(HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var list = await functions.ListAsync(project.Id, ct);
+        return Results.Ok(new FunctionListResponse(
+            list.Count, [.. list.Select(f => FunctionResponse.From(f, functions.IsWarm(f)))]));
+    }
+
+    private static IResult ServerListRuntimes(HttpContext http, FunctionsOptions options)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsRead);
+        return Results.Ok(new FunctionRuntimeListResponse(
+            [.. FunctionRuntimes.All.Select(r => new FunctionRuntimeResponse(
+                r, r == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage))]));
+    }
+
+    private static async Task<IResult> ServerCreateFunction(
+        CreateFunctionRequest req, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await functions.CreateAsync(
+            project.Id, req.Key, req.Name, req.Runtime, req.Entrypoint, req.TimeoutSeconds ?? 15, req.Events ?? [],
+            req.Execute ?? [], req.Schedule, ct);
+        await AuditKeyAsync(db, http, project.Id, "functions.create", $"function/{Ids.Wire(fn.Id)}", ct);
+        return Results.Created($"/v1/functions/{Ids.Wire(fn.Id)}", FunctionResponse.From(fn, false));
+    }
+
+    private static async Task<IResult> ServerGetFunction(
+        string functionId, HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        return Results.Ok(FunctionResponse.From(fn, functions.IsWarm(fn)));
+    }
+
+    private static async Task<IResult> ServerUpdateFunction(
+        string functionId, UpdateFunctionRequest req, HttpContext http, PraxyDb db, FunctionsService functions,
+        CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var updated = await functions.UpdateAsync(
+            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled, ct);
+        await AuditKeyAsync(db, http, project.Id,
+            req.Execute is null ? "functions.update" : "functions.execute.update", $"function/{functionId}", ct);
+        return Results.Ok(FunctionResponse.From(updated, functions.IsWarm(updated)));
+    }
+
+    private static async Task<IResult> ServerDeleteFunction(
+        string functionId, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        await functions.DeleteAsync(fn, ct);
+        await AuditKeyAsync(db, http, project.Id, "functions.delete", $"function/{functionId}", ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ServerListEnvVars(
+        string functionId, HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var list = await functions.ListEnvVarsAsync(fn.Id, ct);
+        return Results.Ok(new FunctionEnvVarListResponse(list.Count, [.. list.Select(FunctionEnvVarResponse.From)]));
+    }
+
+    private static async Task<IResult> ServerSetEnvVar(
+        string functionId, string envKey, SetEnvVarRequest req, HttpContext http, PraxyDb db,
+        FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var v = await functions.SetEnvVarAsync(fn.Id, envKey, req.Value, ct);
+        await AuditKeyAsync(db, http, project.Id, "functions.env.set", $"function/{functionId}/env/{envKey}", ct);
+        return Results.Ok(FunctionEnvVarResponse.From(v));
+    }
+
+    private static async Task<IResult> ServerDeleteEnvVar(
+        string functionId, string envKey, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        await functions.DeleteEnvVarAsync(fn.Id, envKey, ct);
+        await AuditKeyAsync(db, http, project.Id, "functions.env.delete", $"function/{functionId}/env/{envKey}", ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ServerListDeployments(
+        string functionId, HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var list = await functions.ListDeploymentsAsync(fn.Id, ct);
+        return Results.Ok(new FunctionDeploymentListResponse(list.Count, [.. list.Select(FunctionDeploymentResponse.From)]));
+    }
+
+    private static async Task<IResult> ServerCreateDeployment(
+        string functionId, HttpContext http, PraxyDb db, FunctionsService functions, FunctionsOptions options,
+        CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var tar = await ReadCappedAsync(http.Request.Body, options.MaxSourceBytes, ct);
+        var deployment = await functions.CreateDeploymentAsync(fn, tar, ct);
+        await AuditKeyAsync(db, http, project.Id, "functions.deployments.create",
+            $"function/{functionId}/deployment/{Ids.Wire(deployment.Id)}", ct);
+        return Results.Created(
+            $"/v1/functions/{functionId}/deployments/{Ids.Wire(deployment.Id)}", FunctionDeploymentResponse.From(deployment));
+    }
+
+    private static async Task<IResult> ServerGetDeployment(
+        string functionId, string deploymentId, HttpContext http, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var deployment = await FindDeploymentAsync(functions, fn.Id, deploymentId, ct);
+        return Results.Ok(FunctionDeploymentResponse.From(deployment));
+    }
+
+    private static async Task<IResult> ServerActivateDeployment(
+        string functionId, string deploymentId, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.FunctionsWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var deployment = await FindDeploymentAsync(functions, fn.Id, deploymentId, ct);
+        var activated = await functions.ActivateAsync(fn, deployment, ct);
+        await AuditKeyAsync(db, http, project.Id, "functions.deployments.activate",
+            $"function/{functionId}/deployment/{deploymentId}", ct);
+        return Results.Ok(FunctionDeploymentResponse.From(activated));
     }
 
     /// <summary>
@@ -441,7 +650,7 @@ public static class FunctionEndpoints
     /// <summary>
     /// The data plane's authorization gate, mirroring <see cref="RowEndpoints"/>'s table-permission
     /// check: roles come from THE role resolver (roadmap rule 2), and a function with an empty
-    /// <c>execute</c> list is reachable by nobody (rule 3). A key needs its <c>functions.execute</c>
+    /// <c>execute</c> list is reachable by nobody (rule 3). A key needs its <c>execution.write</c>
     /// scope <em>and</em> a matching role, exactly as a key needs both a <c>databases.*</c> scope and
     /// a table permission — except a <c>BypassRowPermissions</c> key, which is already the documented
     /// "trusted server, skip the permission layer" escape hatch on rows and means the same here.
@@ -453,6 +662,16 @@ public static class FunctionEndpoints
         var roles = await RequestRoles.GetAsync(http, roleResolver);
         if (!FunctionsService.CanExecute(fn, roles))
             throw PraxyException.Unauthorized("Not permitted to execute this function.");
+    }
+
+    /// <summary>Passes if the current key holds any one of <paramref name="scopes"/>; else the same 401 <see cref="AppPrincipalFilter.RequireScope"/> gives for a single missing scope.</summary>
+    private static void RequireAnyScope(HttpContext http, params string[] scopes)
+    {
+        if (AppPrincipalFilter.Current(http) is not RequestPrincipal.Key(var apiKey))
+            throw PraxyException.Unauthorized("This endpoint requires an API key.");
+        if (!scopes.Any(apiKey.Scopes.Contains))
+            throw new PraxyException(401, ErrorTypes.GeneralUnauthorizedScope,
+                $"The API key is missing one of: {string.Join(", ", scopes)}.");
     }
 
     // ---- helpers --------------------------------------------------------------------------------
@@ -511,6 +730,29 @@ public static class FunctionEndpoints
             Id = Ids.NewUuid(),
             ProjectId = projectId,
             Actor = $"admin:{op.Account.Id}",
+            Action = action,
+            Resource = resource,
+            Ip = http.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The server management surface's counterpart to <see cref="AuditAsync"/> — same action
+    /// vocabulary, actor <c>key:&lt;id&gt;</c> instead of <c>admin:&lt;id&gt;</c>, following the
+    /// precedent set on the users server surface (post-v0.1.0 gap #3): a functions.write key can
+    /// create, redeploy, or delete a function exactly like an operator, so it gets the same trace.
+    /// </summary>
+    private static async Task AuditKeyAsync(
+        PraxyDb db, HttpContext http, string projectId, string action, string resource, CancellationToken ct)
+    {
+        if (AppPrincipalFilter.Current(http) is not RequestPrincipal.Key(var apiKey))
+            throw new InvalidOperationException("Server function-write endpoints require a key principal.");
+        db.AuditLog.Add(new AuditLogEntry
+        {
+            Id = Ids.NewUuid(),
+            ProjectId = projectId,
+            Actor = $"key:{Ids.Wire(apiKey.Id)}",
             Action = action,
             Resource = resource,
             Ip = http.Connection.RemoteIpAddress?.ToString(),
