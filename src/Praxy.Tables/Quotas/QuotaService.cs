@@ -79,10 +79,11 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
     }
 
     /// <summary>
-    /// The console's usage-vs-limit surfacing (least-invasive: no org switcher, just the numbers
-    /// that matter for the caller's own project). Per-table/per-database dimensions are reported as
-    /// "the busiest one in this project" rather than a per-resource breakdown — enough to show a
-    /// project is approaching a cap without a new drill-down screen.
+    /// The console's usage-vs-limit surfacing, entered by project id: there is no org-id entry
+    /// point, so this reports the numbers that matter for the caller's own project.
+    /// Per-table/per-database dimensions are reported as "the busiest one in this project" rather
+    /// than a per-resource breakdown — enough to show a project is approaching a cap without a new
+    /// drill-down screen.
     /// </summary>
     public async Task<QuotaSnapshot> GetSnapshotAsync(string projectId, CancellationToken ct)
     {

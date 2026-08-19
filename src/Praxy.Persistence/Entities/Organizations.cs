@@ -1,6 +1,9 @@
 namespace Praxy.Persistence.Entities;
 
-/// <summary>Modeled fully from Phase 0, hidden in the console UI until multi-org exists.</summary>
+/// <summary>
+/// Modeled fully from Phase 0. Surfaced in the console as the owner of the projects list (name +
+/// id in the URL); creating, renaming and multi-org switching still do not exist.
+/// </summary>
 public class Organization
 {
     public required Guid Id { get; set; }

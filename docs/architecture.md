@@ -8,8 +8,11 @@ decisions in [research/](research/). Where this file and those disagree, **roadm
 they postdate this document. Key revisions since first draft:
 
 - Console interleaved per phase, not a single M5 block; each phase ends with an owner console test.
-- Organizations modeled fully from Phase 0 (owner/member only), hidden in UI until needed. Console users and
-  app users are separate namespaces; **the console is a reserved project with a hard data-plane guard**.
+- Organizations modeled fully from Phase 0 (owner/member only). The owning org is now visible in the
+  console: home resolves it, its id sits in the URL (`/organization/<id>`), and its name heads the
+  projects list. Read-only and still single-org — no switcher, create, rename or member management.
+- Console users and app users are separate namespaces; **the console is a reserved project with a hard
+  data-plane guard**.
 - Instance claim: first account wins; setup token required when `PRAXY_PUBLIC_URL` is set.
 - Auth v1 narrowed by owner decision: email+password + **Google OAuth only** (app users; token flow +
   PKCE). Platform/console operators are email+password only — operator OAuth is deferred to future
