@@ -15,6 +15,15 @@ public sealed record UpdateUserStatusRequest(bool Status);
 
 public sealed record UpdateUserLabelsRequest(string[] Labels);
 
+public sealed record UpdateUserEmailRequest(string Email);
+
+public sealed record UpdateUserNameRequest(string Name);
+
+/// <summary>Operator-set password: no old password, because an operator has none to give.</summary>
+public sealed record UpdateUserPasswordRequest(string Password);
+
+public sealed record UpdateUserVerificationRequest(bool EmailVerified);
+
 /// <summary>
 /// The server-side users API (<c>/v1/users</c>): API-key callers only, gated per-endpoint on
 /// <c>users.read</c> / <c>users.write</c> scopes. This is what backend SDKs use to manage a
@@ -34,6 +43,10 @@ public static class UsersServerEndpoints
         users.MapDelete("/{userId}", Delete).Produces(StatusCodes.Status204NoContent);
         users.MapPatch("/{userId}/status", UpdateStatus).Produces<AppUserResponse>();
         users.MapPatch("/{userId}/labels", UpdateLabels).Produces<AppUserResponse>();
+        users.MapPatch("/{userId}/email", UpdateEmail).Produces<AppUserResponse>();
+        users.MapPatch("/{userId}/name", UpdateName).Produces<AppUserResponse>();
+        users.MapPatch("/{userId}/password", UpdatePassword).Produces<AppUserResponse>();
+        users.MapPatch("/{userId}/verification", UpdateVerification).Produces<AppUserResponse>();
         users.MapGet("/{userId}/sessions", ListSessions).Produces<SessionListResponse>();
         users.MapDelete("/{userId}/sessions", DeleteAllSessions).Produces(StatusCodes.Status204NoContent);
         users.MapDelete("/{userId}/sessions/{sessionId}", DeleteSession).Produces(StatusCodes.Status204NoContent);
@@ -112,6 +125,52 @@ public static class UsersServerEndpoints
             Ids.Wire(Ids.NewUuid()), DateTimeOffset.UtcNow, project.Id,
             $"users.{Ids.Wire(user.Id)}.update.labels", [$"user:{Ids.Wire(user.Id)}"], null), ct);
         return Results.Ok(AppUserResponse.From(user));
+    }
+
+    /// <summary>
+    /// Mirrors the console's change-email: the address moves and verified-ness resets with it.
+    /// A collision inside the project is the existing <c>user_already_exists</c>, not a 500.
+    /// </summary>
+    private static async Task<IResult> UpdateEmail(
+        string userId, UpdateUserEmailRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
+        var user = await FindUserAsync(http, db, userId, ct);
+        return Results.Ok(AppUserResponse.From(await auth.AdminUpdateEmailAsync(project, user, req.Email, ct)));
+    }
+
+    private static async Task<IResult> UpdateName(
+        string userId, UpdateUserNameRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
+        var user = await FindUserAsync(http, db, userId, ct);
+        return Results.Ok(AppUserResponse.From(await auth.UpdateNameAsync(project.Id, user, req.Name, ct)));
+    }
+
+    /// <summary>Sets a password without the old one — and revokes every session, as the console does.</summary>
+    private static async Task<IResult> UpdatePassword(
+        string userId, UpdateUserPasswordRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
+        var user = await FindUserAsync(http, db, userId, ct);
+        return Results.Ok(AppUserResponse.From(await auth.AdminResetPasswordAsync(project, user, req.Password, ct)));
+    }
+
+    private static async Task<IResult> UpdateVerification(
+        string userId, UpdateUserVerificationRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersWrite);
+        var user = await FindUserAsync(http, db, userId, ct);
+        return Results.Ok(AppUserResponse.From(
+            await auth.AdminSetEmailVerifiedAsync(project.Id, user, req.EmailVerified, ct)));
     }
 
     private static async Task<IResult> ListSessions(string userId, HttpContext http, PraxyDb db, CancellationToken ct)

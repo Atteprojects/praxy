@@ -1,13 +1,15 @@
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  useDeleteUser, useRevokeSession, useUpdateUserLabels, useUpdateUserStatus, useUser,
-  useUserMemberships, useUserSessions,
+  useDeleteUser, usePlatforms, useResetUserPassword, useRevokeSession, useSendUserVerification,
+  useUpdateUserEmail, useUpdateUserLabels, useUpdateUserName, useUpdateUserStatus,
+  useUpdateUserVerification, useUser, useUserMemberships, useUserSessions,
 } from "../api/auth";
+import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { useToast } from "../components/toast";
 import {
-  Badge, DataTable, FullPageSpinner, IdChip, PageHeader, Spinner, Tabs, timeAgo,
+  Badge, DataTable, ErrorNote, Field, FullPageSpinner, IdChip, PageHeader, Spinner, Tabs, timeAgo,
 } from "../components/ui";
 import { STR } from "../strings";
 
@@ -76,15 +78,9 @@ function OverviewTab({
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="surface p-5">
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Profile</h2>
-        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-          <Item label="Email" value={user.email} />
-          <Item label="Name" value={user.name || "—"} />
-          <Item label="Joined" value={new Date(user.createdAt).toLocaleString()} />
-          <Item label="Updated" value={new Date(user.updatedAt).toLocaleString()} />
-        </dl>
-      </div>
+      <ProfileCard projectId={projectId} user={user} />
+      <VerificationCard projectId={projectId} user={user} />
+      <PasswordCard projectId={projectId} user={user} />
 
       <div className="surface p-5">
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">
@@ -128,6 +124,10 @@ function OverviewTab({
               </li>
             ))}
           </ul>
+          <p className="mt-3 text-xs text-ink-500">
+            A provider's own email is a separate fact from the account address above — changing one
+            does not change the other, and sign-in through the provider keeps working either way.
+          </p>
         </div>
       ) : null}
 
@@ -181,6 +181,316 @@ function OverviewTab({
       </div>
     </div>
   );
+}
+
+type AppUser = import("../api/types").AppUser;
+
+/**
+ * Email and name, both editable in place. Everything destructive-ish about the email lives in the
+ * confirm dialog rather than in a note underneath it — the operator has to read what resets before
+ * the change happens, not after.
+ */
+function ProfileCard({ projectId, user }: { projectId: string; user: AppUser }) {
+  const updateEmail = useUpdateUserEmail(projectId, user.id);
+  const updateName = useUpdateUserName(projectId, user.id);
+  const [emailDraft, setEmailDraft] = useState(user.email);
+  const [nameDraft, setNameDraft] = useState(user.name);
+  const toast = useToast();
+
+  const emailChanged = emailDraft.trim().toLowerCase() !== user.email;
+  const nameChanged = nameDraft.trim() !== user.name;
+
+  return (
+    <div className="surface p-5">
+      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Profile</h2>
+
+      <div className="space-y-4">
+        <Field label="Email" error={fieldError(updateEmail.error, "email")}>
+          <div className="flex gap-2">
+            <input
+              className="input-base"
+              type="email"
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              placeholder="ada@example.com"
+            />
+            <ConfirmButton
+              label="Change"
+              title="Change this user's email?"
+              confirmLabel="Change email"
+              successMessage="Email changed."
+              disabled={!emailChanged}
+              className="btn-ghost shrink-0 border border-ink-700 disabled:opacity-40"
+              body={
+                <div className="space-y-3">
+                  <p>
+                    <span className="font-mono text-ink-300">{user.email}</span> becomes{" "}
+                    <span className="font-mono text-ink-300">{emailDraft.trim().toLowerCase()}</span>. They sign
+                    in with the new address from now on; the old one stops working immediately.
+                  </p>
+                  <p>
+                    The account is marked <span className="text-ink-300">unverified</span> — nobody has proved
+                    they own the new address yet, so the{" "}
+                    <span className="font-mono text-ink-300">users/verified</span> permission role stops
+                    resolving for them until they verify it.
+                  </p>
+                  <p>Existing sessions are not revoked; they stay signed in.</p>
+                </div>
+              }
+              onConfirm={() => updateEmail.mutateAsync(emailDraft.trim())}
+            />
+          </div>
+        </Field>
+
+        <Field label="Name" error={fieldError(updateName.error, "name")}>
+          <div className="flex gap-2">
+            <input
+              className="input-base"
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              placeholder="Ada Lovelace"
+            />
+            <button
+              type="button"
+              className="btn-ghost shrink-0 border border-ink-700 disabled:opacity-40"
+              disabled={!nameChanged || updateName.isPending}
+              onClick={() =>
+                updateName.mutate(nameDraft.trim(), { onSuccess: () => toast.success("Name saved.") })
+              }
+            >
+              {updateName.isPending ? <Spinner /> : "Save"}
+            </button>
+          </div>
+        </Field>
+      </div>
+
+      <dl className="mt-5 grid grid-cols-1 gap-3 border-t border-ink-800 pt-4 text-sm sm:grid-cols-2">
+        <Item label="Joined" value={new Date(user.createdAt).toLocaleString()} />
+        <Item label="Updated" value={new Date(user.updatedAt).toLocaleString()} />
+      </dl>
+    </div>
+  );
+}
+
+/**
+ * Verified-ness two ways: settle it directly, or send the user the mail again. Setting it by hand
+ * is the escape hatch for an address that works but whose owner can never complete the round-trip;
+ * it grants a permission role, so it asks first.
+ */
+function VerificationCard({ projectId, user }: { projectId: string; user: AppUser }) {
+  const update = useUpdateUserVerification(projectId, user.id);
+  const send = useSendUserVerification(projectId, user.id);
+  const platforms = usePlatforms(projectId);
+  const [url, setUrl] = useState(() => localStorage.getItem(verifyUrlKey(projectId)) ?? "");
+  const toast = useToast();
+
+  // The server checks the URL against these; showing them turns a rejection into a fix.
+  const hostnames = (platforms.data?.platforms ?? [])
+    .map((platform) => platform.hostname)
+    .filter((hostname): hostname is string => hostname !== null);
+
+  return (
+    <div className="surface p-5">
+      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">
+        Email verification{" "}
+        <span className="normal-case text-ink-700">— grants the users/verified permission role</span>
+      </h2>
+
+      <div className="flex flex-wrap items-center gap-3">
+        {user.emailVerified ? <Badge tone="iris">verified</Badge> : <Badge>unverified</Badge>}
+        <ConfirmButton
+          label={user.emailVerified ? "Mark unverified" : "Mark verified"}
+          title={user.emailVerified ? "Mark this address unverified?" : "Mark this address verified?"}
+          confirmLabel={user.emailVerified ? "Mark unverified" : "Mark verified"}
+          successMessage={user.emailVerified ? "Marked unverified." : "Marked verified."}
+          className="btn-ghost border border-ink-700"
+          body={
+            user.emailVerified ? (
+              <>
+                <span className="font-mono text-ink-300">{user.email}</span> goes back to unverified.{" "}
+                <span className="font-mono text-ink-300">users/verified</span> stops resolving for them, so
+                any table or function granted to that role becomes unreachable.
+              </>
+            ) : (
+              <>
+                You are asserting that <span className="font-mono text-ink-300">{user.email}</span> reaches
+                this person, without them proving it. They gain the{" "}
+                <span className="font-mono text-ink-300">users/verified</span> role and everything granted to
+                it. Prefer sending the mail below when the address actually works.
+              </>
+            )
+          }
+          onConfirm={() => update.mutateAsync(!user.emailVerified)}
+        />
+      </div>
+
+      {user.emailVerified ? null : (
+        <div className="mt-5 border-t border-ink-800 pt-4">
+          <Field label="Send the verification email again" error={fieldError(send.error, "url")}>
+            <div className="flex gap-2">
+              <input
+                className="input-base"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://app.example.com/verify"
+              />
+              <button
+                type="button"
+                className="btn-ghost shrink-0 border border-ink-700 disabled:opacity-40"
+                disabled={!url.trim() || send.isPending}
+                onClick={() =>
+                  send.mutate(url.trim(), {
+                    onSuccess: () => {
+                      localStorage.setItem(verifyUrlKey(projectId), url.trim());
+                      toast.success(`Verification email sent to ${user.email}.`);
+                    },
+                  })
+                }
+              >
+                {send.isPending ? <Spinner /> : "Send"}
+              </button>
+            </div>
+          </Field>
+          <p className="mt-2 text-xs text-ink-500">
+            Where your app handles verification — Praxy appends{" "}
+            <span className="font-mono">?userId=&amp;secret=</span> and mails the link. The hostname must be
+            a registered platform:{" "}
+            {hostnames.length > 0 ? (
+              <span className="font-mono text-ink-400">{hostnames.join(", ")}</span>
+            ) : (
+              <Link
+                to="/project/$projectId/platforms"
+                params={{ projectId }}
+                className="text-iris-300 hover:underline"
+              >
+                none registered yet
+              </Link>
+            )}
+            .
+          </p>
+        </div>
+      )}
+      {send.error && !fieldError(send.error, "url") ? (
+        <div className="mt-3">
+          <ErrorNote message={send.error.message} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Operator-set password. Reveal-once, like an API key: the value is shown here and nowhere else,
+ * because only its hash is stored. Setting it ends every live session — say so before the click,
+ * not in a toast afterwards.
+ */
+function PasswordCard({ projectId, user }: { projectId: string; user: AppUser }) {
+  const reset = useResetUserPassword(projectId, user.id);
+  const [draft, setDraft] = useState("");
+  const [issued, setIssued] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  if (issued !== null) {
+    return (
+      <div className="surface border-mint-400/20 p-5">
+        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Password</h2>
+        <p className="mb-3 text-sm text-ink-400">
+          Password set and every session revoked. This is the only time it is shown — Praxy keeps only a
+          hash. Pass it to <span className="font-mono text-ink-300">{user.email}</span> over something safer
+          than email, and have them change it.
+        </p>
+        <div className="flex items-stretch gap-2">
+          <pre className="flex-1 overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-100">
+            {issued}
+          </pre>
+          <button
+            type="button"
+            className="btn-ghost shrink-0 border border-ink-700"
+            onClick={() => {
+              void navigator.clipboard.writeText(issued);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            }}
+          >
+            {copied ? "✓" : "Copy"}
+          </button>
+        </div>
+        <button type="button" className="btn-ghost mt-4 border border-ink-700" onClick={() => setIssued(null)}>
+          Done
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="surface p-5">
+      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Password</h2>
+      <Field label="New password" error={fieldError(reset.error, "password")}>
+        <div className="flex gap-2">
+          <input
+            className="input-base font-mono"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Type one, or generate"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            className="btn-ghost shrink-0 border border-ink-700"
+            onClick={() => setDraft(generatePassword())}
+          >
+            Generate
+          </button>
+        </div>
+      </Field>
+      <div className="mt-3">
+        <ConfirmButton
+          label="Set password"
+          title="Set this user's password?"
+          confirmLabel="Set password and revoke sessions"
+          successMessage="Password set."
+          disabled={draft.length === 0}
+          className="btn-ghost border border-ink-700 disabled:opacity-40"
+          body={
+            <div className="space-y-3">
+              <p>
+                <span className="font-mono text-ink-300">{user.email}</span> signs in with the new password;
+                their old one stops working immediately.
+              </p>
+              <p>
+                <span className="text-coral-400">Every one of their sessions is revoked.</span> An operator
+                resets a password because an account is locked out or compromised, and in the second case the
+                live sessions are the thing you want gone. Every signed-in client gets a 401 on its next
+                request.
+              </p>
+              <p>The password is shown once after this, and never again.</p>
+            </div>
+          }
+          onConfirm={async () => {
+            await reset.mutateAsync(draft);
+            setIssued(draft);
+            setDraft("");
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Field-level message off an ApiError, or undefined — anything else renders as a plain note. */
+function fieldError(error: Error | null, field: string): string | undefined {
+  return error instanceof ApiError ? error.fieldErrors(field)[0] : undefined;
+}
+
+const verifyUrlKey = (projectId: string) => `praxy.verify-url.${projectId}`;
+
+/** 20 chars from a 32-symbol alphabet — ~100 bits, and no character anyone misreads aloud. */
+function generatePassword(): string {
+  const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 function Item({ label, value }: { label: string; value: string }) {
