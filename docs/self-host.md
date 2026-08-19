@@ -182,7 +182,7 @@ permissions use). A caller reaching `POST /v1/functions/{id}/executions` must re
 them, and **an empty list denies everyone**, which is the state every newly created function starts
 in.
 
-- **API keys** need the `functions.execute` scope *and* a matching role. A key resolves to the role
+- **API keys** need the `execution.write` scope *and* a matching role. A key resolves to the role
   `any`, so a key can only reach functions that grant `any` — unless it was created with
   `bypassRowPermissions`, the existing "trusted server, skip the permission layer" flag, which skips
   this gate too.

@@ -398,7 +398,7 @@ Being a self-hosted product means these are features:
 | Cross-tenant data access | Schema per database, project resolved once per request and carried in an immutable request context; fully-qualified identifiers so `search_path` can never rescue a mistake |
 | Defence in depth for the above | **v1.1:** a low-privilege Postgres role per project, applied with `SET LOCAL ROLE` per transaction, so the database refuses cross-schema access even if application code slips |
 | Resource exhaustion | Caps on tables, columns and indexes per project; query limits; rate limits on auth **and the whole data plane** (rows, function invocation, realtime tickets); WebSocket connection quotas; `statement_timeout` on every connection |
-| Unauthorized function execution | Per-function `execute` role list resolved through the one role resolver; empty by default, so a new function is reachable by nobody. API keys need the `functions.execute` scope *and* a matching role |
+| Unauthorized function execution | Per-function `execute` role list resolved through the one role resolver; empty by default, so a new function is reachable by nobody. API keys need the `execution.write` scope *and* a matching role |
 | Account enumeration | Constant-time comparisons, uniform responses and timing on login, signup and recovery |
 | Cross-origin abuse | Per-project platform allowlist enforced as a CORS origin check |
 | Slow-consumer memory exhaustion | Bounded per-connection channels with disconnect-on-overflow |
