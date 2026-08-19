@@ -366,6 +366,85 @@ public sealed class AppAuthService(
         return user;
     }
 
+    // ---- operator-initiated updates -----------------------------------------------------------
+    // The console's user-management surface. These deliberately do not reuse the account-side
+    // methods above: an operator has no old password to prove, and an operator changing someone
+    // else's email is a different act from a user changing their own.
+
+    /// <summary>
+    /// Operator email change. Resets verified-ness, because a verified flag pointing at an address
+    /// nobody has proved they own would hand out the <c>users/verified</c> permission role for free.
+    /// A change to the same address is a no-op rather than a silent un-verify.
+    /// </summary>
+    public async Task<User> AdminUpdateEmailAsync(
+        Project project, User user, string newEmail, CancellationToken ct = default)
+    {
+        ValidateEmail(newEmail);
+        var normalized = NormalizeEmail(newEmail);
+        if (normalized == user.Email)
+            return user;
+
+        user.Email = normalized;
+        user.EmailVerified = false;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        db.Users.Update(user);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        {
+            // (project_id, email) is unique — surface the collision as the existing public type
+            // rather than letting the constraint violation escape as a 500.
+            db.Entry(user).State = EntityState.Detached;
+            throw new PraxyException(409, ErrorTypes.UserAlreadyExists,
+                "A user with this email already exists in this project.");
+        }
+
+        await PublishAsync(project.Id, $"users.{Ids.Wire(user.Id)}.update.email", user.Id, ct);
+        return user;
+    }
+
+    /// <summary>
+    /// Operator password set: no old password to verify — that is the whole point — and every
+    /// session dies with it. An operator resets a password because the account is locked out or
+    /// compromised; in both readings the live sessions are the thing you want gone. Same stance as
+    /// <see cref="ConfirmRecoveryAsync"/>, which is the self-service arm of the same situation.
+    /// </summary>
+    public async Task<User> AdminResetPasswordAsync(
+        Project project, User user, string newPassword, CancellationToken ct = default)
+    {
+        var settings = ProjectAuthSettings.Parse(project.Settings);
+        ValidatePassword(newPassword, settings);
+
+        user.PasswordHash = hasher.Hash(newPassword);
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        db.Users.Update(user);
+        await db.SaveChangesAsync(ct);
+
+        await DeleteAllSessionsAsync(project.Id, user, ct);
+        await PublishAsync(project.Id, $"users.{Ids.Wire(user.Id)}.update.password", user.Id, ct);
+        return user;
+    }
+
+    /// <summary>
+    /// Sets verified-ness directly — the escape hatch for a user whose address works but who can
+    /// never complete the mail round-trip. Verified-ness is a permission role, so the caller audits.
+    /// </summary>
+    public async Task<User> AdminSetEmailVerifiedAsync(
+        string projectId, User user, bool verified, CancellationToken ct = default)
+    {
+        if (user.EmailVerified == verified)
+            return user;
+
+        user.EmailVerified = verified;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        db.Users.Update(user);
+        await db.SaveChangesAsync(ct);
+        await PublishAsync(projectId, $"users.{Ids.Wire(user.Id)}.update.verification", user.Id, ct);
+        return user;
+    }
+
     public async Task<User> UpdatePrefsAsync(string projectId, User user, JsonObject prefs, CancellationToken ct = default)
     {
         user.Prefs = prefs.ToJsonString();

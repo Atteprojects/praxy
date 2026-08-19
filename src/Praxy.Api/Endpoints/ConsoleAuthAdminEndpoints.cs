@@ -64,6 +64,12 @@ public static class ConsoleAuthAdminEndpoints
         admin.MapDelete("/users/{userId}", DeleteUser).Produces(StatusCodes.Status204NoContent);
         admin.MapPatch("/users/{userId}/status", UpdateUserStatus).Produces<AppUserResponse>();
         admin.MapPatch("/users/{userId}/labels", UpdateUserLabels).Produces<AppUserResponse>();
+        admin.MapPatch("/users/{userId}/email", UpdateUserEmail).Produces<AppUserResponse>();
+        admin.MapPatch("/users/{userId}/name", UpdateUserName).Produces<AppUserResponse>();
+        admin.MapPatch("/users/{userId}/password", UpdateUserPassword).Produces<AppUserResponse>();
+        admin.MapPatch("/users/{userId}/verification", UpdateUserVerification).Produces<AppUserResponse>();
+        admin.MapPost("/users/{userId}/verification", SendUserVerification)
+            .Produces(StatusCodes.Status204NoContent);
         admin.MapGet("/users/{userId}/sessions", ListUserSessions).Produces<SessionListResponse>();
         admin.MapDelete("/users/{userId}/sessions", DeleteUserSessions).Produces(StatusCodes.Status204NoContent);
         admin.MapDelete("/users/{userId}/sessions/{sessionId}", DeleteUserSession)
@@ -182,6 +188,78 @@ public static class ConsoleAuthAdminEndpoints
             Ids.Wire(Ids.NewUuid()), DateTimeOffset.UtcNow, project.Id,
             $"users.{Ids.Wire(user.Id)}.update.labels", [$"user:{Ids.Wire(user.Id)}"], null), ct);
         return Results.Ok(AppUserResponse.From(user));
+    }
+
+    /// <summary>
+    /// The reason this surface exists: a user who mistyped their address at signup can be fixed
+    /// instead of deleted. Verified-ness resets with the address — <c>users/verified</c> is a
+    /// permission role, so it may only survive on an address someone has actually proved they own.
+    /// </summary>
+    private static async Task<IResult> UpdateUserEmail(
+        string userId, UpdateUserEmailRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var user = await FindUserAsync(db, project.Id, userId, ct);
+        var updated = await auth.AdminUpdateEmailAsync(project, user, req.Email, ct);
+        await AuditAsync(db, http, project.Id, "users.email.update", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
+    }
+
+    private static async Task<IResult> UpdateUserName(
+        string userId, UpdateUserNameRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var user = await FindUserAsync(db, project.Id, userId, ct);
+        var updated = await auth.UpdateNameAsync(project.Id, user, req.Name, ct);
+        await AuditAsync(db, http, project.Id, "users.name.update", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
+    }
+
+    /// <summary>
+    /// Its own audit action rather than a generic update: setting someone else's password is the
+    /// single most security-relevant thing on this surface, and it revokes every live session.
+    /// </summary>
+    private static async Task<IResult> UpdateUserPassword(
+        string userId, UpdateUserPasswordRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var user = await FindUserAsync(db, project.Id, userId, ct);
+        var updated = await auth.AdminResetPasswordAsync(project, user, req.Password, ct);
+        await AuditAsync(db, http, project.Id, "users.password.reset", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
+    }
+
+    private static async Task<IResult> UpdateUserVerification(
+        string userId, UpdateUserVerificationRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var user = await FindUserAsync(db, project.Id, userId, ct);
+        var updated = await auth.AdminSetEmailVerifiedAsync(project.Id, user, req.EmailVerified, ct);
+        await AuditAsync(db, http, project.Id,
+            req.EmailVerified ? "users.verification.grant" : "users.verification.revoke",
+            $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.Ok(AppUserResponse.From(updated));
+    }
+
+    /// <summary>
+    /// Resends the verification mail. The redirect URL is a request field because only the caller
+    /// knows where the app handles verification — the console has no way to guess a path, and
+    /// inventing one is not an option: the URL is checked against the project's platform allowlist
+    /// (architecture.md §11), which is what stops this endpoint from minting phishing links.
+    /// </summary>
+    private static async Task<IResult> SendUserVerification(
+        string userId, SendVerificationRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
+        CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var user = await FindUserAsync(db, project.Id, userId, ct);
+        await auth.SendVerificationAsync(project, user, req.Url, ct);
+        await AuditAsync(db, http, project.Id, "users.verification.send", $"user/{Ids.Wire(user.Id)}", ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ListUserSessions(
