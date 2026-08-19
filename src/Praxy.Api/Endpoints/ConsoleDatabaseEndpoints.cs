@@ -22,6 +22,7 @@ public static class ConsoleDatabaseEndpoints
         admin.MapPost("", CreateDatabase);
         admin.MapGet("", ListDatabases);
         admin.MapGet("/{databaseId}", GetDatabase);
+        admin.MapDelete("/{databaseId}", DeleteDatabase);
 
         admin.MapPost("/{databaseId}/tables", CreateTable);
         admin.MapGet("/{databaseId}/tables", ListTables);
@@ -74,6 +75,16 @@ public static class ConsoleDatabaseEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
         return Results.Ok(DatabaseResponse.From(database));
+    }
+
+    private static async Task<IResult> DeleteDatabase(
+        string databaseId, HttpContext http, PraxyDb db, DatabasesService databases, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
+        await databases.DeleteAsync(database, SchemaLookup.TryParseForce(http), ct);
+        await AuditAsync(db, http, project.Id, "databases.delete", $"database/{databaseId}", ct);
+        return Results.NoContent();
     }
 
     // ---- tables ---------------------------------------------------------------------------------

@@ -10,9 +10,10 @@ namespace Praxy.Tables;
 
 /// <summary>
 /// Databases: metadata insert + <c>CREATE SCHEMA px_&lt;hex32&gt;</c> in one transaction, per
-/// architecture.md §4.1. No delete endpoint this phase — the roadmap only asks for create/list/get.
+/// architecture.md §4.1. <see cref="DeleteAsync"/> is the same trade in reverse — metadata row plus
+/// <c>DROP SCHEMA ... CASCADE</c>, force-gated exactly like <see cref="TablesService.DeleteAsync"/>.
 /// </summary>
-public sealed class DatabasesService(PraxyDb db, QuotaService quotas)
+public sealed class DatabasesService(PraxyDb db, CatalogCache cache, QuotaService quotas)
 {
     public async Task<Database> CreateAsync(string projectId, string key, string name, CancellationToken ct)
     {
@@ -55,6 +56,38 @@ public sealed class DatabasesService(PraxyDb db, QuotaService quotas)
     public async Task<Database> GetAsync(string projectId, Guid databaseId, CancellationToken ct) =>
         await db.Databases.FirstOrDefaultAsync(d => d.Id == databaseId && d.ProjectId == projectId, ct)
         ?? throw PraxyException.NotFound(ErrorTypes.DatabaseNotFound, "Database not found.");
+
+    /// <summary>
+    /// Always destructive, and more so than a table drop: <c>force=true</c> takes every table in the
+    /// database with it. One <c>DROP SCHEMA ... CASCADE</c> does the physical half; the catalog rows
+    /// (tables, columns, indexes, permissions) go with the metadata row on its FK cascade. Schema
+    /// jobs have no FK to hang off — they are deleted explicitly, or the runner would keep picking up
+    /// queued DDL for a schema that no longer exists.
+    /// </summary>
+    public async Task DeleteAsync(Database database, bool force, CancellationToken ct)
+    {
+        if (!force)
+            throw new PraxyException(400, ErrorTypes.GeneralForceRequired,
+                "Deleting a database drops every table it contains. Pass force=true to confirm.");
+
+        // Read before the delete: the cache is keyed by table id, and after the cascade there is no
+        // row left to learn those ids from.
+        var tableIds = await db.Tables.Where(t => t.DatabaseId == database.Id).Select(t => t.Id).ToListAsync(ct);
+
+        await SchemaDdl.InTransactionAsync(db, async () =>
+        {
+            await db.SchemaJobs.Where(j => j.DatabaseId == database.Id).ExecuteDeleteAsync(ct);
+            db.Databases.Remove(database);
+            await db.SaveChangesAsync(ct);
+
+            await SchemaDdl.SetLockTimeoutAsync(db, TimeSpan.FromSeconds(5), ct);
+            await SchemaDdl.ExecuteAsync(db,
+                $"DROP SCHEMA IF EXISTS {PhysicalNaming.Quote(database.SchemaName)} CASCADE", ct);
+        }, ct);
+
+        foreach (var tableId in tableIds)
+            cache.Invalidate(tableId);
+    }
 
     private static void ValidateKeyAndName(string key, string name)
     {

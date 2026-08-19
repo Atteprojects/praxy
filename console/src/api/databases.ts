@@ -34,6 +34,23 @@ export function useCreateDatabase(projectId: string) {
   });
 }
 
+export function useDeleteDatabase(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (databaseId: string) =>
+      api<void>(`${base(projectId)}/${databaseId}?force=true`, { method: "DELETE" }),
+    // Skips every query belonging to the deleted database — its own detail row, its tables, its
+    // jobs. Invalidating the whole prefix refetches them, which 404s and throws on whichever
+    // database-scoped screen is mounted, leaving the console stranded on a route for a database
+    // that no longer exists.
+    onSuccess: (_result, databaseId) =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "databases"],
+        predicate: (query) => query.queryKey[3] !== databaseId,
+      }),
+  });
+}
+
 // ---- tables ---------------------------------------------------------------------------------
 
 export function useTables(projectId: string, databaseId: string) {

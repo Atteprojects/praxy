@@ -22,6 +22,7 @@ public static class DatabaseEndpoints
         group.MapPost("", CreateDatabase);
         group.MapGet("", ListDatabases);
         group.MapGet("/{databaseId}", GetDatabase);
+        group.MapDelete("/{databaseId}", DeleteDatabase);
 
         group.MapPost("/{databaseId}/tables", CreateTable);
         group.MapGet("/{databaseId}/tables", ListTables);
@@ -75,6 +76,16 @@ public static class DatabaseEndpoints
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.DatabasesRead);
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
         return Results.Ok(DatabaseResponse.From(database));
+    }
+
+    private static async Task<IResult> DeleteDatabase(
+        string databaseId, HttpContext http, DatabasesService databases, CancellationToken ct)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.DatabasesWrite);
+        var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
+        await databases.DeleteAsync(database, SchemaLookup.TryParseForce(http), ct);
+        return Results.NoContent();
     }
 
     // ---- tables ---------------------------------------------------------------------------------

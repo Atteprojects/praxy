@@ -305,6 +305,143 @@ public class SchemaEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.Equal("57014", ex.SqlState);
     }
 
+    /// <summary>
+    /// Database delete is the table-delete trade one level up: <c>force=true</c> required, metadata
+    /// row and <c>DROP SCHEMA ... CASCADE</c> in one transaction, and every contained table evicted
+    /// from the catalog cache individually — the cache is keyed by table id, so there is no
+    /// "invalidate the database" shortcut.
+    /// </summary>
+    [Fact]
+    public async Task Deleting_a_database_drops_its_schema_and_everything_in_it()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "databases.read", "databases.write");
+
+        var database = await CreateDatabaseAsync(projectId, apiKey, "blog", "Blog");
+        var databaseId = database.GetProperty("id").GetString()!;
+        var table = await CreateTableAsync(projectId, apiKey, databaseId, "posts", "Posts");
+        var tableId = table.GetProperty("id").GetString()!;
+        await CreateColumnAsync(projectId, apiKey, databaseId, tableId, "string", new { key = "title", size = 100 });
+
+        // Read the physical schema name now — after the delete there is no catalog row to learn it from.
+        var schemaName = await SchemaNameOfAsync(databaseId);
+        Assert.True(await SchemaExistsAsync(schemaName));
+
+        // Warm the row engine's catalog entry for this table, so the post-delete request below is
+        // served from a populated cache rather than a fresh load.
+        await Client.SendAsync(DataPlane(HttpMethod.Patch,
+            $"/v1/databases/{databaseId}/tables/{tableId}/permissions", projectId, apiKey: apiKey,
+            body: new { permissions = new[] { "read(\"any\")" } }));
+        var rowsBefore = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{tableId}/rows", projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)rowsBefore.StatusCode);
+
+        // Unforced is refused loudly, and changes nothing.
+        var unforced = await Client.SendAsync(DataPlane(
+            HttpMethod.Delete, $"/v1/databases/{databaseId}", projectId, apiKey: apiKey));
+        await AssertError(unforced, 400, ErrorTypes.GeneralForceRequired);
+        Assert.True(await SchemaExistsAsync(schemaName));
+
+        var deleted = await Client.SendAsync(DataPlane(
+            HttpMethod.Delete, $"/v1/databases/{databaseId}?force=true", projectId, apiKey: apiKey));
+        Assert.Equal(204, (int)deleted.StatusCode);
+
+        // Both halves of the transaction landed: catalog rows gone (FK cascade), schema dropped.
+        Assert.False(await SchemaExistsAsync(schemaName));
+        Assert.Equal(0L, await ScalarAsync("SELECT count(*) FROM praxy.databases WHERE id = $1::uuid", databaseId));
+        Assert.Equal(0L, await ScalarAsync("SELECT count(*) FROM praxy.tables WHERE id = $1::uuid", tableId));
+        Assert.Equal(0L, await ScalarAsync("SELECT count(*) FROM praxy.columns WHERE table_id = $1::uuid", tableId));
+
+        var afterDelete = await Client.SendAsync(DataPlane(
+            HttpMethod.Get, $"/v1/databases/{databaseId}", projectId, apiKey: apiKey));
+        await AssertError(afterDelete, 404, ErrorTypes.DatabaseNotFound);
+
+        // Miss the per-table invalidation and this is served from the warm entry above, hitting a
+        // schema that no longer exists — a raw Postgres error rather than a clean 404.
+        var rowsAfter = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{tableId}/rows", projectId, apiKey: apiKey));
+        await AssertError(rowsAfter, 404, ErrorTypes.TableNotFound);
+    }
+
+    [Fact]
+    public async Task A_database_cannot_be_deleted_from_another_project()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "databases.read", "databases.write");
+        var database = await CreateDatabaseAsync(projectId, apiKey, "blog", "Blog");
+        var databaseId = database.GetProperty("id").GetString()!;
+        var schemaName = await SchemaNameOfAsync(databaseId);
+
+        var projectB = (await ReadJson(await Client.SendAsync(Authed(
+            HttpMethod.Post, "/v1/console/projects", operatorToken, new { name = "Second" }))))
+            .GetProperty("id").GetString()!;
+        var (_, keyB) = await CreateApiKeyAsync(operatorToken, projectB, "databases.read", "databases.write");
+
+        var crossProject = await Client.SendAsync(DataPlane(
+            HttpMethod.Delete, $"/v1/databases/{databaseId}?force=true", projectB, apiKey: keyB));
+        await AssertError(crossProject, 404, ErrorTypes.DatabaseNotFound);
+        Assert.True(await SchemaExistsAsync(schemaName));
+
+        // Same 404 through the console surface, where the operator owns both projects.
+        var crossProjectConsole = await Client.SendAsync(Authed(
+            HttpMethod.Delete, $"/v1/console/projects/{projectB}/databases/{databaseId}?force=true", operatorToken));
+        await AssertError(crossProjectConsole, 404, ErrorTypes.DatabaseNotFound);
+        Assert.True(await SchemaExistsAsync(schemaName));
+    }
+
+    /// <summary>
+    /// Quota is a live <c>count(*)</c> over <c>praxy.databases</c>, so a delete frees its slot with
+    /// no bookkeeping of its own — this pins that, at the boundary where it matters.
+    /// </summary>
+    [Fact]
+    public async Task Deleting_a_database_frees_its_quota_slot()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "databases.read", "databases.write");
+        await SetMaxDatabasesAsync(projectId, 1);
+
+        var databaseId = (await CreateDatabaseAsync(projectId, apiKey, "db1", "DB1")).GetProperty("id").GetString()!;
+
+        var atLimit = await Client.SendAsync(DataPlane(
+            HttpMethod.Post, "/v1/databases", projectId, apiKey: apiKey, body: new { key = "db2", name = "DB2" }));
+        await AssertError(atLimit, 400, ErrorTypes.GeneralResourceLimitExceeded);
+
+        var deleted = await Client.SendAsync(DataPlane(
+            HttpMethod.Delete, $"/v1/databases/{databaseId}?force=true", projectId, apiKey: apiKey));
+        Assert.Equal(204, (int)deleted.StatusCode);
+
+        // The freed slot is immediately reusable, and the old key is too.
+        await CreateDatabaseAsync(projectId, apiKey, "db1", "DB1 again");
+    }
+
+    [Fact]
+    public async Task Console_delete_writes_an_audit_entry_and_removes_the_database()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+
+        var database = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Post,
+            $"/v1/console/projects/{projectId}/databases", operatorToken, new { key = "db1", name = "DB" })));
+        var databaseId = database.GetProperty("id").GetString()!;
+        var schemaName = await SchemaNameOfAsync(databaseId);
+
+        var unforced = await Client.SendAsync(Authed(
+            HttpMethod.Delete, $"/v1/console/projects/{projectId}/databases/{databaseId}", operatorToken));
+        await AssertError(unforced, 400, ErrorTypes.GeneralForceRequired);
+
+        var deleted = await Client.SendAsync(Authed(
+            HttpMethod.Delete, $"/v1/console/projects/{projectId}/databases/{databaseId}?force=true", operatorToken));
+        Assert.Equal(204, (int)deleted.StatusCode);
+        Assert.False(await SchemaExistsAsync(schemaName));
+
+        Assert.Equal(1L, await ScalarAsync(
+            "SELECT count(*) FROM praxy.audit_log WHERE action = 'databases.delete' AND resource = $1",
+            $"database/{databaseId}"));
+
+        var list = await ReadJson(await Client.SendAsync(Authed(
+            HttpMethod.Get, $"/v1/console/projects/{projectId}/databases", operatorToken)));
+        Assert.Equal(0, list.GetProperty("total").GetInt32());
+    }
+
     // ---- helpers ----------------------------------------------------------------------------------
 
     private async Task<JsonElement> CreateDatabaseAsync(string projectId, string apiKey, string key, string name)
@@ -399,6 +536,55 @@ public class SchemaEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 
         scope.ServiceProvider.GetRequiredService<SchemaJobSignal>().Notify();
         return Ids.Wire(indexId);
+    }
+
+    /// <summary>The physical schema name, read from the catalog row — never on the wire.</summary>
+    private async Task<string> SchemaNameOfAsync(string databaseId)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("SELECT schema_name FROM praxy.databases WHERE id = $1::uuid", conn);
+        cmd.Parameters.AddWithValue(databaseId);
+        return (string)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    /// <summary>
+    /// Existence by name rather than by catalog lookup: once the database row is deleted the
+    /// subquery in the overload below yields NULL, which would report "gone" whether or not the
+    /// schema was actually dropped.
+    /// </summary>
+    private async Task<bool> SchemaExistsAsync(string schemaName)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)", conn);
+        cmd.Parameters.AddWithValue(schemaName);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    private async Task<object?> ScalarAsync(string sql, params object[] parameters)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        foreach (var parameter in parameters)
+            cmd.Parameters.AddWithValue(parameter);
+        return await cmd.ExecuteScalarAsync();
+    }
+
+    private async Task SetMaxDatabasesAsync(string projectId, int max)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            """
+            UPDATE praxy.organizations SET limits = $1::jsonb
+            WHERE id = (SELECT organization_id FROM praxy.projects WHERE id = $2)
+            """, conn);
+        cmd.Parameters.AddWithValue($$"""{"maxDatabasesPerProject": {{max}}}""");
+        cmd.Parameters.AddWithValue(projectId);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private async Task<bool> SchemaExistsAsync(JsonElement database)
