@@ -5,6 +5,7 @@ import {
   useTable,
 } from "../api/databases";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { INDEX_TYPES, type IndexSchema, type IndexType } from "../api/types";
 import { DataGrid, type DataGridColumn } from "../components/DataGrid";
 import { JobStatusBadge } from "../components/JobStatusBadge";
@@ -82,17 +83,21 @@ export function IndexesPage() {
       id: "actions",
       header: "",
       cell: ({ row }) => (
-        <button
-          type="button"
-          className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-          disabled={deleteIndex.isPending}
-          onClick={(e) => {
-            e.stopPropagation();
-            deleteIndex.mutate(row.original.id);
-          }}
-        >
-          Delete
-        </button>
+        <span onClick={(e) => e.stopPropagation()}>
+          <ConfirmButton
+            label="Delete"
+            title="Drop index?"
+            confirmLabel="Drop index"
+            successMessage={`Dropped "${row.original.key}".`}
+            body={
+              <>
+                Dropping <span className="font-mono text-ink-300">{row.original.key}</span> can slow queries that
+                relied on it. Rebuilding a large index later is a background job, not an instant operation.
+              </>
+            }
+            onConfirm={() => deleteIndex.mutateAsync(row.original.id)}
+          />
+        </span>
       ),
     },
   ];

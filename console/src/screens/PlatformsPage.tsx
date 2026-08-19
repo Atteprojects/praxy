@@ -2,8 +2,9 @@ import { useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useCreatePlatform, useDeletePlatform, usePlatforms } from "../api/auth";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, Modal, Spinner,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, Modal, PageHeader, Spinner,
 } from "../components/ui";
 
 const PLATFORM_TYPES = [
@@ -29,16 +30,20 @@ export function PlatformsPage() {
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Platforms</h1>
-        <button type="button" className="btn-primary" onClick={() => setAdding(true)}>
-          + Add platform
-        </button>
-      </div>
-      <p className="mb-6 max-w-2xl text-sm text-ink-500">
-        Browsers may call this project only from these hostnames, and auth emails/OAuth may only
-        redirect to them. A leading <code className="font-mono text-ink-400">*.</code> allows subdomains.
-      </p>
+      <PageHeader
+        title="Platforms"
+        description={
+          <>
+            Browsers may call this project only from these hostnames, and auth emails/OAuth may only
+            redirect to them. A leading <code className="font-mono text-ink-400">*.</code> allows subdomains.
+          </>
+        }
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setAdding(true)}>
+            + Add platform
+          </button>
+        }
+      />
 
       {adding ? <AddPlatformModal projectId={projectId} onClose={() => setAdding(false)} /> : null}
 
@@ -65,14 +70,21 @@ export function PlatformsPage() {
                 {new Date(platform.createdAt).toLocaleDateString()}
               </td>
               <td className="px-4 py-3 text-right">
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(platform.id)}
-                >
-                  Remove
-                </button>
+                <ConfirmButton
+                  label="Remove"
+                  title="Remove platform?"
+                  confirmLabel="Remove platform"
+                  successMessage={`Removed "${platform.name}".`}
+                  body={
+                    <>
+                      Browser calls from{" "}
+                      <span className="font-mono text-ink-300">{platform.hostname ?? platform.name}</span> will be
+                      refused, and auth emails can no longer redirect there. Live clients on this origin break
+                      immediately.
+                    </>
+                  }
+                  onConfirm={() => remove.mutateAsync(platform.id)}
+                />
               </td>
             </tr>
           ))}

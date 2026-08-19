@@ -2,6 +2,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useCreateTopic, useDeleteTopic, useMessagingTopics } from "../api/messaging";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo } from "../components/ui";
 import { MessagingTabs } from "./MessagingTabs";
 
@@ -18,14 +19,16 @@ export function MessagingTopicsPage() {
 
   return (
     <div>
-      <MessagingTabs projectId={projectId} active="topics" />
-
-      <div className="mb-6 flex items-center justify-between">
-        <p className="max-w-xl text-xs text-ink-500">A topic groups subscribers; sending to a topic reaches everyone subscribed.</p>
-        <button type="button" className="btn-primary shrink-0" onClick={() => setCreating(true)}>
-          + Create topic
-        </button>
-      </div>
+      <MessagingTabs
+        projectId={projectId}
+        active="topics"
+        description="A topic groups subscribers; sending to a topic reaches everyone subscribed."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Create topic
+          </button>
+        }
+      />
 
       {creating ? <CreateTopicModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
 
@@ -64,14 +67,20 @@ export function MessagingTopicsPage() {
                 >
                   Subscribers
                 </Link>{" "}
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(topic.id)}
-                >
-                  Delete
-                </button>
+                <ConfirmButton
+                  label="Delete"
+                  title="Delete topic?"
+                  confirmLabel="Delete topic"
+                  successMessage={`Deleted "${topic.name}".`}
+                  body={
+                    <>
+                      <span className="font-mono text-ink-300">{topic.name}</span> and its{" "}
+                      {topic.subscriberCount} subscription(s) are removed. Messages already sent are
+                      unaffected; future sends to this topic will fail.
+                    </>
+                  }
+                  onConfirm={() => remove.mutateAsync(topic.id)}
+                />
               </td>
             </tr>
           ))}

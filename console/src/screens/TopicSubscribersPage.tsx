@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useProjectUsers } from "../api/auth";
 import { useMessagingTopic, useSubscribe, useTopicSubscribers, useUnsubscribe } from "../api/messaging";
 import { ApiError } from "../api/client";
-import { DataTable, EmptyState, ErrorNote, FullPageSpinner, IdChip, Modal, Spinner, timeAgo } from "../components/ui";
+import { ConfirmButton } from "../components/ConfirmButton";
+import { DataTable, EmptyState, ErrorNote, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo } from "../components/ui";
 
 const HEADERS = ["Email", "User", "Subscribed", ""];
 
@@ -27,17 +28,16 @@ export function TopicSubscribersPage() {
       >
         ← Topics
       </Link>
-      <div className="mb-1 flex items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{topic.data.name}</h1>
-      </div>
-      {topic.data.description ? <p className="mb-1 text-sm text-ink-400">{topic.data.description}</p> : null}
-      <div className="mb-6"><IdChip id={topic.data.id} /></div>
-
-      <div className="mb-4 flex justify-end">
-        <button type="button" className="btn-primary" onClick={() => setAdding(true)}>
-          + Add subscriber
-        </button>
-      </div>
+      <PageHeader
+        title={topic.data.name}
+        chips={<IdChip id={topic.data.id} />}
+        description={topic.data.description || undefined}
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setAdding(true)}>
+            + Add subscriber
+          </button>
+        }
+      />
 
       {adding ? (
         <AddSubscriberModal projectId={projectId} topicId={topicId} onClose={() => setAdding(false)} />
@@ -53,14 +53,19 @@ export function TopicSubscribersPage() {
               <td className="px-4 py-3"><IdChip id={subscriber.userId} /></td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(subscriber.createdAt)}</td>
               <td className="px-4 py-3 text-right whitespace-nowrap">
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={unsubscribe.isPending}
-                  onClick={() => unsubscribe.mutate(subscriber.id)}
-                >
-                  Remove
-                </button>
+                <ConfirmButton
+                  label="Unsubscribe"
+                  title="Unsubscribe user?"
+                  confirmLabel="Unsubscribe"
+                  successMessage={`Unsubscribed ${subscriber.email}.`}
+                  body={
+                    <>
+                      <span className="font-mono text-ink-300">{subscriber.email}</span> stops receiving messages
+                      sent to <span className="font-mono text-ink-300">{topic.data.name}</span>.
+                    </>
+                  }
+                  onConfirm={() => unsubscribe.mutateAsync(subscriber.id)}
+                />
               </td>
             </tr>
           ))}

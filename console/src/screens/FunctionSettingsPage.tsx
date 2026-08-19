@@ -4,6 +4,7 @@ import {
   useDeleteEnvVar, useDeleteFunction, useFunction, useFunctionEnvVars, useSetEnvVar, useUpdateFunction,
 } from "../api/functions";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
 import { FunctionDetailHeader } from "./FunctionDetailHeader";
 
@@ -171,13 +172,20 @@ export function FunctionSettingsPage() {
               envVars.data.vars.map((v) => (
                 <div key={v.key} className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900 px-3 py-2">
                   <span className="font-mono text-xs text-ink-200">{v.key}</span>
-                  <button
-                    type="button"
-                    className="text-xs text-ink-500 hover:text-coral-400"
-                    onClick={() => deleteVar.mutate(v.key)}
-                  >
-                    Remove
-                  </button>
+                  <ConfirmButton
+                    label="Remove"
+                    title="Remove environment variable?"
+                    confirmLabel="Remove variable"
+                    successMessage={`Removed ${v.key}.`}
+                    className="text-xs text-ink-500 hover:text-coral-400 cursor-pointer"
+                    body={
+                      <>
+                        <span className="font-mono text-ink-300">{v.key}</span> disappears from the next execution
+                        onward. Its value is not recoverable — you would have to paste it in again.
+                      </>
+                    }
+                    onConfirm={() => deleteVar.mutateAsync(v.key)}
+                  />
                 </div>
               ))
             )}

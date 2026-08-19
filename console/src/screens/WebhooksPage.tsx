@@ -2,8 +2,10 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useCreateWebhook, useDeleteWebhook, useUpdateWebhook, useWebhooks } from "../api/webhooks";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
+import { useToast } from "../components/toast";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
 } from "../components/ui";
 
 /**
@@ -28,6 +30,7 @@ export function WebhooksPage() {
   const update = useUpdateWebhook(projectId);
   const remove = useDeleteWebhook(projectId);
   const [creating, setCreating] = useState(false);
+  const toast = useToast();
 
   if (webhooks.isPending) return <FullPageSpinner />;
   if (webhooks.isError) throw webhooks.error;
@@ -36,12 +39,15 @@ export function WebhooksPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Webhooks</h1>
-        <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-          + Create webhook
-        </button>
-      </div>
+      <PageHeader
+        title="Webhooks"
+        description="Signed HTTP deliveries for row events, retried with backoff and disabled automatically after repeated failures."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Create webhook
+          </button>
+        }
+      />
 
       {disabled.length > 0 ? (
         <div className="mb-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-400">
@@ -97,18 +103,32 @@ export function WebhooksPage() {
                   type="button"
                   className="btn-ghost border border-ink-700 px-2 py-1 text-xs"
                   disabled={update.isPending}
-                  onClick={() => update.mutate({ webhookId: webhook.id, enabled: !webhook.enabled })}
+                  onClick={() =>
+                    update.mutate(
+                      { webhookId: webhook.id, enabled: !webhook.enabled },
+                      {
+                        onSuccess: () =>
+                          toast.success(`"${webhook.name}" ${webhook.enabled ? "disabled" : "enabled"}.`),
+                        onError: (error) => toast.error(error.message),
+                      },
+                    )
+                  }
                 >
                   {webhook.enabled ? "Disable" : "Enable"}
                 </button>{" "}
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(webhook.id)}
-                >
-                  Delete
-                </button>
+                <ConfirmButton
+                  label="Delete"
+                  title="Delete webhook?"
+                  confirmLabel="Delete webhook"
+                  successMessage={`Deleted "${webhook.name}".`}
+                  body={
+                    <>
+                      <span className="font-mono text-ink-300">{webhook.name}</span> stops receiving deliveries
+                      immediately, and its delivery history is dropped with it. To pause it instead, use Disable.
+                    </>
+                  }
+                  onConfirm={() => remove.mutateAsync(webhook.id)}
+                />
               </td>
             </tr>
           ))}

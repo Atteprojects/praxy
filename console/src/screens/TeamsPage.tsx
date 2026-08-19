@@ -5,8 +5,9 @@ import {
   useTeams,
 } from "../api/auth";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
 } from "../components/ui";
 import { STR } from "../strings";
 
@@ -22,12 +23,15 @@ export function TeamsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">{STR.teams}</h1>
-        <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-          + Create team
-        </button>
-      </div>
+      <PageHeader
+        title={STR.teams}
+        description="Teams group users and power team:<id> permission roles."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Create team
+          </button>
+        }
+      />
 
       {creating ? <CreateTeamModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
 
@@ -121,7 +125,6 @@ export function TeamDetailPage() {
   const deleteTeam = useDeleteTeam(projectId);
   const [email, setEmail] = useState("");
   const [roles, setRoles] = useState("");
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   if (team.isPending || memberships.isPending) return <FullPageSpinner />;
   if (team.isError) throw team.error;
@@ -145,10 +148,7 @@ export function TeamDetailPage() {
         ← {STR.teams}
       </Link>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{team.data.name}</h1>
-        <IdChip id={team.data.id} />
-      </div>
+      <PageHeader title={team.data.name} chips={<IdChip id={team.data.id} />} />
 
       <div className="mb-6 max-w-2xl surface p-5">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-500">Add member</h2>
@@ -210,14 +210,19 @@ export function TeamDetailPage() {
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(membership.joinedAt)}</td>
               <td className="px-4 py-3 text-right">
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={removeMember.isPending}
-                  onClick={() => removeMember.mutate(membership.id)}
-                >
-                  Remove
-                </button>
+                <ConfirmButton
+                  label="Remove"
+                  title="Remove member?"
+                  confirmLabel="Remove member"
+                  successMessage={`Removed ${membership.userEmail} from the team.`}
+                  body={
+                    <>
+                      <span className="font-mono text-ink-300">{membership.userEmail}</span> loses every
+                      permission granted through this team. Their account itself is untouched.
+                    </>
+                  }
+                  onConfirm={() => removeMember.mutateAsync(membership.id)}
+                />
               </td>
             </tr>
           ))}
@@ -226,22 +231,24 @@ export function TeamDetailPage() {
 
       <div className="mt-8 max-w-2xl surface border-coral-400/20 p-5">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-coral-400">Danger zone</h2>
-        <button
-          type="button"
-          className={`btn-ghost border ${confirmingDelete ? "border-coral-400 text-coral-400" : "border-ink-700"}`}
-          disabled={deleteTeam.isPending}
-          onClick={async () => {
-            if (!confirmingDelete) {
-              setConfirmingDelete(true);
-              setTimeout(() => setConfirmingDelete(false), 3000);
-              return;
-            }
+        <ConfirmButton
+          label="Delete team"
+          title="Delete team?"
+          confirmLabel="Delete team"
+          successMessage={`Deleted "${team.data.name}".`}
+          className="btn-ghost border border-ink-700 text-coral-400"
+          body={
+            <>
+              Deleting <span className="font-mono text-ink-300">{team.data.name}</span> removes all{" "}
+              {memberships.data.total} membership(s). Any permission granted to{" "}
+              <span className="font-mono text-ink-300">team:{team.data.id}</span> stops applying immediately.
+            </>
+          }
+          onConfirm={async () => {
             await deleteTeam.mutateAsync(teamId);
             await navigate({ to: "/project/$projectId/auth/teams", params: { projectId } });
           }}
-        >
-          {confirmingDelete ? "Click again to delete the team" : "Delete team"}
-        </button>
+        />
       </div>
     </div>
   );

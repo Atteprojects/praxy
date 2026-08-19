@@ -2,8 +2,9 @@ import { useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "../api/auth";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, Toggle, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, Toggle, timeAgo,
 } from "../components/ui";
 
 const ALL_SCOPES = [
@@ -23,19 +24,22 @@ export function ApiKeysPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">API keys</h1>
-        <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-          + Create key
-        </button>
-      </div>
+      <PageHeader
+        title="API keys"
+        description="Server SDKs authenticate with a scoped key sent in X-Praxy-Key."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Create key
+          </button>
+        }
+      />
 
       {creating ? <CreateKeyModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
 
       {keys.data.total === 0 ? (
         <EmptyState
           headers={HEADERS}
-          title="No API keys. Server SDKs authenticate with a scoped key in X-Praxy-Key."
+          title="No API keys yet — create one to authenticate a server SDK."
           action={
             <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
               + Create key
@@ -65,14 +69,19 @@ export function ApiKeysPage() {
                 {new Date(key.createdAt).toLocaleDateString()}
               </td>
               <td className="px-4 py-3 text-right">
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate(key.id)}
-                >
-                  Revoke
-                </button>
+                <ConfirmButton
+                  label="Revoke"
+                  title="Revoke API key?"
+                  confirmLabel="Revoke key"
+                  successMessage={`Revoked "${key.name}".`}
+                  body={
+                    <>
+                      Any client still sending <span className="font-mono text-ink-300">{key.name}</span> starts
+                      getting 401s immediately. This cannot be undone — issue a new key to restore access.
+                    </>
+                  }
+                  onConfirm={() => revoke.mutateAsync(key.id)}
+                />
               </td>
             </tr>
           ))}

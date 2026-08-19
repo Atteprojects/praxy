@@ -4,8 +4,10 @@ import {
   useDeleteUser, useRevokeSession, useUpdateUserLabels, useUpdateUserStatus, useUser,
   useUserMemberships, useUserSessions,
 } from "../api/auth";
+import { ConfirmButton } from "../components/ConfirmButton";
+import { useToast } from "../components/toast";
 import {
-  Badge, DataTable, FullPageSpinner, IdChip, Spinner, Tabs, timeAgo,
+  Badge, DataTable, FullPageSpinner, IdChip, PageHeader, Spinner, Tabs, timeAgo,
 } from "../components/ui";
 import { STR } from "../strings";
 
@@ -37,14 +39,17 @@ export function UserDetailPage() {
         ← {STR.users}
       </Link>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{user.name || user.email}</h1>
-        {user.status ? <Badge tone="mint">active</Badge> : <Badge tone="coral">blocked</Badge>}
-        {user.emailVerified ? <Badge tone="iris">verified</Badge> : <Badge>unverified</Badge>}
-        <IdChip id={user.id} />
-      </div>
-
-      <Tabs tabs={TABS} active={tab} onSelect={setTab} />
+      <PageHeader
+        title={user.name || user.email}
+        chips={
+          <>
+            {user.status ? <Badge tone="mint">active</Badge> : <Badge tone="coral">blocked</Badge>}
+            {user.emailVerified ? <Badge tone="iris">verified</Badge> : <Badge>unverified</Badge>}
+            <IdChip id={user.id} />
+          </>
+        }
+        tabs={<Tabs tabs={TABS} active={tab} onSelect={setTab} />}
+      />
 
       {tab === "overview" ? <OverviewTab projectId={projectId} user={user} identities={identities} /> : null}
       {tab === "sessions" ? <SessionsTab projectId={projectId} userId={userId} /> : null}
@@ -67,7 +72,7 @@ function OverviewTab({
   const updateLabels = useUpdateUserLabels(projectId, user.id);
   const deleteUser = useDeleteUser(projectId);
   const [labelDraft, setLabelDraft] = useState(user.labels.join(", "));
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const toast = useToast();
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -99,6 +104,7 @@ function OverviewTab({
             onClick={() =>
               updateLabels.mutate(
                 labelDraft.split(",").map((label) => label.trim()).filter(Boolean),
+                { onSuccess: () => toast.success("Labels saved.") },
               )
             }
           >
@@ -128,30 +134,46 @@ function OverviewTab({
       <div className="surface border-coral-400/20 p-5">
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-coral-400">Danger zone</h2>
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
+          <ConfirmButton
+            label={user.status ? "Block user" : "Unblock user"}
+            title={user.status ? "Block user?" : "Unblock user?"}
+            confirmLabel={user.status ? "Block user" : "Unblock user"}
+            successMessage={user.status ? "User blocked." : "User unblocked."}
             className="btn-ghost border border-ink-700"
-            disabled={updateStatus.isPending}
-            onClick={() => updateStatus.mutate(!user.status)}
-          >
-            {user.status ? "Block user" : "Unblock user"}
-          </button>
-          <button
-            type="button"
-            className={`btn-ghost border ${confirmingDelete ? "border-coral-400 text-coral-400" : "border-ink-700"}`}
-            disabled={deleteUser.isPending}
-            onClick={async () => {
-              if (!confirmingDelete) {
-                setConfirmingDelete(true);
-                setTimeout(() => setConfirmingDelete(false), 3000);
-                return;
-              }
+            body={
+              user.status ? (
+                <>
+                  <span className="font-mono text-ink-300">{user.email}</span> can no longer sign in, and existing
+                  sessions stop working. Their data is kept, and you can unblock them at any time.
+                </>
+              ) : (
+                <>
+                  <span className="font-mono text-ink-300">{user.email}</span> can sign in again. They will need to
+                  create a new session.
+                </>
+              )
+            }
+            onConfirm={() => updateStatus.mutateAsync(!user.status)}
+          />
+          <ConfirmButton
+            label="Delete user"
+            title="Delete user permanently?"
+            confirmLabel="Delete permanently"
+            successMessage={`Deleted ${user.email}.`}
+            className="btn-ghost border border-ink-700 text-coral-400"
+            body={
+              <>
+                <span className="font-mono text-ink-300">{user.email}</span>, their sessions, identities and team
+                memberships are removed. Rows they own are not deleted, but any{" "}
+                <span className="font-mono text-ink-300">user:{user.id}</span> grant stops resolving. This cannot
+                be undone.
+              </>
+            }
+            onConfirm={async () => {
               await deleteUser.mutateAsync(user.id);
               await navigate({ to: "/project/$projectId/auth/users", params: { projectId } });
             }}
-          >
-            {confirmingDelete ? "Click again to delete permanently" : "Delete user"}
-          </button>
+          />
         </div>
         <p className="mt-3 text-xs text-ink-500">
           Blocking revokes access immediately; deleting removes the user, their sessions and memberships.
@@ -188,14 +210,20 @@ function SessionsTab({ projectId, userId }: { projectId: string; userId: string 
       ) : (
         <>
           <div className="mb-3 flex justify-end">
-            <button
-              type="button"
-              className="btn-ghost border border-ink-700 text-xs"
-              disabled={revoke.isPending}
-              onClick={() => revoke.mutate("all")}
-            >
-              Revoke all sessions
-            </button>
+            <ConfirmButton
+              label="Revoke all sessions"
+              title="Revoke every session?"
+              confirmLabel="Revoke all"
+              successMessage="All sessions revoked."
+              className="btn-ghost border border-ink-700 text-xs text-coral-400"
+              body={
+                <>
+                  All {sessions.data.total} active session(s) are ended. Every one of this user's signed-in
+                  clients gets a 401 on its next request and must sign in again.
+                </>
+              }
+              onConfirm={() => revoke.mutateAsync("all")}
+            />
           </div>
           <DataTable headers={headers}>
             {sessions.data.sessions.map((session) => (
@@ -212,14 +240,20 @@ function SessionsTab({ projectId, userId }: { projectId: string; userId: string 
                   {new Date(session.expiresAt).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                    disabled={revoke.isPending}
-                    onClick={() => revoke.mutate(session.id)}
-                  >
-                    Revoke
-                  </button>
+                  <ConfirmButton
+                    label="Revoke"
+                    title="Revoke session?"
+                    confirmLabel="Revoke session"
+                    successMessage="Session revoked."
+                    body={
+                      <>
+                        This <span className="font-mono text-ink-300">{session.provider}</span> session
+                        {session.ip ? <> from <span className="font-mono text-ink-300">{session.ip}</span></> : null} is
+                        ended — that client gets a 401 on its next request.
+                      </>
+                    }
+                    onConfirm={() => revoke.mutateAsync(session.id)}
+                  />
                 </td>
               </tr>
             ))}

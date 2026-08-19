@@ -5,6 +5,8 @@ import {
 } from "../api/messaging";
 import { ApiError } from "../api/client";
 import type { MessagingProvider } from "../api/types";
+import { ConfirmButton } from "../components/ConfirmButton";
+import { useToast } from "../components/toast";
 import {
   Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, Modal, Spinner, Toggle, timeAgo,
 } from "../components/ui";
@@ -19,24 +21,23 @@ export function MessagingProvidersPage() {
   const remove = useDeleteProvider(projectId);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<MessagingProvider | null>(null);
+  const toast = useToast();
 
   if (providers.isPending) return <FullPageSpinner />;
   if (providers.isError) throw providers.error;
 
   return (
     <div>
-      <MessagingTabs projectId={projectId} active="providers" />
-
-      <div className="mb-6 flex items-center justify-between">
-        <p className="max-w-xl text-xs text-ink-500">
-          The enabled default provider handles every send — composed messages and Praxy's own
-          verification/recovery/invitation emails alike. No provider configured falls back to the
-          instance-wide SMTP config (or the dev log, if that's unset either).
-        </p>
-        <button type="button" className="btn-primary shrink-0" onClick={() => setCreating(true)}>
-          + Add provider
-        </button>
-      </div>
+      <MessagingTabs
+        projectId={projectId}
+        active="providers"
+        description="The enabled default provider handles every send — composed messages and Praxy's own verification/recovery/invitation emails alike. No provider configured falls back to the instance-wide SMTP config (or the dev log, if that's unset either)."
+        actions={
+          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            + Add provider
+          </button>
+        }
+      />
 
       {creating ? <ProviderModal projectId={projectId} onClose={() => setCreating(false)} /> : null}
       {editing ? <ProviderModal projectId={projectId} provider={editing} onClose={() => setEditing(null)} /> : null}
@@ -73,7 +74,15 @@ export function MessagingProvidersPage() {
                     type="button"
                     className="btn-ghost border border-ink-700 px-2 py-1 text-xs"
                     disabled={update.isPending}
-                    onClick={() => update.mutate({ providerId: provider.id, isDefault: true })}
+                    onClick={() =>
+                      update.mutate(
+                        { providerId: provider.id, isDefault: true },
+                        {
+                          onSuccess: () => toast.success(`"${provider.name}" is now the default provider.`),
+                          onError: (error) => toast.error(error.message),
+                        },
+                      )
+                    }
                   >
                     Make default
                   </button>
@@ -82,18 +91,35 @@ export function MessagingProvidersPage() {
                   type="button"
                   className="btn-ghost border border-ink-700 px-2 py-1 text-xs"
                   disabled={update.isPending}
-                  onClick={() => update.mutate({ providerId: provider.id, enabled: !provider.enabled })}
+                  onClick={() =>
+                    update.mutate(
+                      { providerId: provider.id, enabled: !provider.enabled },
+                      {
+                        onSuccess: () =>
+                          toast.success(`"${provider.name}" ${provider.enabled ? "disabled" : "enabled"}.`),
+                        onError: (error) => toast.error(error.message),
+                      },
+                    )
+                  }
                 >
                   {provider.enabled ? "Disable" : "Enable"}
                 </button>{" "}
-                <button
-                  type="button"
-                  className="btn-ghost border border-ink-700 px-2 py-1 text-xs text-coral-400"
-                  disabled={remove.isPending}
-                  onClick={() => remove.mutate(provider.id)}
-                >
-                  Delete
-                </button>
+                <ConfirmButton
+                  label="Delete"
+                  title="Delete provider?"
+                  confirmLabel="Delete provider"
+                  successMessage={`Deleted "${provider.name}".`}
+                  body={
+                    <>
+                      Removing <span className="font-mono text-ink-300">{provider.name}</span> drops its stored
+                      SMTP credentials.
+                      {provider.isDefault
+                        ? " It is the default provider — sends fall back to the instance-wide SMTP config until another is made default."
+                        : ""}
+                    </>
+                  }
+                  onConfirm={() => remove.mutateAsync(provider.id)}
+                />
               </td>
             </tr>
           ))}
