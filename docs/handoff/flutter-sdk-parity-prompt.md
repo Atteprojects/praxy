@@ -21,7 +21,12 @@ to match what `AccountEndpoints.cs` actually serves.
 This is item #6 of the post-v0.1.0 gap analysis, and the one furthest from the
 others — it touches Dart, not C# or the console. Items #1–#3 are merged or
 written up; #4 and #5 may or may not have landed by the time this runs.
-Nothing here depends on any of them.
+
+**One dependency**: `docs/handoff/function-execution-read-prompt.md` closes a
+real API gap this prompt's own writing uncovered (async function invoke has
+no way to read its result back). Check whether it has landed before you start
+`FunctionsService` below — the scope item and landmine for async invoke
+describe both cases.
 
 Work on a new branch off `main`. Read `CLAUDE.md` first, then
 `docs/research/flutter-sdk.md` in full — it is short, and it is the actual
@@ -56,11 +61,12 @@ existing service already honors.
    `createJwt`. Exact wire shapes below.
 2. **`TeamsService`** (new): teams CRUD, memberships CRUD, matching
    `TeamEndpoints.cs`'s client-facing surface — not the console admin one.
-3. **`FunctionsService`** (new): the data-plane invoke only
-   (`POST /v1/functions/{functionId}/executions`, sync and async) — not
-   deployment management, which is a console/operator concern, not an app's.
-   **There is no way to poll an async result — see the landmine below before
-   you design this method's return shape.**
+3. **`FunctionsService`** (new): the data-plane invoke
+   (`POST /v1/functions/{functionId}/executions`, sync and async), plus
+   `getExecution` if `docs/handoff/function-execution-read-prompt.md` has
+   landed by the time you start — check before you design this method's
+   return shape, and see the landmine below either way. Deployment management
+   is a console/operator concern, not an app's, and stays out of scope.
 4. **No `MessagingService`.** Checked already, not left for you to
    discover: `MessagingEndpoints.cs` maps exactly one route group
    (`/v1/console/projects/{projectId}/messaging`) and every route in it sits
@@ -130,28 +136,26 @@ Verified against current `main`, not recalled.
   method.
 
 - **`FunctionsService`'s async invoke returns a `202` with a queued
-  execution, and there is nowhere to poll it afterward.** The data plane maps
-  exactly one route —
-  `dataPlane.MapPost("/{functionId}/executions", Invoke)`
-  (`src/Praxy.Api/Endpoints/FunctionEndpoints.cs:134`) — and no
-  `GET .../executions/{id}`. That read exists only on the console admin
-  surface (`RequireOperatorFilter`-gated), which an app user's session cannot
-  reach. This is a real, separate API gap, not something an SDK-only task can
-  paper over: an app that calls `async: true` today has no way to ever learn
-  what happened.
-
-  Do not invent a poll method that calls a route which doesn't exist — it
-  would 404 for every caller. Two honest choices: (a) expose `invoke` for sync
-  only in this v1.1 surface and leave async out until the data plane grows a
-  read route (name this explicitly as deferred, matching how `upsert` and
-  anonymous sessions are already documented as known gaps rather than silently
-  worked around); or (b) expose both, with the async variant's doc comment
-  stating plainly that the returned execution can never be re-fetched through
-  this SDK today. Either is defensible — state which you chose and why. Do
-  **not** add the missing data-plane endpoint yourself; that is server scope
-  this task doesn't own, and adding one API route as a side effect of an SDK
-  task is exactly the kind of undiscussed scope growth CLAUDE.md asks
-  sessions to avoid.
+  execution — whether there is anywhere to poll it depends on whether
+  `docs/handoff/function-execution-read-prompt.md` has landed.** Check
+  `src/Praxy.Api/Endpoints/FunctionEndpoints.cs` for a data-plane
+  `GET .../executions/{id}` before writing this method:
+  - **If it exists**: bind `getExecution` normally — same
+    `FunctionExecutionResponse` shape the sync path already decodes, just
+    fetched by id. Read that prompt's landmines section for what
+    authorization rule it settled on (own-execution-only is the recommended
+    outcome, meaning a caller can only ever fetch what they themselves
+    triggered — the SDK doesn't need to do anything about that, the server
+    enforces it, but don't be surprised by a 404 on someone else's execution
+    id).
+  - **If it does not exist yet**: do not invent a poll method that calls a
+    route which doesn't exist — it would 404 for every caller. Ship `invoke`
+    for sync only in this v1.1 surface, document async as deferred pending
+    that prompt (matching how `upsert` and anonymous sessions are already
+    documented as known gaps rather than silently worked around), and do
+    **not** add the missing endpoint yourself as a side effect of this task —
+    that is server scope with its own authorization design decision, already
+    written up as its own prompt for exactly that reason.
 
 - **Match the existing package's error and null-handling conventions
   exactly** — `AccountService`/`TablesService` are short, dense, and
