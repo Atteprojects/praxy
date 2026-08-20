@@ -16,7 +16,9 @@ forward from later phases.
 
 ## Fixed decisions (owner's — never reopen)
 
-- .NET 10 backend · Vite + React console (own modern design; simple Appwrite-like layout) · Flutter SDK first
+- .NET 10 backend · Vite + React console (own modern design; simple Appwrite-like layout) · Flutter SDK
+  first, Next.js SDK second (added 2026-08-20, see `docs/research/nextjs-sdk.md` — groundwork for an
+  eventual Sites-style hosting feature, itself not yet planned)
 - PostgreSQL only — no second datastore
 - Auth: **app users** get email+password and **Google OAuth only** until the owner says otherwise;
   platform/console operators are email+password only (operator OAuth is deferred to future
