@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    name: Build and test API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore Praxy.sln
+
+      - name: Build
+        run: dotnet build Praxy.sln --no-restore --configuration Release
+
+      # Testcontainers needs a Docker daemon — ubuntu-latest runners have one preinstalled at
+      # /var/run/docker.sock, so no services: Postgres container here; Testcontainers manages its own.
+      - name: Test
+        run: dotnet test Praxy.sln --no-build --configuration Release
+
+  console:
+    name: Build console
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install
+        run: npm ci --prefix console
+
+      - name: Build
+        run: npm run build --prefix console
