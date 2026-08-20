@@ -143,3 +143,29 @@ export function useCreateProject() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
 }
+
+export function useUpdateProject(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string }) =>
+      api<Project>(`/console/projects/${projectId}`, { method: "PATCH", body: input }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["projects", projectId], data);
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteProject(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<void>(`/console/projects/${projectId}?force=true`, { method: "DELETE" }),
+    // Skips the deleted project's own subtree — invalidating it would refetch and 404 on whichever
+    // project-scoped screen is still mounted while the console navigates away.
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects"],
+        predicate: (query) => query.queryKey[1] !== projectId,
+      }),
+  });
+}

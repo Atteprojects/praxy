@@ -1,8 +1,8 @@
 import { Outlet, useParams } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { useDatabase, useTables } from "../api/databases";
+import { useDatabase, useTables, useUpdateDatabase } from "../api/databases";
 import { TablesIcon } from "../components/icons";
-import { FullPageSpinner, Sheet } from "../components/ui";
+import { FullPageSpinner, InlineEditableTitle, PageHeader, Sheet } from "../components/ui";
 import { STR } from "../strings";
 import { TablesPanelContent } from "./TablesPanel";
 
@@ -46,20 +46,34 @@ export function DatabaseLayout() {
   );
 }
 
-/** Rendered at the bare `databases/$databaseId` route — no table selected yet. */
+/** Rendered at the bare `databases/$databaseId` route — no table selected yet, and where the database's own name lives (there is no separate database settings screen, unlike tables). */
 export function DatabaseIndexPage() {
   const { projectId, databaseId } = useParams({ strict: false }) as { projectId: string; databaseId: string };
+  const database = useDatabase(projectId, databaseId);
   const tables = useTables(projectId, databaseId);
+  const update = useUpdateDatabase(projectId, databaseId);
 
-  if (tables.isPending) return <FullPageSpinner />;
+  if (database.isPending || tables.isPending) return <FullPageSpinner />;
+  if (database.isError) throw database.error;
   if (tables.isError) throw tables.error;
 
   return (
-    <GhostPanel>
-      {tables.data.total === 0
-        ? "Create your first table using the + Create button in the sidebar."
-        : "Select a table from the sidebar."}
-    </GhostPanel>
+    <div>
+      <PageHeader
+        title={
+          <InlineEditableTitle
+            value={database.data.name}
+            onSave={(name) => update.mutateAsync({ name })}
+            headingClassName="text-xl font-semibold tracking-tight"
+          />
+        }
+      />
+      <GhostPanel>
+        {tables.data.total === 0
+          ? "Create your first table using the + Create button in the sidebar."
+          : "Select a table from the sidebar."}
+      </GhostPanel>
+    </div>
   );
 }
 

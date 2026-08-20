@@ -487,3 +487,88 @@ export function PageHeader({
     </div>
   );
 }
+
+/**
+ * Click-to-edit name, used as `PageHeader`'s `title` where a rename needs no dedicated screen or
+ * route (a project, a database) — a whole settings page for one text field would be more UI than
+ * the field is worth.
+ */
+export function InlineEditableTitle({
+  value,
+  onSave,
+  headingClassName = "text-2xl font-semibold tracking-tight",
+}: {
+  value: string;
+  onSave: (name: string) => Promise<unknown>;
+  headingClassName?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="group inline-flex items-center gap-2 text-left"
+        onClick={() => {
+          setDraft(value);
+          setError(null);
+          setEditing(true);
+        }}
+      >
+        <span className={headingClassName}>{value}</span>
+        <span className="text-sm text-ink-600 opacity-0 transition-opacity group-hover:opacity-100">✎</span>
+      </button>
+    );
+  }
+
+  async function save() {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === value) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(trimmed);
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <span className="inline-flex items-center gap-2">
+        <input
+          className="input-base"
+          autoFocus
+          value={draft}
+          disabled={saving}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+        <button
+          type="button"
+          className="btn-ghost shrink-0 border border-ink-700 text-xs"
+          disabled={saving}
+          onClick={() => void save()}
+        >
+          {saving ? <Spinner className="size-3" /> : "Save"}
+        </button>
+        <button type="button" className="btn-ghost shrink-0 text-xs" disabled={saving} onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </span>
+      {error ? <span className="text-xs text-coral-400">{error}</span> : null}
+    </span>
+  );
+}

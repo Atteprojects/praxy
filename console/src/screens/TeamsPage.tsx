@@ -2,9 +2,10 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import {
   useAddTeamMember, useCreateTeam, useDeleteTeam, useRemoveTeamMember, useTeam, useTeamMemberships,
-  useTeams,
+  useTeams, useUpdateMembershipRoles,
 } from "../api/auth";
 import { ApiError } from "../api/client";
+import type { Membership } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
 import {
   Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
@@ -197,13 +198,7 @@ export function TeamDetailPage() {
                 </Link>
               </td>
               <td className="px-4 py-3">
-                <span className="flex flex-wrap gap-1">
-                  {membership.roles.length === 0 ? (
-                    <span className="text-ink-700">—</span>
-                  ) : (
-                    membership.roles.map((role) => <Badge key={role}>{role}</Badge>)
-                  )}
-                </span>
+                <EditableRolesCell projectId={projectId} teamId={teamId} membership={membership} />
               </td>
               <td className="px-4 py-3">
                 {membership.confirmed ? <Badge tone="mint">member</Badge> : <Badge tone="amber">invited</Badge>}
@@ -250,6 +245,82 @@ export function TeamDetailPage() {
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Click to edit, same comma-separated shape the add-member form above already uses — not a
+ * separate modal. Replacing delete-then-re-add with an actual edit means the member is never
+ * briefly removed from the team.
+ */
+function EditableRolesCell({
+  projectId,
+  teamId,
+  membership,
+}: {
+  projectId: string;
+  teamId: string;
+  membership: Membership;
+}) {
+  const update = useUpdateMembershipRoles(projectId, teamId);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(membership.roles.join(", "));
+  const error = update.error instanceof ApiError ? update.error : null;
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="-mx-1 -my-0.5 flex flex-wrap gap-1 rounded px-1 py-0.5 text-left hover:bg-ink-850/60"
+        onClick={() => {
+          setDraft(membership.roles.join(", "));
+          setEditing(true);
+        }}
+      >
+        {membership.roles.length === 0 ? (
+          <span className="text-ink-700">—</span>
+        ) : (
+          membership.roles.map((role) => <Badge key={role}>{role}</Badge>)
+        )}
+      </button>
+    );
+  }
+
+  async function save() {
+    const roles = draft.split(",").map((role) => role.trim()).filter(Boolean);
+    await update.mutateAsync({ membershipId: membership.id, roles });
+    setEditing(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <input
+          className="input-base w-40 text-xs"
+          autoFocus
+          value={draft}
+          disabled={update.isPending}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="roles, e.g. owner"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+        <button
+          type="button"
+          className="btn-ghost shrink-0 border border-ink-700 text-xs"
+          disabled={update.isPending}
+          onClick={() => void save()}
+        >
+          {update.isPending ? <Spinner className="size-3" /> : "Save"}
+        </button>
+        <button type="button" className="btn-ghost shrink-0 text-xs" disabled={update.isPending} onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+      {error ? <span className="text-xs text-coral-400">{error.message}</span> : null}
     </div>
   );
 }

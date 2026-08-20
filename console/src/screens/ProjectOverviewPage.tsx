@@ -1,11 +1,13 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useConnectionCount, useProject, useQuotas } from "../api/queries";
-import { FullPageSpinner, IdChip, PageHeader } from "../components/ui";
+import { ApiError } from "../api/client";
+import { useConnectionCount, useDeleteProject, useProject, useQuotas, useUpdateProject } from "../api/queries";
+import { ErrorNote, FullPageSpinner, IdChip, InlineEditableTitle, PageHeader, Spinner } from "../components/ui";
 
 export function ProjectOverviewPage() {
   const { projectId } = useParams({ strict: false }) as { projectId: string };
   const project = useProject(projectId, { pollWhileUnpinged: true });
+  const update = useUpdateProject(projectId);
 
   if (project.isPending) return <FullPageSpinner />;
   if (project.isError) throw project.error;
@@ -15,7 +17,7 @@ export function ProjectOverviewPage() {
   return (
     <div>
       <PageHeader
-        title={project.data.name}
+        title={<InlineEditableTitle value={project.data.name} onSave={(name) => update.mutateAsync({ name })} />}
         chips={<IdChip id={project.data.id} />}
         description={`Created ${new Date(project.data.createdAt).toLocaleString()}`}
       />
@@ -28,6 +30,58 @@ export function ProjectOverviewPage() {
           <ConnectionsTile projectId={project.data.id} />
         </div>
         <QuotaCard projectId={project.data.id} />
+      </div>
+
+      <DangerZone projectId={project.data.id} projectName={project.data.name} />
+    </div>
+  );
+}
+
+/**
+ * A hard, confirmed delete — the gap analysis explicitly asked for this, not archiving or a
+ * soft-delete. Typed-name confirmation, the same shape `TableSettingsPage.tsx` and
+ * `DatabasesPage.tsx`'s database-delete already use: this is strictly more destructive than either
+ * (every database, user, key, team and function in the project goes with it), so it gets at least
+ * as much friction, not a one-click `ConfirmButton`.
+ */
+function DangerZone({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const navigate = useNavigate();
+  const remove = useDeleteProject(projectId);
+  const [confirmName, setConfirmName] = useState("");
+  const error = remove.error instanceof ApiError ? remove.error : null;
+
+  async function onDelete() {
+    await remove.mutateAsync();
+    await navigate({ to: "/" });
+  }
+
+  return (
+    <div className="mt-8 max-w-3xl surface border-coral-400/20 p-5">
+      <h2 className="mb-3 text-sm font-medium text-coral-400">Danger zone</h2>
+      <p className="mb-3 text-xs text-ink-500">
+        Deleting <span className="font-mono text-ink-300">{projectName}</span> removes every
+        database (and every table, column, index and row inside them), every function, user,
+        API key and team in this project. This cannot be undone.
+      </p>
+      {error ? <div className="mb-3"><ErrorNote message={error.message} /></div> : null}
+      <p className="mb-2 text-xs text-ink-500">
+        Type <span className="font-mono text-ink-300">{projectName}</span> to confirm.
+      </p>
+      <div className="flex gap-2">
+        <input
+          className="input-base flex-1"
+          value={confirmName}
+          onChange={(e) => setConfirmName(e.target.value)}
+          placeholder={projectName}
+        />
+        <button
+          type="button"
+          className="btn-ghost shrink-0 border border-coral-400/60 text-coral-400 disabled:opacity-40"
+          disabled={confirmName !== projectName || remove.isPending}
+          onClick={() => void onDelete()}
+        >
+          {remove.isPending ? <Spinner /> : "Delete project"}
+        </button>
       </div>
     </div>
   );
