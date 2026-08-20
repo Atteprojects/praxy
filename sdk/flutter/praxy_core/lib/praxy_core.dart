@@ -17,6 +17,8 @@ export 'src/permission.dart' show Permission, Role;
 export 'src/query.dart' show Col, Query;
 export 'src/row_codec.dart' show RowCodec, RowDecoder, RowEncoder, RowMeta, TableRef;
 export 'src/services/account_service.dart' show AccountService;
+export 'src/services/functions_service.dart' show FunctionsService;
 export 'src/services/tables_service.dart' show TablesService;
+export 'src/services/teams_service.dart' show TeamsService;
 export 'src/session_store.dart' show MemorySessionStore, Session, SessionStore;
 export 'src/transport.dart' show Transport, TransportRequest, TransportResponse;

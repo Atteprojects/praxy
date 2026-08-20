@@ -5,7 +5,9 @@ its `Transport`/`SessionStore` platform seams, typed `Query`/`Permission`/`Role`
 `RowCodec`/`TableRef` for codegen-free typed rows, and the sealed `PraxyException` hierarchy.
 `package:http` is its only dependency, so this package works identically on the Dart VM and in
 Flutter — use it directly for CLI tools and server-side scripts that talk to a Praxy instance
-without pulling in Flutter.
+without pulling in Flutter. Four services: `account` (15 methods — auth, sessions, verification,
+JWTs), `tables` (typed row CRUD), `teams` (teams and memberships), and `functions` (data-plane
+invocation).
 
 Realtime and Google OAuth need platform capabilities this package deliberately doesn't depend on (a
 WebSocket stack, a browser-based auth flow) — see
@@ -34,6 +36,17 @@ final px = Praxy(endpoint: 'http://localhost:5090', projectId: 'your-project-id'
 // Account
 final session = await px.account.create(email: 'a@b.com', password: 'correct-horse-battery');
 final user = await px.account.get();
+await px.account.updateName(name: 'New Name');
+final sessions = await px.account.listSessions(); // sessions.sessions[i].current marks this client's own
+final jwt = await px.account.createJwt(); // hand this to another process to act as this user
+
+// Teams
+final team = await px.teams.create(name: 'Engineering');
+await px.teams.createMembership(team.id, email: 'teammate@example.com', url: 'https://app.example/accept');
+
+// Functions — the data-plane invoke surface only; deployment management is a console concern.
+final execution = await px.functions.createExecution('function-id', path: '/hello');
+print(execution.responseBody);
 
 // Typed rows — write a small RowCodec<T> once per table, no build step required.
 final class Todo {

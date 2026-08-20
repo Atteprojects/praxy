@@ -45,3 +45,32 @@ jobs:
 
       - name: Build
         run: npm run build --prefix console
+
+  flutter-sdk:
+    name: Build and test Flutter SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # praxy_flutter/example are real Flutter packages (flutter test needs the Flutter SDK's
+      # bundled Dart, not just dart-lang/setup-dart) — praxy_core/praxy_codegen are pure Dart but
+      # share the same pub workspace, resolved together below.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install
+        run: dart pub get
+        working-directory: sdk/flutter
+
+      - name: Test pure-Dart packages
+        run: dart test praxy_core praxy_codegen
+        working-directory: sdk/flutter
+
+      - name: Test Flutter packages
+        run: flutter test praxy_flutter example
+        working-directory: sdk/flutter
+
+      - name: Analyze
+        run: dart analyze .
+        working-directory: sdk/flutter

@@ -234,3 +234,31 @@ About 20 public methods, and nothing more.
 
 Out of v1: storage, functions, teams, messaging, avatars, locale, transactions, all server-admin surfaces. Each is
 additive and none constrains the shape of the four above. Every service shipped is a compatibility commitment.
+
+## v1.1 SDK surface (post-v0.1.0 gap #6)
+
+Additive only — nothing in v1 changed shape. Closes the gap between what `AccountEndpoints.cs` actually serves
+and what the SDK could reach, plus binds two of the five services v1 deliberately left out.
+
+- **Account (+7, 15 total):** `updateName`, `updatePassword`, `listSessions`, `sendVerification`/
+  `confirmVerification`, `roles` (the role-resolution debug endpoint), `createJwt`. `createAnonymousSession` is
+  still unbound — the API never implemented it (see the deviation note in `praxy_core`'s `AccountService` doc
+  comment).
+- **Teams (10, new):** team CRUD — `create`, `list`, `get`, `update`, `delete` — plus membership CRUD —
+  `createMembership`, `listMemberships`, `updateMembershipRoles`, `acceptInvitation`, `deleteMembership`.
+  Binds `TeamEndpoints.cs`'s client-facing surface exactly (sessions authorize by membership/ownership, keys by
+  scope); the separate console-operator admin surface is out of scope, same as every other service here.
+- **Functions (2, new):** `createExecution` (sync by default, `async: true` for the `202` + poll shape) and
+  `getExecution`, binding the data-plane invocation surface only. Deployment management (create a function,
+  upload/activate a deployment) is a console/operator concern, not an app's, and stays out of the SDK.
+- **Messaging: still nothing to bind.** `MessagingEndpoints.cs` has exactly one route group, entirely behind
+  `RequireOperatorFilter` — no client-facing endpoint exists for an app user to subscribe/unsubscribe through.
+  Not an SDK gap; a server gap, out of scope for an SDK task. If a client-facing messaging surface is ever added
+  server-side, the SDK binding is a small additive follow-up then, the same way this whole v1.1 pass was for
+  teams/functions.
+- **No realtime wrapper for teams/functions.** The roadmap's realtime event grammar is rows-only — team
+  membership changes and function executions aren't in the realtime event surface server-side, so there's
+  nothing to stream. Additive later if that changes, same as everything else in this section.
+
+Out of v1.1, same as v1: storage, avatars, locale, transactions, all server-admin surfaces, and now also
+function-deployment management and any messaging surface (none exists to bind yet).
