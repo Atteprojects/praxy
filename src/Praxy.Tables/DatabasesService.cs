@@ -57,6 +57,17 @@ public sealed class DatabasesService(PraxyDb db, CatalogCache cache, QuotaServic
         await db.Databases.FirstOrDefaultAsync(d => d.Id == databaseId && d.ProjectId == projectId, ct)
         ?? throw PraxyException.NotFound(ErrorTypes.DatabaseNotFound, "Database not found.");
 
+    /// <summary>Name only — <see cref="Database.Key"/> and <see cref="Database.SchemaName"/> never change once created, same rule <c>TableDef</c> follows.</summary>
+    public async Task<Database> UpdateAsync(Database database, string name, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 128)
+            throw PraxyException.ArgumentInvalid("Invalid database payload.",
+                new Dictionary<string, string[]> { ["name"] = ["Must be between 1 and 128 characters."] });
+        database.Name = name.Trim();
+        await db.SaveChangesAsync(ct);
+        return database;
+    }
+
     /// <summary>
     /// Always destructive, and more so than a table drop: <c>force=true</c> takes every table in the
     /// database with it. One <c>DROP SCHEMA ... CASCADE</c> does the physical half; the catalog rows
