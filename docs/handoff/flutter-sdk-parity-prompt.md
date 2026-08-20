@@ -19,8 +19,11 @@ is that additive step for three of those five, plus finishing `AccountService`
 to match what `AccountEndpoints.cs` actually serves.
 
 This is item #6 of the post-v0.1.0 gap analysis, and the one furthest from the
-others — it touches Dart, not C# or the console. Items #1–#3 are merged or
-written up; #4 and #5 may or may not have landed by the time this runs.
+others — it touches Dart, not C# or the console. Items #1–#5 are merged to
+`main` as of this prompt's last edit (2026-08-20) — #4 added the
+`.github/workflows/ci.yml` this prompt's new scope item 7 extends, and #5
+merged the branch-protection rule the "Branch protection" section below
+describes.
 
 **One dependency, now closed**: `docs/handoff/function-execution-read-prompt.md`
 merged (`50eb38c`) — the data plane now has
@@ -87,6 +90,35 @@ existing service already honors.
    methods, Teams, Functions — and that Messaging was evaluated and has
    nothing to bind to yet), in the same style, including exact method counts
    like the existing section does.
+7. **Add a CI job for the Flutter SDK to `.github/workflows/ci.yml`** — the
+   workflow currently has two jobs (`Build and test API`, `Build console`);
+   this task adds a third, `Build and test Flutter SDK` (or similar exact
+   name — pick one and use it consistently), covering
+   `dart pub get && dart test praxy_core praxy_codegen && flutter test
+   praxy_flutter example && dart analyze .`, same invocations as
+   `CLAUDE.md`'s Commands section and this prompt's own Done means. This is
+   new scope added after the rest of this prompt was written — the SDK work
+   above was previously going to ship with no CI coverage at all.
+
+## Branch protection — read before opening a PR
+
+`main` now requires a passing PR with two required status checks (`Build and
+test API`, `Build console`) before merge — added this session, `enforce_admins:
+true`, so this applies to you too, no direct pushes or local
+`git merge && git push` to `main`. Push your branch and open a PR
+(`gh pr create`); do not attempt `gh pr merge` or a local merge yourself —
+stop once the PR is open and CI is green, and let the owner merge it (same
+as every other item in this backlog).
+
+Your new `Build and test Flutter SDK` job is **not** in that required-checks
+list yet — it can't be, since a required check has to have actually reported
+on this repo at least once before GitHub will let you add it. Once your PR's
+run reports the new job's exact name, mention in your final summary that the
+owner may want to add it to the required list (`gh api -X PUT
+repos/Atteprojects/praxy/branches/main/protection ...`, same shape used to
+set up the other two) — but do not make that repo-settings change yourself;
+it needs the owner's explicit go-ahead each time, the same way this session's
+addition of branch protection itself did.
 
 ## Landmines — read before writing code
 
@@ -147,6 +179,18 @@ Verified against current `main`, not recalled.
   triggered. The server enforces this; the SDK doesn't need to replicate it,
   just let the resulting `PraxyException` surface like any other.
 
+- **The CI job needs the Flutter SDK, not just Dart** — `praxy_core`/
+  `praxy_codegen` are pure-Dart packages, but `praxy_flutter`/`example` are
+  real Flutter packages (`pubspec.yaml` constraints: Dart `^3.12.2`, Flutter
+  `>=3.24.0`), and `flutter test` needs the Flutter SDK on the runner, which
+  bundles its own pinned Dart — a bare `dart-lang/setup-dart` action is not
+  enough. Use `subosito/flutter-action@v2` with `channel: stable` (satisfies
+  both lower bounds comfortably; no need to chase an exact patch pin the way
+  `docs/research/dotnet-stack.md` does for NuGet — Flutter's stable channel
+  is the whole point of a floating channel action). Run `dart pub get` from
+  `sdk/flutter/` once (the native pub workspace resolves all four packages
+  together, per `CLAUDE.md`) before `dart test`/`flutter test`/`dart analyze`.
+
 - **Match the existing package's error and null-handling conventions
   exactly** — `AccountService`/`TablesService` are short, dense, and
   deliberate about which server fields are optional. Read
@@ -189,8 +233,16 @@ service both sends the right request and decodes the right response).
   (`sdk/flutter/example`) already runs against a real instance per
   `CLAUDE.md`'s Commands section; exercising one new method there is a nice
   extra, not a requirement.
+- **A real, verified-green GitHub Actions run for your new `Build and test
+  Flutter SDK` job** — same requirement item #4 had for its own new CI job,
+  and for the same reason: "the YAML looks right" is not the same as a green
+  run. Push the branch, open the PR, and confirm all three jobs (the two
+  existing ones plus yours) pass — paste or describe the real result in your
+  final summary.
 - State in your final summary: the exact new method count added per service
-  (matching the existing doc's "N methods, and nothing more" style).
+  (matching the existing doc's "N methods, and nothing more" style), the new
+  CI job's exact name as it reported, and a note that the owner may want to
+  add it to `main`'s required status checks (see "Branch protection" above).
 
 ## Deploying (only if the owner asks)
 
