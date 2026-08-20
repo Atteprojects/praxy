@@ -30,6 +30,10 @@ final px = PraxyFlutter(endpoint: 'http://localhost:5090', projectId: 'your-proj
 // no manual token handling between app launches.
 final session = await px.account.create(email: 'a@b.com', password: 'correct-horse-battery');
 
+// Teams and function invocation — plain passthroughs to praxy_core, same as px.account.
+final team = await px.teams.create(name: 'Engineering');
+final execution = await px.functions.createExecution('function-id', path: '/hello');
+
 // The same 5-method row surface as praxy_core (px.tables.list/get/create/update/delete),
 // plus liveList<T>: a REST snapshot followed by realtime patches in one Stream.
 px.tables.liveList(todos).listen((page) => print('${page.rows.length} rows live'));
