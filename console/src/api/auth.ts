@@ -248,6 +248,19 @@ export function useAddTeamMember(projectId: string, teamId: string) {
   });
 }
 
+export function useUpdateMembershipRoles(projectId: string, teamId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ membershipId, roles }: { membershipId: string; roles: string[] }) =>
+      api(`${base(projectId)}/teams/${teamId}/memberships/${membershipId}`, { method: "PATCH", body: { roles } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "teams", teamId, "memberships"],
+      });
+    },
+  });
+}
+
 export function useRemoveTeamMember(projectId: string, teamId: string) {
   const queryClient = useQueryClient();
   return useMutation({

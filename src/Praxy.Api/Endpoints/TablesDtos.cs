@@ -10,6 +10,8 @@ namespace Praxy.Api.Endpoints;
 
 public sealed record CreateDatabaseRequest(string Key, string Name);
 
+public sealed record UpdateDatabaseRequest(string Name);
+
 public sealed record CreateTableRequest(string Key, string Name);
 
 public sealed record UpdateTableRequest(string? Name, bool? Enabled);

@@ -25,6 +25,8 @@ public static class ConsoleDatabaseEndpoints
             .Produces<DatabaseListResponse>();
         admin.MapGet("/{databaseId}", GetDatabase)
             .Produces<DatabaseResponse>();
+        admin.MapPatch("/{databaseId}", UpdateDatabase)
+            .Produces<DatabaseResponse>();
         admin.MapDelete("/{databaseId}", DeleteDatabase)
             .Produces(StatusCodes.Status204NoContent);
 
@@ -98,6 +100,17 @@ public static class ConsoleDatabaseEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
+        return Results.Ok(DatabaseResponse.From(database));
+    }
+
+    private static async Task<IResult> UpdateDatabase(
+        string databaseId, UpdateDatabaseRequest req, HttpContext http, PraxyDb db,
+        DatabasesService databases, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
+        database = await databases.UpdateAsync(database, req.Name, ct);
+        await AuditAsync(db, http, project.Id, "databases.update", $"database/{databaseId}", ct);
         return Results.Ok(DatabaseResponse.From(database));
     }
 

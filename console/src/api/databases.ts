@@ -34,6 +34,18 @@ export function useCreateDatabase(projectId: string) {
   });
 }
 
+export function useUpdateDatabase(projectId: string, databaseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string }) =>
+      api<Database>(`${base(projectId)}/${databaseId}`, { method: "PATCH", body: input }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["projects", projectId, "databases", databaseId], data);
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "databases"] });
+    },
+  });
+}
+
 export function useDeleteDatabase(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({

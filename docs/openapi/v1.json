@@ -603,6 +603,63 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "ProjectEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "ProjectEndpoints"
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/console/projects/{projectId}/quotas": {
@@ -3291,6 +3348,61 @@
       }
     },
     "/v1/console/projects/{projectId}/teams/{teamId}/memberships/{membershipId}": {
+      "patch": {
+        "tags": [
+          "ConsoleAuthAdminEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMembershipRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "ConsoleAuthAdminEndpoints"
@@ -3673,6 +3785,53 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "DatabaseEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatabaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -4795,6 +4954,53 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "ConsoleDatabaseEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "databaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatabaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -12831,6 +13037,17 @@
           }
         }
       },
+      "UpdateDatabaseRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "UpdateFunctionRequest": {
         "required": [
           "name",
@@ -12947,6 +13164,17 @@
         "properties": {
           "prefs": {
             "$ref": "#/components/schemas/JsonObject"
+          }
+        }
+      },
+      "UpdateProjectRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
           }
         }
       },

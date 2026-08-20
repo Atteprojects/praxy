@@ -25,6 +25,8 @@ public static class DatabaseEndpoints
             .Produces<DatabaseListResponse>();
         group.MapGet("/{databaseId}", GetDatabase)
             .Produces<DatabaseResponse>();
+        group.MapPatch("/{databaseId}", UpdateDatabase)
+            .Produces<DatabaseResponse>();
         group.MapDelete("/{databaseId}", DeleteDatabase)
             .Produces(StatusCodes.Status204NoContent);
 
@@ -99,6 +101,16 @@ public static class DatabaseEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.DatabasesRead);
         var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
+        return Results.Ok(DatabaseResponse.From(database));
+    }
+
+    private static async Task<IResult> UpdateDatabase(
+        string databaseId, UpdateDatabaseRequest req, HttpContext http, DatabasesService databases, CancellationToken ct)
+    {
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        AppPrincipalFilter.RequireScope(http, ApiKeyScopes.DatabasesWrite);
+        var database = await SchemaLookup.DatabaseAsync(databases, project.Id, databaseId, ct);
+        database = await databases.UpdateAsync(database, req.Name, ct);
         return Results.Ok(DatabaseResponse.From(database));
     }
 

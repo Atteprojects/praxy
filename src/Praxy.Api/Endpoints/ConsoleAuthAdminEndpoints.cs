@@ -84,6 +84,8 @@ public static class ConsoleAuthAdminEndpoints
         admin.MapGet("/teams/{teamId}/memberships", ListTeamMemberships).Produces<MembershipListResponse>();
         admin.MapPost("/teams/{teamId}/memberships", AddTeamMember)
             .Produces<MembershipResponse>(StatusCodes.Status201Created);
+        admin.MapPatch("/teams/{teamId}/memberships/{membershipId}", UpdateTeamMembershipRoles)
+            .Produces<MembershipResponse>();
         admin.MapDelete("/teams/{teamId}/memberships/{membershipId}", DeleteTeamMembership)
             .Produces(StatusCodes.Status204NoContent);
 
@@ -388,6 +390,33 @@ public static class ConsoleAuthAdminEndpoints
         return Results.Created(
             $"/v1/console/projects/{project.Id}/teams/{Ids.Wire(team.Id)}/memberships/{Ids.Wire(membership.Membership.Id)}",
             MembershipResponse.From(membership));
+    }
+
+    /// <summary>
+    /// Mirrors the client-facing <c>PATCH /v1/teams/{teamId}/memberships/{membershipId}</c>
+    /// (<c>TeamEndpoints.UpdateMembershipRoles</c>), but without that handler's app-user
+    /// <c>ownerOnly</c> gate: an operator reaching this route already passed
+    /// <see cref="RequireOperatorFilter"/> plus <see cref="ConsoleProjectFilter"/>, the same
+    /// standing every other console admin write on this surface (add/remove a member, delete the
+    /// team itself) already acts on with no further per-membership check — operators aren't team
+    /// members with an "owner" role of their own, they're privileged relative to every app user in
+    /// the project, so re-deriving team ownership here would check something that doesn't apply to
+    /// them.
+    /// </summary>
+    private static async Task<IResult> UpdateTeamMembershipRoles(
+        string teamId, string membershipId, UpdateMembershipRolesRequest req, HttpContext http, PraxyDb db,
+        TeamsService teams, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var team = await FindTeamAsync(teams, project.Id, teamId, ct);
+        if (!Ids.TryParseWire(membershipId, out var parsed))
+            throw PraxyException.NotFound(ErrorTypes.MembershipNotFound, "Membership not found.");
+        var membership = await teams.GetMembershipAsync(team.Id, parsed, ct);
+        membership = await teams.UpdateMembershipRolesAsync(project.Id, team.Id, membership, req.Roles, ct);
+        var user = await db.Users.FirstAsync(u => u.Id == membership.UserId, ct);
+        await AuditAsync(db, http, project.Id, "memberships.update",
+            $"team/{Ids.Wire(team.Id)}/membership/{membershipId}", ct);
+        return Results.Ok(MembershipResponse.From(new MembershipWithUser(membership, user)));
     }
 
     private static async Task<IResult> DeleteTeamMembership(
