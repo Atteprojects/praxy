@@ -202,6 +202,14 @@ try
     builder.Services.AddScoped<MessagesService>();
     builder.Services.AddHostedService<MessageSendWorker>();
 
+    // ---- Post-v0.1.0: retention sweep for praxy.events / webhook_deliveries / praxy.audit_log ----
+    builder.Services.AddSingleton(new RetentionOptions(
+        SweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Retention:SweepIntervalSeconds", 3600),
+        EventsMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:EventsMaxAgeDays", 90),
+        WebhookDeliveriesMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:WebhookDeliveriesMaxAgeDays", 90),
+        AuditLogMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:AuditLogMaxAgeDays", 90)));
+    builder.Services.AddHostedService<RetentionSweeper>();
+
     // Tight buckets on auth endpoints, looser but real ceilings on the rest of the data plane,
     // partitioned on project + caller identity (key or session) before IP — a spoofable source
     // address alone never carves out someone else's budget, and one NAT'd office does not share a

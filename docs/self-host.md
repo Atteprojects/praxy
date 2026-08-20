@@ -132,6 +132,10 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Functions:*` | see `docs/handoff/phase-7-report.md` | Docker endpoint, base images, build/execution timeouts, warm pool size, resource limits. |
 | `Praxy:Functions:DockerNetwork` | `""` | Docker network function containers join instead of publishing a host port; required when `api` itself runs in a container (this repo's own compose file sets it to `praxy-functions`) — see [Functions and the Docker socket](#functions-and-the-docker-socket). |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
+| `Praxy:Retention:SweepIntervalSeconds` | 3600 | How often the retention sweep runs. |
+| `Praxy:Retention:EventsMaxAgeDays` | 90 | Age past which a `praxy.events` row is deleted — only once **both** `WebhooksDispatchedAt` and `FunctionsDispatchedAt` are set; an unclaimed row past this age is left for the next sweep rather than force-deleted. |
+| `Praxy:Retention:WebhookDeliveriesMaxAgeDays` | 90 | Age past which a `praxy.webhook_deliveries` row is deleted — only in a terminal `succeeded`/`failed` status; cascades to its `webhook_delivery_attempts` at the FK level. Never touches `queued`/`delivering` rows regardless of age. |
+| `Praxy:Retention:AuditLogMaxAgeDays` | 90 | Age past which a `praxy.audit_log` row is deleted. |
 
 Every rate-limit bucket is partitioned on **project + caller identity**, falling back to the source
 address only for callers that present neither an API key nor a session. That matters behind a NAT,
