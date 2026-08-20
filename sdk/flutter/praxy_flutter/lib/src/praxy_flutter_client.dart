@@ -6,7 +6,7 @@ import 'secure_session_store.dart';
 import 'tables.dart';
 
 /// The Flutter entry point: one `Praxy` core client plus secure-storage sessions,
-/// the realtime WebSocket layer, and Google sign-in — the full ~20-method surface
+/// the realtime WebSocket layer, and Google sign-in — the full surface
 /// research/flutter-sdk.md specifies, assembled from `praxy_core` and this package.
 ///
 /// ```dart
@@ -38,6 +38,8 @@ final class PraxyFlutter {
   late final PraxyOAuth oauth;
 
   AccountService get account => core.account;
+  TeamsService get teams => core.teams;
+  FunctionsService get functions => core.functions;
   SessionStore get sessionStore => core.sessionStore;
   Uri get endpoint => core.endpoint;
 

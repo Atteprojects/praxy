@@ -6,7 +6,9 @@ import 'http_transport.dart';
 import 'json_utils.dart';
 import 'models.dart';
 import 'services/account_service.dart';
+import 'services/functions_service.dart';
 import 'services/tables_service.dart';
+import 'services/teams_service.dart';
 import 'session_store.dart';
 import 'transport.dart';
 
@@ -21,6 +23,8 @@ final class Praxy {
       _transport = transport ?? HttpTransport(endpoint: Uri.parse(endpoint)) {
     account = AccountService(this);
     tables = TablesService(this);
+    teams = TeamsService(this);
+    functions = FunctionsService(this);
   }
 
   final Uri endpoint;
@@ -30,6 +34,8 @@ final class Praxy {
 
   late final AccountService account;
   late final TablesService tables;
+  late final TeamsService teams;
+  late final FunctionsService functions;
 
   /// Sends one API call and returns the decoded JSON body (`null` for a 204 or an
   /// empty body). Every header/error-mapping rule lives here so service methods stay

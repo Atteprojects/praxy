@@ -5,8 +5,11 @@ import '../session_store.dart';
 
 /// The signed-in (or signing-in) app user's account surface (`/v1/account`).
 ///
-/// Deliberately 8 methods, matching research/flutter-sdk.md's v1 surface exactly.
-/// `createAnonymousSession` is *not* here even though the spec lists it: the actual
+/// 15 methods: the 8 matching research/flutter-sdk.md's v1 surface exactly, plus 7
+/// added in v1.1 (name/password update, session listing, verification, the role-debug
+/// endpoint, and JWT minting) to close the gap with what `AccountEndpoints.cs` actually
+/// serves — see research/flutter-sdk.md's v1.1 section.
+/// `createAnonymousSession` is *not* here even though the v1 spec lists it: the actual
 /// Phase 0-4 API never implemented anonymous sessions — CLAUDE.md's fixed decisions
 /// lock app-user auth to email+password and Google OAuth only "until the owner says
 /// otherwise," and no `/v1/account/sessions/anonymous`-shaped endpoint exists in
@@ -68,6 +71,69 @@ final class AccountService {
       path: '/v1/account/recovery',
       body: {'userId': userId, 'secret': secret, 'password': password},
     );
+  }
+
+  Future<AppUser> updateName({required String name}) async => AppUser.fromJson(
+    requireJson(
+      await _client.request(method: 'PATCH', path: '/v1/account/name', body: {'name': name}),
+      '/v1/account/name',
+    ),
+  );
+
+  /// [oldPassword] is required unless the account has no password yet (an OAuth-only
+  /// signup) — the server enforces that, this method just passes it through.
+  Future<AppUser> updatePassword({required String password, String? oldPassword}) async => AppUser.fromJson(
+    requireJson(
+      await _client.request(
+        method: 'PATCH',
+        path: '/v1/account/password',
+        body: {'password': password, 'oldPassword': ?oldPassword},
+      ),
+      '/v1/account/password',
+    ),
+  );
+
+  Future<SessionList> listSessions() async => SessionList.fromJson(
+    requireJson(await _client.request(method: 'GET', path: '/v1/account/sessions'), '/v1/account/sessions'),
+  );
+
+  /// [url] is validated server-side against the project's platform allowlist; this
+  /// method doesn't validate it, just passes it through and lets a `400` surface as
+  /// the usual [PraxyValidationException].
+  Future<void> sendVerification({required String url}) async {
+    await _client.request(method: 'POST', path: '/v1/account/verification', body: {'url': url});
+  }
+
+  Future<AppUser> confirmVerification({required String userId, required String secret}) async => AppUser.fromJson(
+    requireJson(
+      await _client.request(
+        method: 'PUT',
+        path: '/v1/account/verification',
+        body: {'userId': userId, 'secret': secret},
+      ),
+      '/v1/account/verification',
+    ),
+  );
+
+  /// The role-resolution debug endpoint — what the permission engine will see for this
+  /// caller, exactly as it would for any other request the same credentials sent.
+  Future<ResolvedRoles> roles() async => ResolvedRoles.fromJson(
+    requireJson(await _client.request(method: 'GET', path: '/v1/account/roles'), '/v1/account/roles'),
+  );
+
+  /// Mints a short-lived, stateless JWT this caller can hand to another process to act
+  /// as this user without sharing the session secret itself. [durationSeconds] is
+  /// clamped server-side to the configured max lifetime; omit it for that max.
+  Future<String> createJwt({int? durationSeconds}) async {
+    final json = requireJson(
+      await _client.request(
+        method: 'POST',
+        path: '/v1/account/jwts',
+        body: {'durationSeconds': ?durationSeconds},
+      ),
+      '/v1/account/jwts',
+    );
+    return json['jwt'] as String;
   }
 
   Future<CreatedSession> _createSession({required String path, required Map<String, dynamic> body}) async {
