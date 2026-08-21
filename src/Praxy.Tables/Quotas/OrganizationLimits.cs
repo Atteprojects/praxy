@@ -17,7 +17,8 @@ public sealed record OrganizationLimits(
     [property: JsonPropertyName("maxDatabasesPerProject")] int? MaxDatabasesPerProject = null,
     [property: JsonPropertyName("maxTablesPerDatabase")] int? MaxTablesPerDatabase = null,
     [property: JsonPropertyName("maxColumnsPerTable")] int? MaxColumnsPerTable = null,
-    [property: JsonPropertyName("maxIndexesPerTable")] int? MaxIndexesPerTable = null)
+    [property: JsonPropertyName("maxIndexesPerTable")] int? MaxIndexesPerTable = null,
+    [property: JsonPropertyName("maxSitesPerProject")] int? MaxSitesPerProject = null)
 {
     public static readonly OrganizationLimits Unlimited = new();
 

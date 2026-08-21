@@ -6,7 +6,7 @@ namespace Praxy.Api.Endpoints;
 
 /// <summary>Which features this build serves. The console gates whole screens on these.</summary>
 public sealed record CapabilityFeatures(
-    bool Auth, bool Databases, bool Realtime, bool Messaging, bool Functions, bool Webhooks);
+    bool Auth, bool Databases, bool Realtime, bool Messaging, bool Functions, bool Webhooks, bool Sites);
 
 public sealed record CapabilitiesResponse(
     string Version, bool Claimed, bool SetupTokenRequired, CapabilityFeatures Features);
@@ -28,7 +28,8 @@ public static class CapabilitiesEndpoints
                     Realtime: true,
                     Messaging: true,
                     Functions: true,
-                    Webhooks: true))))
+                    Webhooks: true,
+                    Sites: true))))
             .Produces<CapabilitiesResponse>();
     }
 }

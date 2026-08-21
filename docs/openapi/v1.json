@@ -249,6 +249,31 @@
         }
       }
     },
+    "/v1/sites/_ask-tls": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/console": {
       "get": {
         "tags": [
@@ -9784,6 +9809,492 @@
           }
         }
       }
+    },
+    "/v1/console/projects/{projectId}/sites": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteListResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}/env": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteEnvVarListResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}/env/{envKey}": {
+      "put": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "envKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSiteEnvVarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteEnvVarResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "envKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}/deployments": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDeploymentListResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDeploymentResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}/deployments/{deploymentId}": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDeploymentResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}/deployments/{deploymentId}/activate": {
+      "post": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteDeploymentResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10120,7 +10631,8 @@
           "realtime",
           "messaging",
           "functions",
-          "webhooks"
+          "webhooks",
+          "sites"
         ],
         "type": "object",
         "properties": {
@@ -10140,6 +10652,9 @@
             "type": "boolean"
           },
           "webhooks": {
+            "type": "boolean"
+          },
+          "sites": {
             "type": "boolean"
           }
         }
@@ -10985,6 +11500,28 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "CreateSiteRequest": {
+        "required": [
+          "key",
+          "name",
+          "rootDirectory"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rootDirectory": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -12371,7 +12908,9 @@
           "busiestTableColumns",
           "columnsPerTableMax",
           "busiestTableIndexes",
-          "indexesPerTableMax"
+          "indexesPerTableMax",
+          "sitesUsed",
+          "sitesMax"
         ],
         "type": "object",
         "properties": {
@@ -12448,6 +12987,22 @@
             "format": "int32"
           },
           "indexesPerTableMax": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sitesUsed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sitesMax": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -12764,6 +13319,17 @@
           }
         }
       },
+      "SetSiteEnvVarRequest": {
+        "required": [
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      },
       "SetTemplateRequest": {
         "required": [
           "subject",
@@ -12798,6 +13364,208 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "SiteDeploymentListResponse": {
+        "required": [
+          "total",
+          "deployments"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deployments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteDeploymentResponse"
+            }
+          }
+        }
+      },
+      "SiteDeploymentResponse": {
+        "required": [
+          "id",
+          "status",
+          "sourceSizeBytes",
+          "buildLog",
+          "error",
+          "imageTag",
+          "createdAt",
+          "updatedAt",
+          "activatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sourceSizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "buildLog": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageTag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "activatedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "SiteEnvVarListResponse": {
+        "required": [
+          "total",
+          "vars"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "vars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteEnvVarResponse"
+            }
+          }
+        }
+      },
+      "SiteEnvVarResponse": {
+        "required": [
+          "key",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SiteListResponse": {
+        "required": [
+          "total",
+          "sites"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteResponse"
+            }
+          }
+        }
+      },
+      "SiteResponse": {
+        "required": [
+          "id",
+          "key",
+          "name",
+          "rootDirectory",
+          "enabled",
+          "activeDeploymentId",
+          "isRunning",
+          "publicUrl",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rootDirectory": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "activeDeploymentId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isRunning": {
+            "type": "boolean"
+          },
+          "publicUrl": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -13286,6 +14054,34 @@
           }
         }
       },
+      "UpdateSiteRequest": {
+        "required": [
+          "name",
+          "rootDirectory",
+          "enabled"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rootDirectory": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
       "UpdateTablePermissionsRequest": {
         "required": [
           "rowSecurity",
@@ -13660,6 +14456,9 @@
     },
     {
       "name": "RealtimeEndpoints"
+    },
+    {
+      "name": "SiteEndpoints"
     },
     {
       "name": "ConsoleAuthEndpoints"

@@ -15,11 +15,13 @@ using Praxy.Functions;
 using Praxy.Messaging;
 using Praxy.Persistence;
 using Praxy.Realtime;
+using Praxy.Sites;
 using Praxy.Tables;
 using Praxy.Tables.Quotas;
 using Praxy.Webhooks;
 using Scalar.AspNetCore;
 using Serilog;
+using Yarp.ReverseProxy.Forwarder;
 
 // Two-stage Serilog: a bootstrap logger catches startup failures until the real one is built.
 Log.Logger = new LoggerConfiguration()
@@ -93,7 +95,8 @@ try
         MaxDatabasesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxDatabasesPerProject", 20),
         MaxTablesPerDatabase: builder.Configuration.GetValue("Praxy:Quotas:MaxTablesPerDatabase", 200),
         MaxColumnsPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxColumnsPerTable", 200),
-        MaxIndexesPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxIndexesPerTable", 64)));
+        MaxIndexesPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxIndexesPerTable", 64),
+        MaxSitesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxSitesPerProject", 20)));
     builder.Services.AddScoped<QuotaService>();
 
     // ---- Phase 2: schema engine ----
@@ -201,6 +204,37 @@ try
     builder.Services.AddSingleton<MessageSendSignal>();
     builder.Services.AddScoped<MessagesService>();
     builder.Services.AddHostedService<MessageSendWorker>();
+
+    // ---- Sites (post-v0.1.0 initiative): Next.js hosting ----
+    var sitesOptions = new SitesOptions(
+        DockerEndpoint: builder.Configuration["Praxy:Sites:DockerEndpoint"]
+            ?? Environment.GetEnvironmentVariable("DOCKER_HOST") ?? "unix:///var/run/docker.sock",
+        // Same dual-mode story as Praxy:Functions:DockerNetwork (see its own comment above): empty
+        // in dev (api bare on the host, publish-to-127.0.0.1), set to a named Docker network when
+        // api itself runs in a container (deploy/docker-compose.yml sets this to "praxy-sites" — a
+        // separate network from Functions', so the two features' containers can't reach each other
+        // by default).
+        DockerNetwork: builder.Configuration["Praxy:Sites:DockerNetwork"] ?? "",
+        Domain: builder.Configuration["Praxy:Sites:Domain"] ?? "sites.localhost",
+        NodeBaseImage: builder.Configuration["Praxy:Sites:NodeBaseImage"] ?? "node:22-alpine",
+        BuildPollIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:BuildPollIntervalSeconds", 2),
+        BuildTimeoutSeconds: builder.Configuration.GetValue("Praxy:Sites:BuildTimeoutSeconds", 900),
+        StartupTimeoutSeconds: builder.Configuration.GetValue("Praxy:Sites:StartupTimeoutSeconds", 60),
+        ReconcileIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:ReconcileIntervalSeconds", 60),
+        MemoryLimitMb: builder.Configuration.GetValue("Praxy:Sites:MemoryLimitMb", 512L),
+        CpuLimit: builder.Configuration.GetValue("Praxy:Sites:CpuLimit", 1.0),
+        MaxSourceBytes: builder.Configuration.GetValue("Praxy:Sites:MaxSourceBytes", 26_214_400L));
+    builder.Services.AddSingleton(sitesOptions);
+    builder.Services.AddSingleton<SiteDockerExecutor>();
+    builder.Services.AddSingleton<SiteContainerRegistry>();
+    builder.Services.AddSingleton<SiteBuildSignal>();
+    builder.Services.AddScoped<SitesService>();
+    builder.Services.AddHostedService<SiteBuildWorker>();
+    builder.Services.AddHostedService<SiteReconciler>();
+    // Direct forwarding (not the route/cluster config model) — SiteProxyMiddleware resolves its own
+    // destination per request from the DB + SiteContainerRegistry, so it only needs the low-level
+    // IHttpForwarder adapter, not YARP's routing layer.
+    builder.Services.AddHttpForwarder();
 
     // ---- Post-v0.1.0: retention sweep for praxy.events / webhook_deliveries / praxy.audit_log ----
     builder.Services.AddSingleton(new RetentionOptions(
@@ -339,6 +373,12 @@ try
 
     app.UseMiddleware<RequestIdMiddleware>();
     app.UseMiddleware<ErrorHandlingMiddleware>();
+    // Early branch, before anything that assumes it's talking to the console/API: a request whose
+    // Host matches the sites wildcard pattern is a completely different "product" (a hosted app,
+    // proxied straight through) and must never reach the console's static files, /v1 routing, or the
+    // platform CORS check below — see docs/handoff/sites-phase-1-prompt.md's landmine about not
+    // shadowing real routes.
+    app.UseMiddleware<SiteProxyMiddleware>();
     // After the error middleware so an unknown origin gets the public 403 envelope.
     app.UseMiddleware<PlatformCorsMiddleware>();
 
@@ -397,6 +437,7 @@ try
     WebhookEndpoints.Map(app);
     FunctionEndpoints.Map(app);
     MessagingEndpoints.Map(app);
+    SiteEndpoints.Map(app);
 
     // The console used to live under /console; keep old bookmarks/docs working.
     app.MapGet("/console", () => Results.Redirect("/")).Produces(StatusCodes.Status302Found);

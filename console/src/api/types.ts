@@ -574,6 +574,8 @@ export interface QuotaSnapshot {
   columnsPerTableMax: number;
   busiestTableIndexes: number;
   indexesPerTableMax: number;
+  sitesUsed: number;
+  sitesMax: number;
 }
 
 // ---- Audit log ----

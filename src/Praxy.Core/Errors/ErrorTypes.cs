@@ -82,6 +82,15 @@ public static class ErrorTypes
     public const string FunctionExecutionTimeout = "function_execution_timeout";
     public const string FunctionExecutionFailed = "function_execution_failed";
 
+    public const string SiteNotFound = "site_not_found";
+    public const string SiteAlreadyExists = "site_already_exists";
+    public const string SiteInvalid = "site_invalid";
+    public const string SiteEnvVarNotFound = "site_env_var_not_found";
+    public const string SiteDeploymentNotFound = "site_deployment_not_found";
+    public const string SiteInvalidDeploymentState = "site_invalid_deployment_state";
+    public const string SiteInvalidSource = "site_invalid_source";
+    public const string SiteNoActiveDeployment = "site_no_active_deployment";
+
     public const string MessagingProviderNotFound = "messaging_provider_not_found";
     public const string MessagingProviderInvalid = "messaging_provider_invalid";
     public const string MessagingTopicNotFound = "messaging_topic_not_found";
@@ -160,6 +169,14 @@ public static class ErrorTypes
         FunctionExecutionNotFound,
         FunctionExecutionTimeout,
         FunctionExecutionFailed,
+        SiteNotFound,
+        SiteAlreadyExists,
+        SiteInvalid,
+        SiteEnvVarNotFound,
+        SiteDeploymentNotFound,
+        SiteInvalidDeploymentState,
+        SiteInvalidSource,
+        SiteNoActiveDeployment,
         MessagingProviderNotFound,
         MessagingProviderInvalid,
         MessagingTopicNotFound,

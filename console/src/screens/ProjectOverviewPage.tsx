@@ -102,6 +102,7 @@ function QuotaCard({ projectId }: { projectId: string }) {
     { label: "Tables (busiest database)", used: quotas.data.busiestDatabaseTables, max: quotas.data.tablesPerDatabaseMax },
     { label: "Columns (busiest table)", used: quotas.data.busiestTableColumns, max: quotas.data.columnsPerTableMax },
     { label: "Indexes (busiest table)", used: quotas.data.busiestTableIndexes, max: quotas.data.indexesPerTableMax },
+    { label: "Sites", used: quotas.data.sitesUsed, max: quotas.data.sitesMax },
   ];
 
   return (
