@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "jsx": "react-jsx"
+    // Stays on the base's ESNext/Bundler resolution — this package is only ever consumed from
+    // inside a Next.js app, through Next's own bundler, never via plain `node`.
+  },
+  "include": ["src"]
+}
