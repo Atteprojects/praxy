@@ -241,14 +241,19 @@ Local/plain-HTTP use (no `PRAXY_DOMAIN` configured) needs no DNS setup at all: t
 `*.sites.localhost` straight to `127.0.0.1`.
 
 **TLS is on-demand, not one static wildcard certificate.** `deploy/Caddyfile`'s sites block
-(`*.{$PRAXY_SITES_DOMAIN} { tls { on_demand } }`) issues a separate Let's Encrypt certificate per
+(`*.*.{$PRAXY_SITES_DOMAIN} { tls { on_demand } }`) issues a separate Let's Encrypt certificate per
 exact hostname, lazily, the first time each one is actually requested — this needs no DNS-provider
 API credentials (unlike a real wildcard cert, which requires DNS-01), but it does need the global
 `on_demand_tls { ask ... }` option Caddy calls before minting each one
 (`GET /v1/sites/_ask-tls?domain=<host>`, unauthenticated because Caddy calls it, but a strict
-allow-list against real enabled+deployed sites only — anything else is `404`, refusing the cert).
-`docs/research/dotnet-stack.md`'s Caddy section has the full verified directive syntax if you're
-adapting this by hand.
+allow-list against real enabled+deployed sites only — anything else is `404`, refusing the cert). The
+site block needs **two** wildcard labels, not one — a site's hostname has two variable labels in
+front of the sites domain (`<key>.<projectId>.…`), and Caddy's on-demand automation policy matches
+wildcard depth as strictly as a real TLS wildcard certificate does, so a single `*.` silently refuses
+every site with no error anywhere (found and fixed post-Phase-1; see the correction in
+`docs/research/dotnet-stack.md`'s Caddy section for the full failure signature if you ever see this
+again after hand-editing the Caddyfile). `docs/research/dotnet-stack.md`'s Caddy section has the full
+verified directive syntax if you're adapting this by hand.
 
 ## Backup and restore
 

@@ -12,12 +12,18 @@
 	reverse_proxy api:8080
 }
 
-# Every hosted site's public subdomain (<key>.<projectId>.{PRAXY_SITES_DOMAIN}). Caddy does not need
-# per-site awareness — api dispatches Host -> container internally
+# Every hosted site's public subdomain (<key>.<projectId>.{PRAXY_SITES_DOMAIN}). Two wildcard labels,
+# not one — a site's hostname has *two* variable labels in front of the sites domain (key, then
+# projectId), and Caddy's automation-policy subject matching is as strict about wildcard depth as a
+# real TLS wildcard cert: `*.{$PRAXY_SITES_DOMAIN}` only matches a single label and silently refuses
+# on-demand issuance (no ask call, no ACME attempt, an immediate TLS "internal_error" alert) for
+# anything with an extra label in front — confirmed live against real Caddy with `debug` logging on,
+# not theorized; see docs/research/dotnet-stack.md's Caddy section. Caddy does not need per-site
+# awareness beyond this pattern — api dispatches Host -> container internally
 # (Praxy.Sites.SiteProxyMiddleware) — so this is one static block regardless of how many sites exist.
 # Each distinct hostname gets its own certificate issued lazily on first request, not one real
 # wildcard cert (on-demand TLS's whole point: no DNS-01, no DNS-provider credentials).
-*.{$PRAXY_SITES_DOMAIN} {
+*.*.{$PRAXY_SITES_DOMAIN} {
 	tls {
 		on_demand
 	}

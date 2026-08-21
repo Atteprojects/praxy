@@ -1,5 +1,19 @@
 # Sites Phase 1 — report
 
+> **Post-report correction (found live on praxycore.dev after this phase's PR merged and deployed):**
+> the Caddyfile's sites block shipped with a single-label wildcard (`*.{$PRAXY_SITES_DOMAIN}`), but a
+> site's actual public hostname has *two* variable labels (`<key>.<projectId>.…`) — Caddy's on-demand
+> automation-policy subject matching is as strict about wildcard depth as a real TLS wildcard
+> certificate, so every real site silently failed to get a certificate at all (`ERR_SSL_PROTOCOL_ERROR`
+> in the browser, ask-endpoint never even called, nothing in Caddy's own logs at INFO level). This
+> phase's own "verified against real Caddy" claim below (`caddy validate` + a worked `on_demand_tls`
+> example) was real but insufficient — `caddy validate` checks config syntax, not whether the
+> automation policy's subject pattern actually matches the hostnames the application generates, and no
+> integration test exercises real Caddy (`SitesAskTlsTests`/`SiteTests` both bypass it). Fixed
+> (`*.*.{$PRAXY_SITES_DOMAIN}`), verified against a real two-label hostname getting a real Let's
+> Encrypt cert and serving the actual page. Full failure signature and fix documented in
+> `docs/research/dotnet-stack.md`'s Caddy section — read it before touching this Caddyfile again.
+
 **Status: complete.** Every item in `docs/handoff/sites-phase-1-prompt.md`'s scope shipped. 519 .NET
 tests green (336 unit, up from 324; 183 integration, up from 176 — 178 pre-existing plus 5 new Sites
 tests, `SiteTests` × 2 and `SitesAskTlsTests` × 3), all against real Postgres (Testcontainers) and a
