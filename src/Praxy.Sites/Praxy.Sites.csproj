@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Docker.DotNet.Enhanced" Version="4.3.3" />
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
+    <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
+    <ProjectReference Include="..\Praxy.Auth\Praxy.Auth.csproj" />
+  </ItemGroup>
+</Project>

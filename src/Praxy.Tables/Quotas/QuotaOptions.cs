@@ -12,4 +12,5 @@ public sealed record QuotaOptions(
     int MaxDatabasesPerProject = 20,
     int MaxTablesPerDatabase = 200,
     int MaxColumnsPerTable = 200,
-    int MaxIndexesPerTable = 64);
+    int MaxIndexesPerTable = 64,
+    int MaxSitesPerProject = 20);

@@ -34,7 +34,8 @@ public abstract class ApiTestBase(PostgresContainerFixture pg) : IAsyncLifetime
         });
     }
 
-    public Task DisposeAsync()
+    /// <summary>Virtual so a subclass can clean up resources the disposed factory itself won't (see SiteTests' own override — a site's container is deliberately left running when api shuts down, so nothing else stops it).</summary>
+    public virtual Task DisposeAsync()
     {
         Factory.Dispose();
         return Task.CompletedTask;

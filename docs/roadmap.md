@@ -199,6 +199,32 @@ API reference from OpenAPI, SDK readme. Tag v0.1.0.
 
 ---
 
+## Sites (post-v0.1.0 initiative)
+
+Not a numbered phase — like the other post-v0.1.0 work (`docs/handoff/*-prompt.md` files without a phase
+number), this is a fresh initiative with its own internal phase breakdown. Full design:
+[research/praxy-sites.md](research/praxy-sites.md). Owner ask: research how Appwrite implemented Sites and
+add the equivalent to Praxy, starting with Next.js.
+
+**Sites Phase 1** (kickoff: `docs/handoff/sites-phase-1-prompt.md`) — Next.js hosting only. A new `Site`
+resource under Project (console tar upload → Docker multi-stage build requiring `next.config.js`'s
+`output: "standalone"` → a long-lived container per active deployment, crash-restarted by Docker, not
+idle-swept like Functions). Public reachability via **subdomain-per-site**
+(`<key>.<projectId>.sites.<domain>`, owner's choice over path-based or console-preview-only), served by a
+new streaming-capable reverse-proxy middleware in `Praxy.Api` (not Functions' JSON-envelope invoke model —
+that has no streaming/binary support, the wrong shape for a web app), fronted by Caddy **on-demand TLS**
+(not a DNS-01 wildcard cert — no DNS-provider credentials needed) with a strict allow-list "ask" endpoint.
+Env vars injected at both build and runtime (Next.js needs `NEXT_PUBLIC_*` at build time). New `praxy-sites`
+Docker network, separate from Functions' `praxy-functions`. Extends `QuotaService` with a `sites`
+dimension. Full architecture, the exact data model, and everything explicitly deferred: see
+[research/praxy-sites.md](research/praxy-sites.md).
+
+**Sites Phase 2+** — sketched only, not detailed until Phase 1 ships: custom domains, per-deployment
+preview URLs, graceful container swap on redeploy, git integration (push-to-deploy/PR previews),
+additional framework presets beyond Next.js.
+
+---
+
 ## Rules that hold across every phase
 
 1. **DDL is synchronous and transactional**; long operations are explicit, queryable, cancellable jobs.

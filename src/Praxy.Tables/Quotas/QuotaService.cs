@@ -78,6 +78,16 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
             throw Exceeded("table", "indexes", max);
     }
 
+    public async Task EnsureSiteQuotaAsync(string projectId, CancellationToken ct)
+    {
+        if (await OrgIdForProjectAsync(projectId, ct) is not { } orgId) return;
+        var limits = await GetOrgLimitsAsync(orgId, ct);
+        var max = limits.MaxSitesPerProject ?? defaults.MaxSitesPerProject;
+        var used = await db.Sites.CountAsync(s => s.ProjectId == projectId, ct);
+        if (used >= max)
+            throw Exceeded("project", "sites", max);
+    }
+
     /// <summary>
     /// The console's usage-vs-limit surfacing, entered by project id: there is no org-id entry
     /// point, so this reports the numbers that matter for the caller's own project.
@@ -108,12 +118,15 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
             .GroupBy(i => i.TableId).Select(g => g.Count())
             .OrderDescending().FirstOrDefaultAsync(ct);
 
+        var sitesUsed = await db.Sites.CountAsync(s => s.ProjectId == projectId, ct);
+
         return new QuotaSnapshot(
             projectsUsed, limits.MaxProjects ?? defaults.MaxProjects,
             databaseIds.Count, limits.MaxDatabasesPerProject ?? defaults.MaxDatabasesPerProject,
             busiestDatabaseTables, limits.MaxTablesPerDatabase ?? defaults.MaxTablesPerDatabase,
             busiestTableColumns, limits.MaxColumnsPerTable ?? defaults.MaxColumnsPerTable,
-            busiestTableIndexes, limits.MaxIndexesPerTable ?? defaults.MaxIndexesPerTable);
+            busiestTableIndexes, limits.MaxIndexesPerTable ?? defaults.MaxIndexesPerTable,
+            sitesUsed, limits.MaxSitesPerProject ?? defaults.MaxSitesPerProject);
     }
 
     private static PraxyException Exceeded(string scope, string dimension, int max) =>
@@ -127,4 +140,5 @@ public sealed record QuotaSnapshot(
     int DatabasesUsed, int DatabasesMax,
     int BusiestDatabaseTables, int TablesPerDatabaseMax,
     int BusiestTableColumns, int ColumnsPerTableMax,
-    int BusiestTableIndexes, int IndexesPerTableMax);
+    int BusiestTableIndexes, int IndexesPerTableMax,
+    int SitesUsed, int SitesMax);

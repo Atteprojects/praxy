@@ -18,6 +18,7 @@ export interface Capabilities {
     messaging: boolean;
     functions: boolean;
     webhooks: boolean;
+    sites: boolean;
   };
 }
 
@@ -461,6 +462,57 @@ export interface FunctionExecutionList {
   executions: FunctionExecution[];
 }
 
+// ---- Sites (post-v0.1.0): Next.js hosting ----
+
+export interface PraxySite {
+  id: string;
+  key: string;
+  name: string;
+  rootDirectory: string;
+  enabled: boolean;
+  activeDeploymentId: string | null;
+  /** Whether the active deployment's container is actually running right now — distinct from the deployment's own "ready" status, which only means "buildable." */
+  isRunning: boolean;
+  publicUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiteList {
+  total: number;
+  sites: PraxySite[];
+}
+
+export interface SiteEnvVar {
+  key: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiteEnvVarList {
+  total: number;
+  vars: SiteEnvVar[];
+}
+
+export type SiteDeploymentStatus = "queued" | "building" | "ready" | "failed";
+
+export interface SiteDeployment {
+  id: string;
+  status: SiteDeploymentStatus;
+  sourceSizeBytes: number;
+  buildLog: string;
+  error: string | null;
+  imageTag: string | null;
+  createdAt: string;
+  updatedAt: string;
+  activatedAt: string | null;
+}
+
+export interface SiteDeploymentList {
+  total: number;
+  deployments: SiteDeployment[];
+}
+
 // ---- Phase 8: messaging ----
 
 export interface MessagingProvider {
@@ -574,6 +626,8 @@ export interface QuotaSnapshot {
   columnsPerTableMax: number;
   busiestTableIndexes: number;
   indexesPerTableMax: number;
+  sitesUsed: number;
+  sitesMax: number;
 }
 
 // ---- Audit log ----

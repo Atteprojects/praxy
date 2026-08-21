@@ -40,6 +40,10 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<FunctionDeployment> FunctionDeployments => Set<FunctionDeployment>();
     public DbSet<FunctionDeploymentSource> FunctionDeploymentSources => Set<FunctionDeploymentSource>();
     public DbSet<FunctionExecution> FunctionExecutions => Set<FunctionExecution>();
+    public DbSet<Site> Sites => Set<Site>();
+    public DbSet<SiteEnvVar> SiteEnvVars => Set<SiteEnvVar>();
+    public DbSet<SiteDeployment> SiteDeployments => Set<SiteDeployment>();
+    public DbSet<SiteDeploymentSource> SiteDeploymentSources => Set<SiteDeploymentSource>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
     public DbSet<MessagingTarget> MessagingTargets => Set<MessagingTarget>();
@@ -332,6 +336,47 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.HasIndex(x => x.FunctionId);
             // FunctionExecutionWorker's claim query: waiting async executions, oldest first.
             e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<Site>(e =>
+        {
+            e.ToTable("sites");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.RootDirectory).HasMaxLength(256);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
+        });
+
+        b.Entity<SiteEnvVar>(e =>
+        {
+            e.ToTable("site_env_vars");
+            e.Property(x => x.Key).HasMaxLength(256);
+            e.Property(x => x.ProtectedValue).HasMaxLength(8192);
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.SiteId, x.Key }).IsUnique();
+        });
+
+        b.Entity<SiteDeployment>(e =>
+        {
+            e.ToTable("site_deployments");
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Error).HasMaxLength(4096);
+            e.Property(x => x.ImageTag).HasMaxLength(256);
+            e.Property(x => x.ContainerId).HasMaxLength(128);
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.SiteId);
+            // SiteBuildWorker's claim query: queued builds, oldest first.
+            e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<SiteDeploymentSource>(e =>
+        {
+            e.ToTable("site_deployment_sources");
+            e.HasKey(x => x.DeploymentId);
+            e.Property(x => x.Tar).HasColumnType("bytea");
+            e.HasOne<SiteDeployment>().WithOne().HasForeignKey<SiteDeploymentSource>(x => x.DeploymentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<MessagingProvider>(e =>

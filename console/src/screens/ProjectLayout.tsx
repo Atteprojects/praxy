@@ -12,6 +12,7 @@ import {
   OverviewIcon,
   PlatformsIcon,
   RealtimeIcon,
+  SitesIcon,
   TeamsIcon,
   UsersIcon,
   WebhooksIcon,
@@ -20,7 +21,7 @@ import { FullPageSpinner, IdChip, Kbd, Sheet } from "../components/ui";
 import { STR } from "../strings";
 import { TablesPanel } from "./TablesPanel";
 
-type Feature = "auth" | "databases" | "realtime" | "webhooks" | "functions" | "messaging";
+type Feature = "auth" | "databases" | "realtime" | "webhooks" | "functions" | "messaging" | "sites";
 
 type NavItem = {
   to: string;
@@ -42,6 +43,7 @@ const NAV: NavItem[] = [
   { to: "/project/$projectId/realtime", label: STR.realtime, icon: <RealtimeIcon />, kbd: "g r", feature: "realtime", group: "build" },
   { to: "/project/$projectId/webhooks", label: "Webhooks", icon: <WebhooksIcon />, kbd: "g w", feature: "webhooks", group: "build" },
   { to: "/project/$projectId/functions", label: "Functions", icon: <FunctionsIcon />, kbd: "g f", feature: "functions", group: "build" },
+  { to: "/project/$projectId/sites", label: "Sites", icon: <SitesIcon />, kbd: "g i", feature: "sites", group: "build" },
   { to: "/project/$projectId/messaging", label: "Messaging", icon: <MessagingIcon />, kbd: "g m", feature: "messaging", group: "build" },
   { to: "/project/$projectId/api-keys", label: "API keys", icon: <ApiKeysIcon />, kbd: "g k", feature: "auth", group: "manage" },
   { to: "/project/$projectId/platforms", label: "Platforms", icon: <PlatformsIcon />, feature: "auth", group: "manage" },

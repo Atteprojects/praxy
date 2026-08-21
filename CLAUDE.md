@@ -17,8 +17,9 @@ forward from later phases.
 ## Fixed decisions (owner's — never reopen)
 
 - .NET 10 backend · Vite + React console (own modern design; simple Appwrite-like layout) · Flutter SDK
-  first, Next.js SDK second (added 2026-08-20, see `docs/research/nextjs-sdk.md` — groundwork for an
-  eventual Sites-style hosting feature, itself not yet planned)
+  first, Next.js SDK second (added 2026-08-20, see `docs/research/nextjs-sdk.md`) · Sites, Next.js
+  hosting built on that SDK groundwork, Phase 1 shipped 2026-08-21 (see
+  `docs/research/praxy-sites.md`, `docs/handoff/sites-phase-1-report.md`)
 - PostgreSQL only — no second datastore
 - Auth: **app users** get email+password and **Google OAuth only** until the owner says otherwise;
   platform/console operators are email+password only (operator OAuth is deferred to future
@@ -69,6 +70,13 @@ Filled in as phases land — keep this section current.
   wouldn't be reachable from inside api's own container — see `docs/self-host.md`'s Functions section.
   Tunable via `Praxy:Functions:*` (base images, timeouts, warm pool size,
   upload size cap — see `docs/handoff/phase-7-report.md`'s Commands section for the full list).
+- Sites (post-v0.1.0 initiative, Phase 1) shares that same Docker daemon requirement — build/run a
+  hosted Next.js app's container via `Praxy:Sites:DockerEndpoint`, own network
+  `Praxy:Sites:DockerNetwork` (`praxy-sites` in the compose file, separate from Functions'
+  `praxy-functions`). A site's public hostname is `<key>.<projectId>.{Praxy:Sites:Domain}`
+  (`sites.localhost` in dev — resolves to 127.0.0.1 with no setup; `dotnet run`'s port doesn't proxy
+  it, so hit `http://<key>.<projectId>.sites.localhost:5090` directly, not through the console's 5173).
+  Tunable via `Praxy:Sites:*` — see `docs/handoff/sites-phase-1-report.md`'s Commands section.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)
