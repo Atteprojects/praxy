@@ -3,11 +3,24 @@
 Next.js **App Router** integration for Praxy (no Pages Router support — see the workspace root
 README). Thin on purpose: `createServerClient()`/`createApiKeyClient()`, the OAuth callback Route
 Handler, and `praxyMiddleware()`. Depends on `@praxy/react` for the client-side half and re-exports
-its entire surface, so an app only needs to install `@praxy/nextjs`.
+its entire surface from the main entry point, so an app only needs to install `@praxy/nextjs`.
 
 ## Install
 
 Workspace-internal only — not published to npm. From `sdk/js/`: `npm install`.
+
+## Contents
+
+- [The session bridge](#the-session-bridge)
+- [`createServerClient()`](#createserverclient--a-plain-factory-never-a-singleton)
+- [`createApiKeyClient()`](#createapikeyclient--server-only-privileged-operations)
+- [Sign up (a Server Action)](#sign-up-a-server-action)
+- [Sign in with email (a Server Action)](#email-sign-in-a-server-action)
+- [Sign out (a Server Action)](#sign-out-a-server-action)
+- [Google OAuth — one Route Handler](#google-oauth--one-route-handler)
+- [`praxyMiddleware()`](#praxymiddleware--route-protection)
+- [The Client Component bridge](#the-client-component-bridge--a-jwt-never-the-real-session)
+- [Everything else](#everything-else--full-praxycore-surface-server-side)
 
 ## The session bridge
 
@@ -49,6 +62,20 @@ const admin = createApiKeyClient({ endpoint, projectId }); // reads PRAXY_API_KE
 
 Never reads from a cookie, never ships to the client bundle.
 
+### Sign up (a Server Action)
+
+```ts
+"use server";
+import { setSessionCookie } from "@praxy/nextjs";
+import { Praxy } from "@praxy/core";
+
+export async function signUp(email: string, password: string, name?: string) {
+  const client = new Praxy({ endpoint, projectId }); // no session yet — a plain client
+  const created = await client.account.create({ email, password, name });
+  await setSessionCookie({ projectId, token: created.token, expiresAt: created.session.expiresAt });
+}
+```
+
 ### Email sign-in (a Server Action)
 
 ```ts
@@ -60,6 +87,23 @@ export async function signIn(email: string, password: string) {
   const client = new Praxy({ endpoint, projectId });
   const created = await client.account.createEmailSession({ email, password });
   await setSessionCookie({ projectId, token: created.token, expiresAt: created.session.expiresAt });
+}
+```
+
+`setSessionCookie()`/`clearSessionCookie()` are the two cookie-writing helpers this package exports
+directly (beyond the OAuth handler, which calls the equivalent logic itself) — use them from any
+Server Action that just exchanged credentials for a session and needs to persist it.
+
+### Sign out (a Server Action)
+
+```ts
+"use server";
+import { clearSessionCookie, createServerClient } from "@praxy/nextjs";
+
+export async function signOut() {
+  const client = await createServerClient({ endpoint, projectId });
+  await client.account.deleteSession(); // revokes the session server-side
+  await clearSessionCookie(projectId);   // then drops the cookie
 }
 ```
 
@@ -87,17 +131,26 @@ a ready session; the handler exchanges it at `POST /v1/account/sessions/token`
 
 ```ts
 // middleware.ts
-import { praxyMiddleware } from "@praxy/nextjs";
+import { praxyMiddleware } from "@praxy/nextjs/middleware"; // note: /middleware, not the main entry
 
 export default praxyMiddleware({ projectId, protectedPaths: ["/dashboard"], signInUrl: "/sign-in" });
+
+export const config = { matcher: ["/dashboard/:path*"] };
 ```
+
+**Import this from `@praxy/nextjs/middleware`, not the main `@praxy/nextjs` entry point.** The main
+entry re-exports all of `@praxy/react` (for the one-install convenience documented above), and
+`<PraxyProvider>` uses `createContext`, a client-only React API — importing it into `middleware.ts`
+is a hard Next.js build error ("You're importing a module that depends on `createContext` into ...
+Edge Middleware"), not a warning. The `/middleware` subpath only ever pulls in `next/server` and a
+zero-dependency string helper, never `@praxy/react` or `@praxy/core` — nothing here could pull a
+Node-only API into the edge bundle even transitively. (`@praxy/core` itself is statically verified
+edge-safe too, independent of this — see its own test suite's `edge-safety.test.ts`.)
 
 Runs on **Edge Runtime by default**. Checks cookie *presence* only, not validity — verifying the
 session secret against the database would mean a network round-trip on every matched request. A stale
 cookie still gets past this gate and is caught downstream by `createServerClient()` + a real `account`
-call. This file only imports `next/server` and a plain string helper, never `@praxy/core` — nothing
-here could pull a Node-only API into the edge bundle. (`@praxy/core` itself is statically verified
-edge-safe too — see its own test suite's `edge-safety.test.ts`.)
+call.
 
 ### The Client Component bridge — a JWT, never the real session
 
@@ -120,6 +173,33 @@ export default async function DashboardLayout({ children }: { children: React.Re
 If you find yourself passing the httpOnly cookie's value to a Client Component in any form, stop —
 that defeats the entire point of `httpOnly`. Mint a JWT server-side instead; see `@praxy/react`'s
 README for exactly what a JWT can and can't do.
+
+## Everything else — full `@praxy/core` surface, server-side
+
+A session-backed client from `createServerClient()` is a full `Praxy` client — every method in
+`@praxy/core`'s README (update name/password/prefs, list/revoke sessions, email verification,
+password recovery, all of `teams.*`, row CRUD, function invocation) works from it in a Server
+Component or Server Action, no separate wrapper needed:
+
+```ts
+"use server";
+import { createServerClient } from "@praxy/nextjs";
+
+export async function updateDisplayName(name: string) {
+  const client = await createServerClient({ endpoint, projectId });
+  await client.account.updateName(name);
+}
+
+export async function changePassword(oldPassword: string, newPassword: string) {
+  const client = await createServerClient({ endpoint, projectId });
+  await client.account.updatePassword({ password: newPassword, oldPassword });
+}
+
+export async function inviteTeammate(teamId: string, email: string) {
+  const client = await createServerClient({ endpoint, projectId });
+  await client.teams.createMembership(teamId, { email, roles: ["member"], url: "https://app.example.com/accept-invite" });
+}
+```
 
 ## Development
 
