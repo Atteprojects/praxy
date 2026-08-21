@@ -74,3 +74,35 @@ jobs:
       - name: Analyze
         run: dart analyze .
         working-directory: sdk/flutter
+
+  nextjs-sdk:
+    name: Build and test Next.js SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: sdk/js/package-lock.json
+
+      - name: Install
+        run: npm ci --prefix sdk/js
+
+      # Dependency order matters: react/nextjs/codegen type-resolve against core's/react's built
+      # dist/*.d.ts, not their TS source — this is npm workspaces, not a project-references build.
+      - name: Build
+        run: npm run build --prefix sdk/js
+
+      - name: Test
+        run: npm run test --prefix sdk/js
+
+      - name: Typecheck packages
+        run: npm run typecheck --prefix sdk/js
+
+      # The example app isn't one of the shipped packages (no build/test script of its own to run
+      # here — it needs a live local Praxy instance + real project ids, verified manually per
+      # docs/handoff/nextjs-sdk-prompt.md's "done means"), but it must still type-check cleanly.
+      - name: Typecheck example app
+        run: npm run typecheck --prefix sdk/js/examples/nextjs
