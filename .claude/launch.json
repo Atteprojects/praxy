@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "console"],
       "port": 5173
+    },
+    {
+      "name": "nextjs-example",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "sdk/js/examples/nextjs"],
+      "port": 3000
     }
   ]
 }
