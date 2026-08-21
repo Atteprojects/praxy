@@ -1,0 +1,19 @@
+{
+  "name": "@praxy/core",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Isomorphic, fetch-only TypeScript client for Praxy. No React, no Next.js dependency.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

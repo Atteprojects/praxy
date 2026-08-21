@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // A standalone Node CLI, never bundled — plain CommonJS avoids the ESM-extension ceremony
+    // core/react/nextjs need for bundler + plain-Node dual compatibility.
+    "module": "CommonJS",
+    "moduleResolution": "Node10"
+  },
+  "include": ["src", "test"]
+}

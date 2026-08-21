@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "jsx": "react-jsx"
+    // Stays on the base's ESNext/Bundler resolution (unlike @praxy/core's build) — this package
+    // is never run via plain `node`, only ever through Next.js's own bundler (Turbopack/webpack),
+    // which resolves extensionless relative imports fine.
+  },
+  "include": ["src"]
+}

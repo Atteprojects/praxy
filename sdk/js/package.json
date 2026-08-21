@@ -1,0 +1,15 @@
+{
+  "name": "praxy-js-sdk-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": ["packages/*", "examples/*"],
+  "scripts": {
+    "build": "npm run build -w packages/core && npm run build -w packages/react && npm run build -w packages/nextjs && npm run build -w packages/codegen",
+    "test": "npm run test -w packages/core && npm run test -w packages/react && npm run test -w packages/nextjs && npm run test -w packages/codegen",
+    "typecheck": "npm run typecheck -w packages/core && npm run typecheck -w packages/react && npm run typecheck -w packages/nextjs && npm run typecheck -w packages/codegen"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

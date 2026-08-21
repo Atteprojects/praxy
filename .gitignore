@@ -27,7 +27,7 @@ coverage/
 *.coverage
 *.trx
 
-# ---------- Node / console ----------
+# ---------- Node / console / sdk/js ----------
 node_modules/
 dist/
 dist-ssr/
@@ -38,6 +38,8 @@ dist-ssr/
 pnpm-debug.log*
 npm-debug.log*
 yarn-error.log*
+.next/
+*.tsbuildinfo
 
 # ---------- Flutter / Dart ----------
 .dart_tool/

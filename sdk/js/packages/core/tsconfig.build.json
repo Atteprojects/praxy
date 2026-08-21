@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": [],
+    // NodeNext (not the dev config's lenient "Bundler" resolution) for the actual shipped
+    // output — enforces explicit .js extensions on relative imports at compile time, which is
+    // what makes dist/ resolvable by a plain `node --experimental` ESM `import`, not just by a
+    // bundler. Bundlers tolerate extensioned imports fine, so this is strictly the safer choice.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "include": ["src"]
+}
