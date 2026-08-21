@@ -478,7 +478,7 @@ On-demand TLS needs **two pieces working together**, not one:
 2. A **per-site `tls { on_demand }`** directive on the site block that should actually use on-demand
    issuance:
    ```caddyfile
-   *.sites.{$PRAXY_SITES_DOMAIN} {
+   *.*.{$PRAXY_SITES_DOMAIN} {
        tls { on_demand }
        reverse_proxy api:8080
    }
@@ -489,11 +489,38 @@ On-demand TLS needs **two pieces working together**, not one:
    `deploy/Caddyfile` (the main `PRAXY_DOMAIN`/`PRAXY_CONSOLE_DOMAIN` block) is unaffected — it keeps
    ordinary automatic HTTPS, since only a block with `tls { on_demand }` opts in.
 
-A wildcard-shaped site address (`*.sites.example.com`) under on-demand TLS does **not** provision one
+A wildcard-shaped site address (`*.*.example.com`) under on-demand TLS does **not** provision one
 real wildcard certificate (that would need DNS-01 and a DNS provider's API credentials, the whole
 thing on-demand TLS exists to avoid) — Caddy matches the pattern for routing purposes, then issues a
 **separate certificate per exact hostname** the first time each one is actually requested, exactly as
 `docs/research/praxy-sites.md` specified.
+
+**Correction (post-Phase-1 bugfix, found live on the deployed instance): Caddy's automation-policy
+subject matching is exactly as strict about wildcard *depth* as a real TLS wildcard certificate is —
+`*.{$PRAXY_SITES_DOMAIN}` (single label) does not match a two-label prefix, and Sites' actual
+hostname pattern (`<key>.<projectId>.{Praxy:Sites:Domain}`) has *two* variable labels, not one.** The
+first draft of this Caddyfile block (and this doc's own example above, now fixed) used a single
+`*.{$PRAXY_SITES_DOMAIN}`, which validated fine with `caddy validate` (a syntax check, not a
+runtime-semantics one) and was never caught by any integration test, because none of them exercise
+real Caddy — `SitesAskTlsTests` calls `/v1/sites/_ask-tls` directly over HTTP, and `SiteTests`' proxy
+assertions go through the WebApplicationFactory's in-memory transport with the `Host` header set
+directly, bypassing Caddy's own SNI/TLS-policy matching entirely. The failure mode this produces is
+worth knowing precisely, because none of it points at the actual cause on its own: the browser sees
+`ERR_SSL_PROTOCOL_ERROR` ("sent an invalid response"); `curl -v` shows the TLS handshake failing
+immediately after ClientHello with `tlsv1 alert internal error` (Go's `crypto/tls` sends exactly this
+alert when a `GetCertificate` SNI callback can't produce a cert); and Caddy's own logs, even at INFO
+level, show **nothing at all** — no ask-endpoint call, no ACME attempt, because the policy-match
+failure happens before any of that logic runs. It only became visible with `debug` temporarily added
+to the Caddyfile's global options block, which logs the exact rejection:
+`"msg":"no certificate matching TLS ClientHello", ..., "on_demand":false` — that trailing
+`"on_demand":false` is the tell; it means the automation-policy subject match failed, not that the
+ask endpoint said no (a real ask-endpoint denial looks different and does call out to `api`, visible
+in `api`'s own logs). Fixed by widening the site block's address to `*.*.{$PRAXY_SITES_DOMAIN}`,
+verified against real Caddy end to end afterward: a genuine two-label hostname
+(`todos.<projectId>.sites.praxycore.dev`) got a real Let's Encrypt certificate on first request and
+served the actual page. **Lesson for future phases:** `caddy validate` proves the config parses; it
+does not prove the automation policies actually match the hostnames the application generates —
+that needs a real request against a real deployed Caddy instance, which is exactly the gap here.
 
 ## Other notes
 
