@@ -152,3 +152,14 @@ export function TablesIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function SitesIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.25" stroke="currentColor" />
+      <path d="M1.75 5.5h12.5" stroke="currentColor" />
+      <circle cx="3.75" cy="4.1" r="0.4" fill="currentColor" stroke="none" />
+      <circle cx="5.25" cy="4.1" r="0.4" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}

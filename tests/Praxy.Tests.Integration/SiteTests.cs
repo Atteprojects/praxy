@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Praxy.Tests.Integration.Infrastructure;
 
 namespace Praxy.Tests.Integration;
@@ -27,6 +28,44 @@ public class SiteTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         // activate/rollback calls mid-assertion.
         ["Praxy:Sites:ReconcileIntervalSeconds"] = "3600",
     };
+
+    /// <summary>
+    /// Unlike Functions' WarmPool (stopped on every shutdown — an ephemeral cache, correctly cleared),
+    /// a site's container is deliberately left running across an api restart (Docker's own
+    /// RestartPolicy: unless-stopped, SiteReconciler re-attaches rather than restarting) — the whole
+    /// point of the design. That means nothing in production code ever stops a test's containers when
+    /// the WebApplicationFactory disposes, so this test's own containers would otherwise accumulate
+    /// on the host, one leaked container (and image) per run, forever. Reads them back from the
+    /// (still-live) test database before the factory tears down and stops them the same way
+    /// production would on a real redeploy — via the real SiteDockerExecutor, not a raw docker CLI
+    /// shell-out.
+    /// </summary>
+    public override async Task DisposeAsync()
+    {
+        await CleanUpSiteContainersAsync();
+        await base.DisposeAsync();
+    }
+
+    private async Task CleanUpSiteContainersAsync()
+    {
+        List<string> containerIds;
+        await using (var conn = new Npgsql.NpgsqlConnection(ConnectionString))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new Npgsql.NpgsqlCommand(
+                "SELECT container_id FROM praxy.site_deployments WHERE container_id IS NOT NULL", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            containerIds = [];
+            while (await reader.ReadAsync())
+                containerIds.Add(reader.GetString(0));
+        }
+        if (containerIds.Count == 0)
+            return;
+
+        var docker = Factory.Services.GetRequiredService<Praxy.Sites.SiteDockerExecutor>();
+        foreach (var containerId in containerIds)
+            await docker.StopAndRemoveAsync(containerId, CancellationToken.None);
+    }
 
     [Fact]
     public async Task Deploy_serve_redeploy_and_roll_back_a_real_nextjs_app()

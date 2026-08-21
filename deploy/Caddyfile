@@ -1,3 +1,25 @@
+{
+	# Sites' on-demand TLS ask endpoint — must be the file's first block (Caddyfile global options).
+	# The "ask" directive alone is not sufficient; each sites site block below still needs its own
+	# tls { on_demand } to opt in (docs/research/dotnet-stack.md's Caddy section has the verified
+	# syntax and why both pieces are required together).
+	on_demand_tls {
+		ask http://api:8080/v1/sites/_ask-tls
+	}
+}
+
 {$PRAXY_DOMAIN} {$PRAXY_CONSOLE_DOMAIN} {
+	reverse_proxy api:8080
+}
+
+# Every hosted site's public subdomain (<key>.<projectId>.{PRAXY_SITES_DOMAIN}). Caddy does not need
+# per-site awareness — api dispatches Host -> container internally
+# (Praxy.Sites.SiteProxyMiddleware) — so this is one static block regardless of how many sites exist.
+# Each distinct hostname gets its own certificate issued lazily on first request, not one real
+# wildcard cert (on-demand TLS's whole point: no DNS-01, no DNS-provider credentials).
+*.{$PRAXY_SITES_DOMAIN} {
+	tls {
+		on_demand
+	}
 	reverse_proxy api:8080
 }

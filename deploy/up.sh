@@ -85,6 +85,10 @@ if [ ! -f .env ]; then
       echo "PRAXY_PUBLIC_URL=https://$DOMAIN"
       echo "PRAXY_TRUST_FORWARDED_HEADERS=true"
       echo "PRAXY_BIND=127.0.0.1"
+      # Sites' wildcard subdomain, derived from the one domain already asked for above rather than
+      # a second question (CLAUDE.md's "asks one question on first run" promise). Requires its own
+      # wildcard DNS record (*.sites.$DOMAIN -> this host) — see docs/self-host.md.
+      echo "PRAXY_SITES_DOMAIN=sites.$DOMAIN"
     else
       echo "# Set to your public origin (e.g. https://praxy.example.com) to require a"
       echo "# setup token — printed to the api container logs — when claiming."
@@ -95,6 +99,7 @@ if [ ! -f .env ]; then
       echo "PRAXY_DOMAIN="
       echo "PRAXY_TRUST_FORWARDED_HEADERS=false"
       echo "PRAXY_BIND=0.0.0.0"
+      echo "PRAXY_SITES_DOMAIN=sites.localhost"
     fi
   } > .env
   chmod 600 .env

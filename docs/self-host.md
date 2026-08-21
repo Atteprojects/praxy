@@ -14,6 +14,10 @@ document.
   neither is required to run the instance.
 - If you plan to use Functions: a reachable Docker daemon at runtime, not just at build time (see
   [Functions and the Docker socket](#functions-and-the-docker-socket) below).
+- If you plan to use Sites: the same reachable Docker daemon, plus — for a public deployment — a
+  **wildcard DNS record** (`*.sites.your.domain.com` → this host's IP) in addition to the plain
+  `your.domain.com` record `up.sh` already asks for. See
+  [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain) below.
 
 ## Quick start
 
@@ -35,7 +39,10 @@ Public domain for this instance, e.g. praxy.example.com (leave blank to run over
   [Caddy](https://caddyserver.com) reverse proxy that gets you a Let's Encrypt certificate
   automatically, binds the plain-HTTP `api` port to `127.0.0.1` only (never reachable from the
   internet directly — Caddy reaches it over the internal Docker network regardless), and does a
-  best-effort `ufw` firewall lockdown (22/80/443 only). One command, no manual `.env` editing.
+  best-effort `ufw` firewall lockdown (22/80/443 only). One command, no manual `.env` editing. This
+  also derives Sites' public wildcard subdomain (`sites.your.domain.com`) automatically — add its own
+  wildcard DNS record (`*.sites.your.domain.com` → this host) if you plan to deploy any sites; see
+  [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain).
 
 Either way, once it's up, open the console (`http://localhost:8080`, or `https://your.domain.com`)
 and claim the instance — the first account created becomes the owner, and sign-up closes immediately
@@ -61,8 +68,12 @@ PRAXY_DOMAIN=your.domain.com
 PRAXY_PUBLIC_URL=https://your.domain.com
 PRAXY_TRUST_FORWARDED_HEADERS=true
 PRAXY_BIND=127.0.0.1
+PRAXY_SITES_DOMAIN=sites.your.domain.com
 ```
-then `docker compose --profile https up -d` instead of `./up.sh`.
+then `docker compose --profile https up -d` instead of `./up.sh`. `PRAXY_SITES_DOMAIN` isn't strictly
+required (it defaults to `sites.localhost`, which is simply never reachable from the public internet),
+but set it — and its own wildcard DNS record — if you plan to deploy sites; see
+[Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain).
 
 `PRAXY_TRUST_FORWARDED_HEADERS` matters: without it, the `api` container (which only ever sees plain
 HTTP from Caddy) marks the session cookie insecure and logs every request as coming from Caddy's own
@@ -108,6 +119,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `PRAXY_PUBLIC_URL` | unset | Requires the setup token to claim (see above). |
 | `PRAXY_DOMAIN` | unset | The `https` profile's Caddy gets a certificate for this domain (see [Public deployment with HTTPS](#public-deployment-with-https)). |
 | `PRAXY_CONSOLE_DOMAIN` | unset | Optional extra hostname (e.g. a console subdomain) the `https` profile's Caddy also gets a certificate for and proxies to the same `api` container — see [Serving the console on its own subdomain](#serving-the-console-on-its-own-subdomain). |
+| `PRAXY_SITES_DOMAIN` | `sites.localhost` | The wildcard suffix a site's public hostname must end in (`<site key>.<project id>.<this value>`). `up.sh` sets it to `sites.$PRAXY_DOMAIN` automatically; the default only matters for local/plain-HTTP use — see [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
 | `Praxy:TrustForwardedHeaders` (`PRAXY_TRUST_FORWARDED_HEADERS`) | `false` | Trust `X-Forwarded-For`/`-Proto` from the `https` profile's Caddy. Only enable alongside that profile — never if `api`'s port is also directly internet-reachable. |
 | `PRAXY_BIND` | `0.0.0.0` | Host interface `PRAXY_PORT` binds to. `up.sh` sets this to `127.0.0.1` whenever a domain is configured — the actual mechanism that keeps the plain-HTTP port off the public internet. |
 | `Praxy:Auth:SessionCacheSeconds` | 60 | In-memory session cache TTL. |
@@ -125,12 +137,15 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Quotas:MaxTablesPerDatabase` | 200 | Tables per database (org-overridable). |
 | `Praxy:Quotas:MaxColumnsPerTable` | 200 | Columns per table (org-overridable). |
 | `Praxy:Quotas:MaxIndexesPerTable` | 64 | Indexes per table (org-overridable). |
+| `Praxy:Quotas:MaxSitesPerProject` | 20 | Sites per project (org-overridable). |
 | `Praxy:Tables:SchemaJobs:PollIntervalSeconds` | 2 | `CREATE INDEX CONCURRENTLY` / type-change job runner cadence. |
 | `Praxy:Tables:SchemaJobs:IndexBuildTimeoutSeconds` | 1800 | Job wall-clock timeout before it's marked failed. |
 | `Praxy:Realtime:MaxConnectionsPerProject` | 1000 | WebSocket connection quota. |
 | `Praxy:Webhooks:*` | see `docs/handoff/phase-6-report.md` | Dispatch/delivery cadence, timeout, retry backoff, auto-disable threshold, SSRF allowlist. |
 | `Praxy:Functions:*` | see `docs/handoff/phase-7-report.md` | Docker endpoint, base images, build/execution timeouts, warm pool size, resource limits. |
 | `Praxy:Functions:DockerNetwork` | `""` | Docker network function containers join instead of publishing a host port; required when `api` itself runs in a container (this repo's own compose file sets it to `praxy-functions`) — see [Functions and the Docker socket](#functions-and-the-docker-socket). |
+| `Praxy:Sites:*` | see `docs/handoff/sites-phase-1-report.md` | Docker endpoint, base image, build/startup timeouts, reconciliation cadence, resource limits. |
+| `Praxy:Sites:DockerNetwork` | `""` | Same shape as `Praxy:Functions:DockerNetwork`, but a separate network (this repo's own compose file sets it to `praxy-sites`) — a site's container and a function's container can't reach each other by default. See [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
 | `Praxy:Retention:SweepIntervalSeconds` | 3600 | How often the retention sweep runs. |
 | `Praxy:Retention:EventsMaxAgeDays` | 90 | Age past which a `praxy.events` row is deleted — only once **both** `WebhooksDispatchedAt` and `FunctionsDispatchedAt` are set; an unclaimed row past this age is left for the next sweep rather than force-deleted. |
@@ -195,6 +210,45 @@ in.
   are operator-configured server-side paths with no external caller to authorize.
 - Authorization runs *before* the enabled/deployed checks, so an unauthorized caller gets the same
   `401` whether or not the function exists in a runnable state.
+
+## Sites and the wildcard subdomain
+
+Sites reuses the same `/var/run/docker.sock` mount Functions does (see above — same root-equivalent
+access tradeoff, same escape hatch: comment the volume mount out and both features fail closed
+together, Sites has no separate opt-out) but on its own Docker network
+(`Praxy:Sites:DockerNetwork`, this repo's own compose file sets it to `praxy-sites`, separate from
+`praxy-functions` — a site's container and a function's container can't reach each other by default).
+
+**Every hosted site needs a public hostname to be reachable at all**, and that hostname is a
+subdomain Praxy invents per site (`<site key>.<project id>.<PRAXY_SITES_DOMAIN>`), not one you
+register per site yourself. That means a **wildcard DNS record** is required for a public
+deployment — a single static `A`/`AAAA` record, same as `PRAXY_DOMAIN` itself, but with `*.` in
+front:
+
+```
+*.sites.your.domain.com  ->  <this host's IP>
+```
+
+`up.sh` derives `PRAXY_SITES_DOMAIN=sites.$PRAXY_DOMAIN` automatically from the one domain question it
+already asks — no second prompt — but it cannot create the DNS record for you. **Without this
+wildcard record, every site's public URL will fail to resolve, and Caddy's on-demand TLS ask
+endpoint will never even be reached** (the request never arrives) — nothing in `api`'s own logs will
+point at a missing DNS record, since `api` has no way to observe a request that never reached it, so
+this is worth getting right before deploying a site and wondering why it's unreachable.
+
+Local/plain-HTTP use (no `PRAXY_DOMAIN` configured) needs no DNS setup at all: the default
+`PRAXY_SITES_DOMAIN=sites.localhost` relies on every modern browser and OS resolver sending
+`*.sites.localhost` straight to `127.0.0.1`.
+
+**TLS is on-demand, not one static wildcard certificate.** `deploy/Caddyfile`'s sites block
+(`*.{$PRAXY_SITES_DOMAIN} { tls { on_demand } }`) issues a separate Let's Encrypt certificate per
+exact hostname, lazily, the first time each one is actually requested — this needs no DNS-provider
+API credentials (unlike a real wildcard cert, which requires DNS-01), but it does need the global
+`on_demand_tls { ask ... }` option Caddy calls before minting each one
+(`GET /v1/sites/_ask-tls?domain=<host>`, unauthenticated because Caddy calls it, but a strict
+allow-list against real enabled+deployed sites only — anything else is `404`, refusing the cert).
+`docs/research/dotnet-stack.md`'s Caddy section has the full verified directive syntax if you're
+adapting this by hand.
 
 ## Backup and restore
 

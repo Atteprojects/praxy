@@ -22,6 +22,7 @@ const DESTINATIONS = [
   { key: "r", label: "Go to realtime", to: "/project/$projectId/realtime" },
   { key: "w", label: "Go to webhooks", to: "/project/$projectId/webhooks" },
   { key: "f", label: "Go to functions", to: "/project/$projectId/functions" },
+  { key: "i", label: "Go to sites", to: "/project/$projectId/sites" },
   { key: "m", label: "Go to messaging", to: "/project/$projectId/messaging" },
   { key: "k", label: "Go to API keys", to: "/project/$projectId/api-keys" },
   { label: "Go to platforms", to: "/project/$projectId/platforms" },

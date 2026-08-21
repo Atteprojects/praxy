@@ -41,6 +41,19 @@ services:
       # this same compose network (named explicitly below, not left to Compose's project-name-derived
       # default) and are reached by container IP. See docs/self-host.md's Functions section.
       Praxy__Functions__DockerNetwork: praxy-functions
+      # Same reasoning as Functions' own DockerNetwork above, but a separate named network — a
+      # site's container and a function's container should not be able to reach each other by
+      # default, a smaller blast radius if either is compromised. See docs/self-host.md's Sites
+      # section.
+      Praxy__Sites__DockerNetwork: praxy-sites
+      # The wildcard suffix a site's public hostname must end in. up.sh derives this from the
+      # PRAXY_DOMAIN answer (sites.$PRAXY_DOMAIN) so the "asks one question" promise holds; the
+      # sites.localhost default needs no configuration for local/plain-HTTP use — every modern
+      # browser/OS resolver sends *.localhost straight to 127.0.0.1.
+      Praxy__Sites__Domain: ${PRAXY_SITES_DOMAIN:-sites.localhost}
+    networks:
+      - default
+      - praxy-sites
     ports:
       # PRAXY_BIND defaults to 0.0.0.0 (direct plain-HTTP access — the local/no-domain case).
       # up.sh sets it to 127.0.0.1 whenever a domain is configured, so the api port is reachable
@@ -74,6 +87,15 @@ services:
       # plain `docker compose up` (no --profile) for everyone, not just https users. up.sh
       # validates this is set before it ever passes --profile https instead.
       PRAXY_DOMAIN: ${PRAXY_DOMAIN:-}
+      # Unlike PRAXY_DOMAIN above, this defaults to a real (if inert) value rather than blank —
+      # deploy/Caddyfile's sites wildcard block concatenates a literal "*." onto it, and an empty
+      # placeholder there would produce the malformed address "*." instead of vanishing the way a
+      # whole blank whitespace-delimited token does (PRAXY_CONSOLE_DOMAIN's own pattern). The
+      # "sites.localhost" default is never routable in a public https-profile deployment, so an
+      # operator who set PRAXY_DOMAIN by hand without also setting this (see docs/self-host.md's
+      # manual path) gets a harmless unmatched site block, not a Caddyfile parse failure that takes
+      # the whole https profile down.
+      PRAXY_SITES_DOMAIN: ${PRAXY_SITES_DOMAIN:-sites.localhost}
     ports:
       - "80:80"
       - "443:443"
@@ -93,3 +115,7 @@ networks:
   # containers to — see the api service's Praxy__Functions__DockerNetwork above.
   default:
     name: praxy-functions
+  # Sites' own network, separate from Functions' — see the api service's Praxy__Sites__DockerNetwork
+  # above and docs/self-host.md's Sites section.
+  praxy-sites:
+    name: praxy-sites

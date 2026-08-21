@@ -20,7 +20,8 @@ Verified against SDK `10.0.100` / runtime `10.0.0` on this machine, plus NuGet a
 | `Microsoft.AspNetCore.OpenApi` | 10.0.11 | pulls `Microsoft.OpenApi` 2.7.5 |
 | `Scalar.AspNetCore` | 2.16.20 | OpenAPI UI — none ships in the box |
 | `Testcontainers.PostgreSql` | 4.14.0 | |
-| `Docker.DotNet.Enhanced` | 4.3.3 | Phase 7 only |
+| `Docker.DotNet.Enhanced` | 4.3.3 | Phase 7 (Functions) and Sites Phase 1 |
+| `Yarp.ReverseProxy` | 2.3.0 | Sites Phase 1 only — see below |
 | `Serilog.AspNetCore` | 10.0.0 | |
 | `OpenTelemetry.Extensions.Hosting` | 1.17.0 | instrumentation packages same version |
 | `OpenTelemetry.Exporter.OpenTelemetryProtocol` | 1.17.0 | |
@@ -397,6 +398,102 @@ contract, in any environment, for any user code.** Fixed by renaming the require
 — an ordinary top-level function name carries none of `main`'s special entry-point rules — while
 leaving the entrypoint *file* free to be named anything (still `main.dart` by convention; only the
 *function* inside it changed).
+
+## Yarp.ReverseProxy and Docker.DotNet.Enhanced extensions (Sites Phase 1)
+
+**`Yarp.ReverseProxy` 2.3.0 — confirmed current** (checked against the NuGet flatcontainer index and
+a web search; nothing newer exists as of this research, despite the package's own highest explicit
+`TargetFramework` group in its nuspec being `net8.0` with a `frameworkReference` to
+`Microsoft.AspNetCore.App` — no `net9.0`/`net10.0` group exists yet). This is not a compatibility
+problem: NuGet resolves a `net8.0`-targeted library into a `net10.0` app fine (`Microsoft.AspNetCore.App`
+framework references are forward-compatible within the same major-version-family convention), and it
+was verified empirically, not just asserted — `dotnet build` against this repo's actual `net10.0`
+`Praxy.Sites` project succeeds with the package referenced, zero warnings under this repo's
+`TreatWarningsAsErrors`.
+
+**Use `IHttpForwarder` direct forwarding, not the route/cluster config model.** YARP's usual mode
+(`AddReverseProxy().LoadFromConfig(...)`) is for a static or slowly-changing set of routes/clusters;
+Sites needs to resolve a destination *per request* from a live DB + in-memory registry lookup
+(`<site key>.<projectId>` → active deployment's container address), which is exactly what the
+lower-level `IHttpForwarder` adapter is for (Microsoft's own docs distinguish this as "Direct
+Forwarding" — dynamic destination selection, the caller supplies the `HttpMessageInvoker`, no
+routing/load-balancing/retries built in, since the caller does its own). Registration is
+`builder.Services.AddHttpForwarder()`; the call site is
+`await forwarder.SendAsync(httpContext, destinationPrefix, httpMessageInvoker, forwarderRequestConfig, transformer?)`,
+returning a `ForwarderError` (`ForwarderError.None` on success; on failure, `SendAsync` itself has
+already converted the error to a response — `ctx.GetForwarderErrorFeature()` is for logging the
+underlying exception, not for producing the response yourself). Always construct the
+`HttpMessageInvoker` from a `SocketsHttpHandler`, never a plain `HttpClient` — `HttpClient` buffers
+responses by default, which breaks the streaming (SSR, RSC) this feature exists to carry.
+
+**`Docker.DotNet.Enhanced` 4.3.3's `ImageBuildParameters.BuildArgs`** (`IDictionary<string, string>`)
+is the real channel for Docker `--build-arg` values — confirmed via reflection against the installed
+package (same discipline Phase 7's own research used), not assumed. This is how Sites gets env vars
+into `npm run build` without ever writing a secret value into generated Dockerfile text: the
+Dockerfile only contains `ARG <key>` / `ENV <key>=$<key>` (key names only, already validated to
+`[A-Za-z0-9_]+`), and the actual values travel through `BuildArgs`, which Docker's own build API
+handles — no shell, no interpolation, no injection surface.
+
+**`HostConfig.RestartPolicy` (`RestartPolicyKind`: `Undefined`/`No`/`Always`/`OnFailure`/
+`UnlessStopped`)** — confirmed to exist via reflection; unused by Functions (whose containers are
+warm-pool-managed, not meant to persist) but load-bearing for Sites, where a site's active
+deployment's container is meant to run continuously and be restarted by Docker itself on crash. Set
+`Name = RestartPolicyKind.UnlessStopped` in `HostConfig`, same struct Functions already sets
+`NetworkMode`/`EndpointsConfig` on for its own dual-networking mode (reused verbatim for Sites' own
+`SiteDockerExecutor` — see the Functions Docker section above for the full explanation of why both
+must be set together).
+
+**A Next.js `.next/standalone` output does not always carry its own `public/` or `.next/static`
+directories** — if the app has no `public/` folder at all (legitimate; it's optional), the official
+"copy `.next/standalone`, then separately copy `.next/static` and `public`" multi-stage pattern
+(exactly what `praxy-sites.md`'s own template specifies) fails the runner stage's `COPY
+--from=builder .../public ./public` with an opaque "not found" error — reproduced directly against a
+real minimal app with no `public/` directory, not theorized. Fixed with a defensive
+`RUN mkdir -p public .next/static` at the end of the builder stage, after `npm run build` — cheap,
+idempotent if the directories already exist, and turns an app-shape edge case into a no-op instead of
+a build failure with no actionable message (the same "don't let this become an opaque Docker error"
+discipline the missing-`output: "standalone"` check already follows).
+
+## Caddy on-demand TLS — current directive syntax (Sites Phase 1)
+
+Verified against Caddy's own current docs (`caddyserver.com/docs/caddyfile/options`,
+`.../caddyfile/directives/tls`, and `caddyserver.com/on-demand-tls`'s own worked example for exactly
+this "many dynamically-created subdomains" shape), not recalled from training data, per this file's
+own standing discipline.
+
+On-demand TLS needs **two pieces working together**, not one:
+
+1. A **global options block** (must be the first thing in the Caddyfile if present) naming the ask
+   endpoint:
+   ```caddyfile
+   {
+       on_demand_tls {
+           ask http://api:8080/v1/sites/_ask-tls
+       }
+   }
+   ```
+   Caddy appends `?domain=<hostname>` itself — the config only names the base URL. **`interval` and
+   `burst`** (older rate-limiting sub-directives some examples still show) **are explicitly
+   documented as no longer recommended** and should not be added.
+2. A **per-site `tls { on_demand }`** directive on the site block that should actually use on-demand
+   issuance:
+   ```caddyfile
+   *.sites.{$PRAXY_SITES_DOMAIN} {
+       tls { on_demand }
+       reverse_proxy api:8080
+   }
+   ```
+   Without the global `ask` option configured, Caddy's own docs call enabling `tls { on_demand }` in
+   production **insecure** (anyone who can complete a TLS handshake could make Caddy mint them a
+   cert) — the two pieces are not independently sufficient, only together. Every other site block in
+   `deploy/Caddyfile` (the main `PRAXY_DOMAIN`/`PRAXY_CONSOLE_DOMAIN` block) is unaffected — it keeps
+   ordinary automatic HTTPS, since only a block with `tls { on_demand }` opts in.
+
+A wildcard-shaped site address (`*.sites.example.com`) under on-demand TLS does **not** provision one
+real wildcard certificate (that would need DNS-01 and a DNS provider's API credentials, the whole
+thing on-demand TLS exists to avoid) — Caddy matches the pattern for routing purposes, then issues a
+**separate certificate per exact hostname** the first time each one is actually requested, exactly as
+`docs/research/praxy-sites.md` specified.
 
 ## Other notes
 

@@ -1,6 +1,7 @@
 using System.Formats.Tar;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Praxy.Tests.Integration.Infrastructure;
 
 namespace Praxy.Tests.Integration;
@@ -23,6 +24,34 @@ public class SitesAskTlsTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         ["Praxy:Sites:BuildTimeoutSeconds"] = "60",
         ["Praxy:Sites:ReconcileIntervalSeconds"] = "3600",
     };
+
+    /// <summary>Same reasoning as SiteTests' own override — a site's container is deliberately left running when api shuts down, so this test cleans up after itself explicitly.</summary>
+    public override async Task DisposeAsync()
+    {
+        await CleanUpSiteContainersAsync();
+        await base.DisposeAsync();
+    }
+
+    private async Task CleanUpSiteContainersAsync()
+    {
+        List<string> containerIds;
+        await using (var conn = new Npgsql.NpgsqlConnection(ConnectionString))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new Npgsql.NpgsqlCommand(
+                "SELECT container_id FROM praxy.site_deployments WHERE container_id IS NOT NULL", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            containerIds = [];
+            while (await reader.ReadAsync())
+                containerIds.Add(reader.GetString(0));
+        }
+        if (containerIds.Count == 0)
+            return;
+
+        var docker = Factory.Services.GetRequiredService<Praxy.Sites.SiteDockerExecutor>();
+        foreach (var containerId in containerIds)
+            await docker.StopAndRemoveAsync(containerId, CancellationToken.None);
+    }
 
     [Fact]
     public async Task Made_up_hostnames_are_rejected_before_ever_touching_the_database()

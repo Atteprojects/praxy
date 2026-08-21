@@ -28,6 +28,9 @@ import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
 import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
+import { SiteDeploymentsPage } from "./screens/SiteDeploymentsPage";
+import { SiteSettingsPage } from "./screens/SiteSettingsPage";
+import { SitesPage } from "./screens/SitesPage";
 import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
 import { TopicSubscribersPage } from "./screens/TopicSubscribersPage";
@@ -205,6 +208,24 @@ const functionSettingsRoute = createRoute({
   component: FunctionSettingsPage,
 });
 
+const sitesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "sites",
+  component: SitesPage,
+});
+
+const siteDeploymentsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "sites/$siteId",
+  component: SiteDeploymentsPage,
+});
+
+const siteSettingsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "sites/$siteId/settings",
+  component: SiteSettingsPage,
+});
+
 const messagesRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "messaging",
@@ -276,6 +297,9 @@ const routeTree = rootRoute.addChildren([
       functionDeploymentsRoute,
       functionExecutionsRoute,
       functionSettingsRoute,
+      sitesRoute,
+      siteDeploymentsRoute,
+      siteSettingsRoute,
       messagesRoute,
       messagingTopicsRoute,
       messagingTopicSubscribersRoute,
