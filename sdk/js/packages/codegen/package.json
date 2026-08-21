@@ -1,0 +1,22 @@
+{
+  "name": "@praxy/codegen",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Typed row interfaces + column-key constants generated from a Praxy project's live schema.",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "praxy-codegen": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}
