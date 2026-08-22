@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { useAuthSettings, useUpdateAuthSettings } from "../api/auth";
 import { ApiError } from "../api/client";
 import {
-  ErrorNote, Field, FullPageSpinner, PageHeader, Spinner, Toggle,
+  ErrorNote, Field, FullPageSpinner, Spinner, Toggle,
 } from "../components/ui";
+import { AuthTabs } from "./AuthTabs";
 
 /**
  * Method toggles, Google credentials, session limit, password policy. Minimal options by
@@ -55,15 +56,16 @@ export function AuthSettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <PageHeader
-        title="Auth settings"
+    <div>
+      <AuthTabs
+        projectId={projectId}
+        active="settings"
         description="Which sign-in methods this project's apps accept, and the session and password rules applied to them."
       />
 
-      <div className="space-y-6">
+      <div className="max-w-2xl space-y-8">
         <section className="surface p-5">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-500">Sign-in methods</h2>
+          <h2 className="mb-3 text-sm font-medium text-ink-100">Sign-in methods</h2>
           <div className="space-y-2 divide-y divide-ink-800/60">
             <Toggle
               checked={emailPassword}
@@ -118,7 +120,7 @@ export function AuthSettingsPage() {
         </section>
 
         <section className="surface p-5">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-500">Limits & policy</h2>
+          <h2 className="mb-3 text-sm font-medium text-ink-100">Limits & policy</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Session limit per user">
               <input

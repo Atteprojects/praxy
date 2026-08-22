@@ -3,9 +3,9 @@ import { useState, type FormEvent } from "react";
 import { useCreateUser, useProjectUsers } from "../api/auth";
 import { ApiError } from "../api/client";
 import {
-  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
+  Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, Spinner, timeAgo,
 } from "../components/ui";
-import { STR } from "../strings";
+import { AuthTabs } from "./AuthTabs";
 
 const HEADERS = ["User", "ID", "Status", "Labels", "Joined", "Last activity"];
 
@@ -20,8 +20,9 @@ export function UsersPage() {
 
   return (
     <div>
-      <PageHeader
-        title={STR.users}
+      <AuthTabs
+        projectId={projectId}
+        active="users"
         description="Everyone who can sign in to this project's apps. Labels here become label:<name> permission roles."
         actions={
           <>

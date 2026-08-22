@@ -1,10 +1,9 @@
-import { Link, Outlet, useParams } from "@tanstack/react-router";
+import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { useCapabilities, useProject } from "../api/queries";
 import {
   ApiKeysIcon,
   AuditIcon,
-  AuthSettingsIcon,
   DatabasesIcon,
   FunctionsIcon,
   MenuIcon,
@@ -13,7 +12,6 @@ import {
   PlatformsIcon,
   RealtimeIcon,
   SitesIcon,
-  TeamsIcon,
   UsersIcon,
   WebhooksIcon,
 } from "../components/icons";
@@ -32,13 +30,18 @@ type NavItem = {
   feature?: Feature;
   /** A divider is drawn in the rail wherever the group changes. */
   group: "top" | "build" | "manage";
+  /**
+   * Extra relative paths (under `/project/$projectId/`) that should also highlight this entry —
+   * for a nav item whose sub-pages are sibling tab routes rather than nested under `to` itself
+   * (Auth's Users/Teams/Settings tabs share no common navigable parent path, unlike e.g. Databases'
+   * `/databases/$id/tables/...`, which `<Link>`'s own prefix-based active match already handles).
+   */
+  alsoActiveOn?: string[];
 };
 
 const NAV: NavItem[] = [
   { to: "/project/$projectId", label: STR.overview, icon: <OverviewIcon />, kbd: "g o", exact: true, group: "top" },
-  { to: "/project/$projectId/auth/users", label: STR.users, icon: <UsersIcon />, kbd: "g u", feature: "auth", group: "build" },
-  { to: "/project/$projectId/auth/teams", label: STR.teams, icon: <TeamsIcon />, kbd: "g t", feature: "auth", group: "build" },
-  { to: "/project/$projectId/auth/settings", label: "Auth settings", icon: <AuthSettingsIcon />, kbd: "g s", feature: "auth", group: "build" },
+  { to: "/project/$projectId/auth/users", label: "Auth", icon: <UsersIcon />, kbd: "g u", feature: "auth", group: "build", alsoActiveOn: ["auth/teams", "auth/settings"] },
   { to: "/project/$projectId/databases", label: STR.databases, icon: <DatabasesIcon />, kbd: "g d", feature: "databases", group: "build" },
   { to: "/project/$projectId/realtime", label: STR.realtime, icon: <RealtimeIcon />, kbd: "g r", feature: "realtime", group: "build" },
   { to: "/project/$projectId/webhooks", label: "Webhooks", icon: <WebhooksIcon />, kbd: "g w", feature: "webhooks", group: "build" },
@@ -168,6 +171,8 @@ function NavEntry({
   startsGroup: boolean;
 }) {
   const heading = GROUP_LABELS[item.group];
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const extraActive = item.alsoActiveOn?.some((suffix) => pathname.startsWith(`/project/${projectId}/${suffix}`)) ?? false;
 
   if (collapsed) {
     return (
@@ -178,7 +183,7 @@ function NavEntry({
           params={{ projectId }}
           activeOptions={{ exact: item.exact ?? false }}
           aria-label={item.label}
-          className="group relative flex size-10 shrink-0 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100"
+          className={`group relative flex size-10 shrink-0 items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100 ${extraActive ? "bg-ink-800 text-ink-100" : ""}`}
           activeProps={{ className: "bg-ink-800 text-ink-100" }}
         >
           <span className="[&>svg]:size-[18px]">{item.icon}</span>
@@ -205,7 +210,7 @@ function NavEntry({
         to={item.to}
         params={{ projectId }}
         activeOptions={{ exact: item.exact ?? false }}
-        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100"
+        className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-400 transition-colors hover:bg-ink-850 hover:text-ink-100 ${extraActive ? "bg-ink-800 text-ink-100" : ""}`}
         activeProps={{ className: "bg-ink-800 text-ink-100" }}
       >
         <span className="shrink-0 [&>svg]:size-4">{item.icon}</span>
