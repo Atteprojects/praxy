@@ -47,6 +47,17 @@ export function useUpdateSite(projectId: string, siteId: string) {
   });
 }
 
+/**
+ * The site's current preview screenshot, or null if none has been captured yet (`useSites`'s
+ * `hasScreenshot` flag decides whether to call this at all). Cache-busted with the site's own
+ * `updatedAt` — bumped server-side the moment a capture lands — so a redeploy's new screenshot
+ * replaces the old one on the next 5s sites-list poll instead of serving a stale browser cache.
+ */
+export function siteScreenshotUrl(projectId: string, site: Pick<PraxySite, "id" | "hasScreenshot" | "updatedAt">): string | null {
+  if (!site.hasScreenshot) return null;
+  return `/v1${base(projectId)}/${site.id}/screenshot?t=${encodeURIComponent(site.updatedAt)}`;
+}
+
 export function useDeleteSite(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({

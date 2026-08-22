@@ -74,6 +74,17 @@ public class SiteDeployment
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ActivatedAt { get; set; }
+
+    /// <summary>
+    /// Set once <see cref="SiteScreenshotWorker"/> has captured (or given up capturing —
+    /// see <see cref="ScreenshotAttempts"/>) this deployment's live preview. Null forever means
+    /// "not attempted yet" or "still retrying"; the console renders a placeholder either way, so the
+    /// two are not distinguished any further than this.
+    /// </summary>
+    public DateTimeOffset? ScreenshotCapturedAt { get; set; }
+
+    /// <summary>Bounds <see cref="SiteScreenshotWorker"/>'s retry loop — see <c>SitesOptions.ScreenshotMaxAttempts</c>.</summary>
+    public int ScreenshotAttempts { get; set; }
 }
 
 /// <summary>
@@ -85,4 +96,17 @@ public class SiteDeploymentSource
 {
     public required Guid DeploymentId { get; set; }
     public required byte[] Tar { get; set; }
+}
+
+/// <summary>
+/// A deployment's captured preview screenshot (PNG), split out of <see cref="SiteDeployment"/> for
+/// the exact same reason as <see cref="SiteDeploymentSource"/> — the sites list/deployments list
+/// queries must never drag image bytes along just to render a status table. One row per deployment
+/// that has ever been successfully captured; never updated in place, since a deployment's content
+/// never changes after activation (a redeploy creates a new deployment, and thus a new row here).
+/// </summary>
+public class SiteDeploymentScreenshot
+{
+    public required Guid DeploymentId { get; set; }
+    public required byte[] Png { get; set; }
 }

@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
@@ -290,6 +291,132 @@ public sealed class SiteDockerExecutor : IDisposable
             port = int.Parse(binding.HostPort);
         }
         return new RunningSiteContainer(containerId, host, port);
+    }
+
+    /// <summary>
+    /// Best-effort: spins up an ephemeral headless-Chromium container on the same network as
+    /// <paramref name="target"/>, screenshots its root path, copies the PNG out, and always tears the
+    /// capture container down — never throws, returns null on any failure (image pull, container
+    /// startup, timeout, page crash, missing output file). Called by <c>SiteScreenshotWorker</c>, kept
+    /// off the activation path itself so a slow or failed capture can never delay a site going live.
+    /// </summary>
+    public async Task<byte[]?> CaptureScreenshotAsync(RunningSiteContainer target, CancellationToken ct)
+    {
+        var attachToNetwork = !string.IsNullOrEmpty(_options.DockerNetwork);
+        // Mirrors StartContainerAsync's own dual-mode story: on the shared Docker network, the
+        // site's own container IP is reachable directly. Off it (bare `dotnet run` dev mode — the
+        // site container is published to 127.0.0.1 on the *host*, not reachable at "127.0.0.1" from
+        // inside a second, unrelated bridge-network container), Docker Desktop and Docker 20.10+'s
+        // ExtraHosts/host-gateway both expose the host under this well-known name instead.
+        var targetHost = attachToNetwork ? target.Host : "host.docker.internal";
+        var url = $"http://{targetHost}:{target.Port}/";
+
+        try
+        {
+            await PullImageIfMissingAsync(ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // No registry access and no local copy — nothing to run. Best-effort, not fatal.
+            return null;
+        }
+
+        var hostConfig = new HostConfig
+        {
+            AutoRemove = false,
+            ExtraHosts = attachToNetwork ? [] : ["host.docker.internal:host-gateway"],
+        };
+        NetworkingConfig? networkingConfig = null;
+        if (attachToNetwork)
+        {
+            hostConfig.NetworkMode = _options.DockerNetwork;
+            networkingConfig = new NetworkingConfig
+            {
+                EndpointsConfig = new Dictionary<string, EndpointSettings> { [_options.DockerNetwork] = new EndpointSettings() },
+            };
+        }
+
+        // The image's own ENTRYPOINT is ["chromium-browser", "--headless"] — these are appended to it.
+        var cmd = new List<string>
+        {
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--hide-scrollbars",
+            $"--window-size={_options.ScreenshotWidth},{_options.ScreenshotHeight}",
+            // Lets client-rendered content (Next.js hydration, client-side data fetching) actually
+            // paint before the shot is taken, without a real wall-clock sleep on our own side.
+            "--virtual-time-budget=4000",
+            "--screenshot=screenshot.png",
+            url,
+        };
+
+        var created = await _client.Containers.CreateContainerAsync(new CreateContainerParameters
+        {
+            Image = _options.ScreenshotImage,
+            Cmd = cmd,
+            Labels = new Dictionary<string, string> { ["praxy.site.screenshot"] = "true" },
+            HostConfig = hostConfig,
+            NetworkingConfig = networkingConfig,
+        }, ct);
+
+        try
+        {
+            await _client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), ct);
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.ScreenshotTimeoutSeconds));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            var waited = await _client.Containers.WaitContainerAsync(created.ID, linked.Token);
+            if (waited.StatusCode != 0)
+                return null;
+
+            var archive = await _client.Containers.GetArchiveFromContainerAsync(
+                created.ID, new ContainerPathStatParameters { Path = "/usr/src/app/screenshot.png" }, false, ct);
+            if (archive.Stream is not { } archiveStream)
+                return null;
+            await using var _ = archiveStream;
+            using var tarReader = new TarReader(archiveStream, leaveOpen: false);
+            while (await tarReader.GetNextEntryAsync(copyData: true, ct) is { } entry)
+            {
+                if (entry.EntryType != TarEntryType.RegularFile || entry.DataStream is null)
+                    continue;
+                using var buffer = new MemoryStream();
+                await entry.DataStream.CopyToAsync(buffer, ct);
+                return buffer.ToArray();
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // Covers our own ScreenshotTimeoutSeconds firing (not the caller's ct), a page that
+            // crashed instead of rendering, and the archive endpoint 404ing because chromium never
+            // wrote the file — all of these mean "no screenshot this time," never a hard failure.
+            return null;
+        }
+        finally
+        {
+            await StopAndRemoveAsync(created.ID, CancellationToken.None);
+        }
+    }
+
+    /// <summary>Pulls <see cref="SitesOptions.ScreenshotImage"/> on first use — a third-party image, unlike a site's own Dockerfile-built one, so nothing else in this codebase ever pulls it implicitly.</summary>
+    private async Task PullImageIfMissingAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _client.Images.InspectImageAsync(_options.ScreenshotImage, ct);
+            return;
+        }
+        catch (DockerImageNotFoundException)
+        {
+            // Not present locally yet — pull below.
+        }
+
+        var colon = _options.ScreenshotImage.LastIndexOf(':');
+        var repo = colon < 0 ? _options.ScreenshotImage : _options.ScreenshotImage[..colon];
+        var tag = colon < 0 ? "latest" : _options.ScreenshotImage[(colon + 1)..];
+        await _client.Images.CreateImageAsync(
+            new ImagesCreateParameters { FromImage = repo, Tag = tag }, null, new Progress<JSONMessage>(), ct);
     }
 
     public void Dispose()
