@@ -111,8 +111,18 @@ function CreateSiteModal({ projectId, onClose }: { projectId: string; onClose: (
 
   return (
     <Modal title="Create site" onClose={onClose} size="lg">
-      <div className="flex flex-col gap-6 sm:flex-row">
-        <form onSubmit={(e) => void onSubmit(e)} className="min-w-0 flex-1 space-y-4">
+      <div className="space-y-5">
+        <div className="flex items-center gap-4 rounded-lg border border-ink-800 bg-ink-950 p-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-medium text-ink-100">{name.trim() || "Untitled site"}</p>
+              <Badge tone="ink">Next.js</Badge>
+            </div>
+            <p className="mt-1.5 break-words font-mono text-xs text-iris-300">{withBreakOpportunities(urlPreview)}</p>
+          </div>
+        </div>
+
+        <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
           {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
           <Field label="Name" error={error?.fieldErrors("name")[0]}>
             <input
@@ -138,7 +148,6 @@ function CreateSiteModal({ projectId, onClose }: { projectId: string; onClose: (
               }}
               placeholder="marketing-site"
             />
-            <span className="mt-1 block text-[11px] text-ink-500">Part of the site's public URL: {urlPreview}</span>
           </Field>
           <Field label="Root directory (optional)" error={error?.fieldErrors("rootDirectory")[0]}>
             <input
@@ -163,21 +172,16 @@ function CreateSiteModal({ projectId, onClose }: { projectId: string; onClose: (
             {create.isPending ? <Spinner /> : "Create site"}
           </button>
         </form>
-
-        <aside className="w-full shrink-0 space-y-4 rounded-lg border border-ink-800 bg-ink-950 p-4 sm:w-52">
-          <span className="block text-xs font-medium uppercase tracking-wide text-ink-500">Preview</span>
-          <div>
-            <p className="truncate text-sm font-medium text-ink-100">{name.trim() || "Untitled site"}</p>
-            <div className="mt-2">
-              <Badge tone="ink">Next.js</Badge>
-            </div>
-          </div>
-          <div>
-            <span className="block text-[11px] uppercase tracking-wide text-ink-600">Public URL</span>
-            <p className="mt-1 break-all font-mono text-xs text-iris-300">{urlPreview}</p>
-          </div>
-        </aside>
       </div>
     </Modal>
   );
+}
+
+/**
+ * Inserts a zero-width space after each "." so a long dot-separated string (a URL with no spaces)
+ * wraps at those natural boundaries instead of `overflow-wrap`'s default fallback of breaking
+ * mid-word wherever it runs out of room — which, for a 32-char hex project id, means mid-hex-digit.
+ */
+function withBreakOpportunities(value: string): string {
+  return value.replaceAll(".", ".​");
 }
