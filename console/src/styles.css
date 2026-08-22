@@ -35,6 +35,25 @@ body {
   scrollbar-color: var(--color-ink-700) transparent;
 }
 
+/*
+ * iOS Safari (and some Android browsers) auto-zoom the page on focusing any text input whose
+ * *rendered* font-size is under 16px — true regardless of the viewport meta tag, and not something
+ * `maximum-scale`/`user-scalable=no` should be used to work around (that disables pinch-zoom
+ * entirely, an accessibility regression for anyone who needs it). `input-base` renders at text-sm
+ * (14px), and several inputs across the console layer text-xs (12px) on top of it for compact
+ * fields (monospace ids, search boxes) — both are under the threshold. Scoped to narrow/touch-primary
+ * viewports only, so desktop's actual (smaller, intentional) input text is untouched; !important is
+ * deliberate here — it needs to beat whichever text-size utility a given input applies, and this is
+ * the standard, narrowly-scoped exception for exactly this browser quirk.
+ */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 @utility surface {
   @apply bg-ink-900 border border-ink-800 rounded-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03),0_8px_24px_-12px_rgba(0,0,0,0.5)];
 }
