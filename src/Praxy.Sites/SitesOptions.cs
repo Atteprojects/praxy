@@ -42,5 +42,11 @@ public sealed record SitesOptions(
     // Bounded retry, not infinite — a deployment whose container never renders anything
     // meaningful (crashes on every request, etc.) shouldn't be re-attempted forever.
     int ScreenshotMaxAttempts = 3,
+    // Cooldown after a failed capture before the same deployment can be reclaimed — found live: a
+    // fresh deploy's startup load (image build, migrations, every worker's first run competing at
+    // once) can make a cold image pull flaky, and without this a worker polling every
+    // BuildPollIntervalSeconds burns through ScreenshotMaxAttempts in well under a minute, with no
+    // room for a transient failure to clear before giving up for good.
+    int ScreenshotRetryDelaySeconds = 15,
     int ScreenshotWidth = 1280,
     int ScreenshotHeight = 800);
