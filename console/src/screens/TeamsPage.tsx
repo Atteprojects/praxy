@@ -11,6 +11,7 @@ import {
   Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
 } from "../components/ui";
 import { STR } from "../strings";
+import { AuthTabs } from "./AuthTabs";
 
 const HEADERS = ["Team", "ID", "Members", "Created"];
 
@@ -24,8 +25,9 @@ export function TeamsPage() {
 
   return (
     <div>
-      <PageHeader
-        title={STR.teams}
+      <AuthTabs
+        projectId={projectId}
+        active="teams"
         description="Teams group users and power team:<id> permission roles."
         actions={
           <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
@@ -152,7 +154,7 @@ export function TeamDetailPage() {
       <PageHeader title={team.data.name} chips={<IdChip id={team.data.id} />} />
 
       <div className="mb-6 max-w-2xl surface p-5">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-500">Add member</h2>
+        <h2 className="mb-3 text-sm font-medium text-ink-100">Add member</h2>
         <form onSubmit={(e) => void onAdd(e)} className="flex flex-wrap items-start gap-2">
           <input
             className="input-base flex-1 min-w-48"
@@ -224,8 +226,8 @@ export function TeamDetailPage() {
         </DataTable>
       )}
 
-      <div className="mt-8 max-w-2xl surface border-coral-400/20 p-5">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-coral-400">Danger zone</h2>
+      <section className="mt-8 max-w-2xl surface border-coral-400/20 p-5">
+        <h2 className="mb-3 text-sm font-medium text-coral-400">Danger zone</h2>
         <ConfirmButton
           label="Delete team"
           title="Delete team?"
@@ -244,7 +246,7 @@ export function TeamDetailPage() {
             await navigate({ to: "/project/$projectId/auth/teams", params: { projectId } });
           }}
         />
-      </div>
+      </section>
     </div>
   );
 }

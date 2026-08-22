@@ -76,7 +76,11 @@ Filled in as phases land — keep this section current.
   `praxy-functions`). A site's public hostname is `<key>.<projectId>.{Praxy:Sites:Domain}`
   (`sites.localhost` in dev — resolves to 127.0.0.1 with no setup; `dotnet run`'s port doesn't proxy
   it, so hit `http://<key>.<projectId>.sites.localhost:5090` directly, not through the console's 5173).
-  Tunable via `Praxy:Sites:*` — see `docs/handoff/sites-phase-1-report.md`'s Commands section.
+  Tunable via `Praxy:Sites:*` — see `docs/handoff/sites-phase-1-report.md`'s Commands section. Once a
+  site is live, `SiteScreenshotWorker` best-effort captures a preview screenshot for the console's
+  sites card grid via an ephemeral `Praxy:Sites:ScreenshotImage` (`zenika/alpine-chrome:124`)
+  container — pulled from Docker Hub on first use, so this also needs outbound registry access; see
+  `docs/self-host.md`'s "Site preview screenshots" section.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)

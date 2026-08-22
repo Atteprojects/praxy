@@ -83,8 +83,8 @@ function OverviewTab({
       <PasswordCard projectId={projectId} user={user} />
 
       <div className="surface p-5">
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">
-          Labels <span className="normal-case text-ink-700">— become label:&lt;x&gt; permission roles</span>
+        <h2 className="mb-4 text-sm font-medium text-ink-100">
+          Labels <span className="text-ink-700">— become label:&lt;x&gt; permission roles</span>
         </h2>
         <div className="flex gap-2">
           <input
@@ -114,7 +114,7 @@ function OverviewTab({
 
       {identities.length > 0 ? (
         <div className="surface p-5">
-          <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Identities</h2>
+          <h2 className="mb-4 text-sm font-medium text-ink-100">Identities</h2>
           <ul className="space-y-2 text-sm">
             {identities.map((identity) => (
               <li key={identity.id} className="flex items-center gap-3">
@@ -131,8 +131,8 @@ function OverviewTab({
         </div>
       ) : null}
 
-      <div className="surface border-coral-400/20 p-5">
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-coral-400">Danger zone</h2>
+      <section className="surface border-coral-400/20 p-5">
+        <h2 className="mb-4 text-sm font-medium text-coral-400">Danger zone</h2>
         <div className="flex flex-wrap gap-3">
           <ConfirmButton
             label={user.status ? "Block user" : "Unblock user"}
@@ -178,7 +178,7 @@ function OverviewTab({
         <p className="mt-3 text-xs text-ink-500">
           Blocking revokes access immediately; deleting removes the user, their sessions and memberships.
         </p>
-      </div>
+      </section>
     </div>
   );
 }
@@ -202,7 +202,7 @@ function ProfileCard({ projectId, user }: { projectId: string; user: AppUser }) 
 
   return (
     <div className="surface p-5">
-      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Profile</h2>
+      <h2 className="mb-4 text-sm font-medium text-ink-100">Profile</h2>
 
       <div className="space-y-4">
         <Field label="Email" error={fieldError(updateEmail.error, "email")}>
@@ -291,9 +291,9 @@ function VerificationCard({ projectId, user }: { projectId: string; user: AppUse
 
   return (
     <div className="surface p-5">
-      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">
+      <h2 className="mb-4 text-sm font-medium text-ink-100">
         Email verification{" "}
-        <span className="normal-case text-ink-700">— grants the users/verified permission role</span>
+        <span className="text-ink-700">— grants the users/verified permission role</span>
       </h2>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -393,7 +393,7 @@ function PasswordCard({ projectId, user }: { projectId: string; user: AppUser })
   if (issued !== null) {
     return (
       <div className="surface border-mint-400/20 p-5">
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Password</h2>
+        <h2 className="mb-4 text-sm font-medium text-ink-100">Password</h2>
         <p className="mb-3 text-sm text-ink-400">
           Password set and every session revoked. This is the only time it is shown — Praxy keeps only a
           hash. Pass it to <span className="font-mono text-ink-300">{user.email}</span> over something safer
@@ -424,7 +424,7 @@ function PasswordCard({ projectId, user }: { projectId: string; user: AppUser })
 
   return (
     <div className="surface p-5">
-      <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-ink-500">Password</h2>
+      <h2 className="mb-4 text-sm font-medium text-ink-100">Password</h2>
       <Field label="New password" error={fieldError(reset.error, "password")}>
         <div className="flex gap-2">
           <input

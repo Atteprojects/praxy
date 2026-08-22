@@ -9992,6 +9992,46 @@
         }
       }
     },
+    "/v1/console/projects/{projectId}/sites/{siteId}/screenshot": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "byte"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/console/projects/{projectId}/sites/{siteId}/env": {
       "get": {
         "tags": [
@@ -13526,6 +13566,7 @@
           "enabled",
           "activeDeploymentId",
           "isRunning",
+          "hasScreenshot",
           "publicUrl",
           "createdAt",
           "updatedAt"
@@ -13554,6 +13595,9 @@
             ]
           },
           "isRunning": {
+            "type": "boolean"
+          },
+          "hasScreenshot": {
             "type": "boolean"
           },
           "publicUrl": {

@@ -47,6 +47,17 @@ export function useUpdateSite(projectId: string, siteId: string) {
   });
 }
 
+/**
+ * The site's current preview screenshot, or null if none has been captured yet (`useSites`'s
+ * `hasScreenshot` flag decides whether to call this at all). Cache-busted with the site's own
+ * `updatedAt` — bumped server-side the moment a capture lands — so a redeploy's new screenshot
+ * replaces the old one on the next 5s sites-list poll instead of serving a stale browser cache.
+ */
+export function siteScreenshotUrl(projectId: string, site: Pick<PraxySite, "id" | "hasScreenshot" | "updatedAt">): string | null {
+  if (!site.hasScreenshot) return null;
+  return `/v1${base(projectId)}/${site.id}/screenshot?t=${encodeURIComponent(site.updatedAt)}`;
+}
+
 export function useDeleteSite(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -101,14 +112,26 @@ export function useSiteDeployments(projectId: string, siteId: string) {
   });
 }
 
-/** Polls tightly while the build is in flight so the console's build-log tail reads as live. */
+/**
+ * Polls tightly while the build is in flight so the console's build-log tail reads as live — and
+ * keeps polling a little past `status: "ready"` too. Auto-activation (which sets `activatedAt` and
+ * starts the real container) is a separate step *after* the build worker marks the row ready, so a
+ * deployment can sit in "ready, not yet activated" for a moment; stopping the poll the instant
+ * `status` flips leaves the sheet showing a stale snapshot from just before activation finished —
+ * the success view would render with no build-duration line until the next unrelated refetch.
+ */
 export function useSiteDeployment(projectId: string, siteId: string, deploymentId: string | null) {
   return useQuery({
     queryKey: ["projects", projectId, "sites", siteId, "deployments", deploymentId],
     queryFn: () => api<SiteDeployment>(`${base(projectId)}/${siteId}/deployments/${deploymentId}`),
     enabled: deploymentId !== null,
-    refetchInterval: (query) =>
-      query.state.data?.status === "queued" || query.state.data?.status === "building" ? 1_000 : false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 1_000;
+      if (data.status === "queued" || data.status === "building") return 1_000;
+      if (data.status === "ready" && !data.activatedAt) return 1_000;
+      return false;
+    },
   });
 }
 

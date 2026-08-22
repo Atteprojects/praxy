@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useRedeliverWebhook, useWebhook, useWebhookDelivery, useWebhookDeliveries } from "../api/webhooks";
 import type { DataGridColumn } from "../components/DataGrid";
 import { DataGrid } from "../components/DataGrid";
-import { Badge, EmptyState, FullPageSpinner, IdChip, Sheet, Spinner, timeAgo } from "../components/ui";
+import { Badge, EmptyState, FullPageSpinner, IdChip, PageHeader, Sheet, Spinner, timeAgo } from "../components/ui";
 import type { WebhookDelivery, WebhookDeliveryStatus } from "../api/types";
 
 const HEADERS = ["Time", "Event", "Status", "Attempts", "Last status", ""];
@@ -62,12 +62,16 @@ export function WebhookDeliveriesPage() {
       >
         ← Webhooks
       </Link>
-      <div className="mb-1 flex items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{webhook.data.name}</h1>
-        {webhook.data.enabled ? <Badge tone="mint">enabled</Badge> : <Badge tone="coral">disabled</Badge>}
-      </div>
-      <p className="mb-1 font-mono text-xs text-ink-500">{webhook.data.url}</p>
-      <div className="mb-6"><IdChip id={webhook.data.id} /></div>
+      <PageHeader
+        title={webhook.data.name}
+        chips={
+          <>
+            {webhook.data.enabled ? <Badge tone="mint">enabled</Badge> : <Badge tone="coral">disabled</Badge>}
+            <IdChip id={webhook.data.id} />
+          </>
+        }
+        description={<span className="font-mono text-xs text-ink-500">{webhook.data.url}</span>}
+      />
 
       {!webhook.data.enabled && webhook.data.disabledReason ? (
         <div className="mb-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-400">

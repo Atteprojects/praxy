@@ -31,4 +31,16 @@ public sealed record SitesOptions(
     // default) undersells a real app.
     long MemoryLimitMb = 512,
     double CpuLimit = 1.0,
-    long MaxSourceBytes = 26_214_400);
+    long MaxSourceBytes = 26_214_400,
+    // zenika/alpine-chrome: a small (~180MB compressed), actively-maintained, multi-arch
+    // (amd64+arm64) headless-Chromium image with a single-invocation CLI screenshot mode — no
+    // driver process needed, matching this codebase's existing "ephemeral one-off container"
+    // style rather than a long-lived capture service. Pinned to a numbered tag, not `latest`,
+    // per the repo's own machine-verified-pins discipline (docs/research/dotnet-stack.md).
+    string ScreenshotImage = "zenika/alpine-chrome:124",
+    int ScreenshotTimeoutSeconds = 20,
+    // Bounded retry, not infinite — a deployment whose container never renders anything
+    // meaningful (crashes on every request, etc.) shouldn't be re-attempted forever.
+    int ScreenshotMaxAttempts = 3,
+    int ScreenshotWidth = 1280,
+    int ScreenshotHeight = 800);

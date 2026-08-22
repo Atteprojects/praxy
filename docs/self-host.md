@@ -146,6 +146,8 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Functions:DockerNetwork` | `""` | Docker network function containers join instead of publishing a host port; required when `api` itself runs in a container (this repo's own compose file sets it to `praxy-functions`) — see [Functions and the Docker socket](#functions-and-the-docker-socket). |
 | `Praxy:Sites:*` | see `docs/handoff/sites-phase-1-report.md` | Docker endpoint, base image, build/startup timeouts, reconciliation cadence, resource limits. |
 | `Praxy:Sites:DockerNetwork` | `""` | Same shape as `Praxy:Functions:DockerNetwork`, but a separate network (this repo's own compose file sets it to `praxy-sites`) — a site's container and a function's container can't reach each other by default. See [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
+| `Praxy:Sites:ScreenshotImage` | `zenika/alpine-chrome:124` | Headless-Chromium image used to capture each site's preview screenshot for the console's card grid. Pulled on first use (a third-party image, not one this codebase builds) — needs outbound registry access the same way a site's own `npm install` does. |
+| `Praxy:Sites:ScreenshotTimeoutSeconds` / `ScreenshotMaxAttempts` | `20` / `3` | Per-capture timeout and bounded retry count — see [Site preview screenshots](#site-preview-screenshots). |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
 | `Praxy:Retention:SweepIntervalSeconds` | 3600 | How often the retention sweep runs. |
 | `Praxy:Retention:EventsMaxAgeDays` | 90 | Age past which a `praxy.events` row is deleted — only once **both** `WebhooksDispatchedAt` and `FunctionsDispatchedAt` are set; an unclaimed row past this age is left for the next sweep rather than force-deleted. |
@@ -254,6 +256,22 @@ every site with no error anywhere (found and fixed post-Phase-1; see the correct
 `docs/research/dotnet-stack.md`'s Caddy section for the full failure signature if you ever see this
 again after hand-editing the Caddyfile). `docs/research/dotnet-stack.md`'s Caddy section has the full
 verified directive syntax if you're adapting this by hand.
+
+### Site preview screenshots
+
+Once a site's container is live, `SiteScreenshotWorker` captures a preview screenshot for the
+console's sites list card — an ephemeral `zenika/alpine-chrome` container on the same Docker network
+as the site itself (`Praxy:Sites:DockerNetwork`), never a persistent service. This is best-effort and
+never blocks a deployment going live: a capture that fails or times out (bounded by
+`ScreenshotTimeoutSeconds`, retried up to `ScreenshotMaxAttempts` times) just leaves the card showing
+a plain placeholder instead of a preview — nothing else about the site is affected.
+
+Bare `dotnet run` dev mode (no `Praxy:Sites:DockerNetwork` configured, so the site's own container
+publishes to `127.0.0.1` on the host rather than joining a named network) needs the capture container
+to reach that host port from inside its own network namespace — `host.docker.internal` plus the
+`host-gateway` `ExtraHosts` entry Docker 20.10+ and Docker Desktop both support. This is automatic
+(`SiteDockerExecutor.CaptureScreenshotAsync` branches on the same `DockerNetwork` setting Sites
+already uses everywhere else), not something you configure separately.
 
 ## Backup and restore
 

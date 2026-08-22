@@ -43,26 +43,6 @@ export function UsersIcon(props: IconProps) {
   );
 }
 
-export function TeamsIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="5.5" cy="5" r="2.25" stroke="currentColor" />
-      <circle cx="11" cy="6.5" r="1.75" stroke="currentColor" />
-      <path d="M1.5 14c0-2.2 1.9-3.5 4-3.5s4 1.3 4 3.5" stroke="currentColor" />
-      <path d="M10 10.8c1.7.15 3.5 1.1 3.5 3.2" stroke="currentColor" />
-    </Icon>
-  );
-}
-
-export function AuthSettingsIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M8 1.5 13 3.5V7c0 4-2.5 6-5 7.5C5.5 13 3 11 3 7V3.5L8 1.5Z" stroke="currentColor" />
-      <path d="M6 8l1.4 1.4L10.3 6.5" stroke="currentColor" />
-    </Icon>
-  );
-}
-
 export function DatabasesIcon(props: IconProps) {
   return (
     <Icon {...props}>

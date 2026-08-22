@@ -93,6 +93,19 @@ public class SiteTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.Contains("praxy-site-v1", v1Body);
         Assert.Contains("hello-from-env", v1Body);
 
+        // ---- SiteScreenshotWorker captures a real preview once the site is live ----
+        var withScreenshot = await WaitForScreenshotAsync(operatorToken, projectId, siteId);
+        Assert.True(withScreenshot.GetProperty("hasScreenshot").GetBoolean());
+
+        var screenshotResponse = await Client.SendAsync(Authed(HttpMethod.Get,
+            $"/v1/console/projects/{projectId}/sites/{siteId}/screenshot", operatorToken));
+        Assert.Equal(200, (int)screenshotResponse.StatusCode);
+        Assert.Equal("image/png", screenshotResponse.Content.Headers.ContentType?.MediaType);
+        var pngBytes = await screenshotResponse.Content.ReadAsByteArrayAsync();
+        // PNG magic number — proves this is real captured image data, not just a non-empty blob.
+        Assert.True(pngBytes.Length > 100);
+        Assert.Equal([0x89, 0x50, 0x4E, 0x47], pngBytes[..4]);
+
         // ---- redeploy: v2 auto-activates, the old container stops, the new one serves ----
         var v2Deployment = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildNextAppTar("v2"));
         await WaitForDeploymentStatusAsync(operatorToken, projectId, siteId, v2Deployment, "ready");
@@ -164,6 +177,20 @@ public class SiteTests(PostgresContainerFixture pg) : AuthTestBase(pg)
             await Task.Delay(500);
         }
         throw new TimeoutException($"Site never became active and running for deployment '{deploymentId}'.");
+    }
+
+    /// <summary>Bounded wait for <c>SiteScreenshotWorker</c> to land a capture — includes first-run image-pull time, so this is generous relative to the capture itself.</summary>
+    private async Task<JsonElement> WaitForScreenshotAsync(string operatorToken, string projectId, string siteId)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(120);
+        while (DateTime.UtcNow < deadline)
+        {
+            var site = await GetSiteAsync(operatorToken, projectId, siteId);
+            if (site.GetProperty("hasScreenshot").GetBoolean())
+                return site;
+            await Task.Delay(1000);
+        }
+        throw new TimeoutException("Site never got a captured screenshot.");
     }
 
     private async Task<JsonElement> GetSiteAsync(string operatorToken, string projectId, string siteId) =>
