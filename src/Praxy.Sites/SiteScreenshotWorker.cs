@@ -119,7 +119,16 @@ public sealed class SiteScreenshotWorker(
 
         var png = await docker.CaptureScreenshotAsync(running, ct);
         if (png is null)
+        {
+            // A real attempt was made and failed (image pull, container start, timeout — see
+            // SiteDockerExecutor's own logging for which). Back off before the next poll can
+            // reclaim this same row, rather than burning through ScreenshotMaxAttempts in the
+            // space of a few seconds — found live: three attempts exhausted in well under a
+            // minute during a fresh deploy's startup load, with no room for a transient failure
+            // (a slow image pull, a momentary daemon hiccup) to clear before giving up for good.
+            await Task.Delay(TimeSpan.FromSeconds(options.ScreenshotRetryDelaySeconds), ct);
             return;
+        }
 
         db.SiteDeploymentScreenshots.Add(new Persistence.Entities.SiteDeploymentScreenshot { DeploymentId = claimed.Id, Png = png });
         var now = DateTimeOffset.UtcNow;

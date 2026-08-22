@@ -227,6 +227,7 @@ try
         ScreenshotImage: builder.Configuration["Praxy:Sites:ScreenshotImage"] ?? "zenika/alpine-chrome:124",
         ScreenshotTimeoutSeconds: builder.Configuration.GetValue("Praxy:Sites:ScreenshotTimeoutSeconds", 20),
         ScreenshotMaxAttempts: builder.Configuration.GetValue("Praxy:Sites:ScreenshotMaxAttempts", 3),
+        ScreenshotRetryDelaySeconds: builder.Configuration.GetValue("Praxy:Sites:ScreenshotRetryDelaySeconds", 15),
         ScreenshotWidth: builder.Configuration.GetValue("Praxy:Sites:ScreenshotWidth", 1280),
         ScreenshotHeight: builder.Configuration.GetValue("Praxy:Sites:ScreenshotHeight", 800));
     builder.Services.AddSingleton(sitesOptions);

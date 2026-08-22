@@ -1,6 +1,7 @@
 using System.Formats.Tar;
 using Docker.DotNet;
 using Docker.DotNet.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Praxy.Sites;
 
@@ -22,6 +23,7 @@ public sealed class SiteDockerExecutor : IDisposable
 {
     private readonly IDockerClient _client;
     private readonly SitesOptions _options;
+    private readonly ILogger<SiteDockerExecutor> _logger;
 
     // Same rationale as DockerExecutor's own ConnectTimeout: a container that dies right after
     // being assigned a bridge-network IP can leave that IP briefly blackholed rather than cleanly
@@ -31,9 +33,10 @@ public sealed class SiteDockerExecutor : IDisposable
         Timeout = Timeout.InfiniteTimeSpan,
     };
 
-    public SiteDockerExecutor(SitesOptions options)
+    public SiteDockerExecutor(SitesOptions options, ILogger<SiteDockerExecutor> logger)
     {
         _options = options;
+        _logger = logger;
         _client = new DockerClientBuilder().WithEndpoint(new Uri(options.DockerEndpoint)).Build();
     }
 
@@ -315,9 +318,12 @@ public sealed class SiteDockerExecutor : IDisposable
         {
             await PullImageIfMissingAsync(ct);
         }
-        catch (Exception) when (!ct.IsCancellationRequested)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            // No registry access and no local copy — nothing to run. Best-effort, not fatal.
+            // No registry access and no local copy — nothing to run. Best-effort, not fatal, but
+            // logged (unlike the failures below) since a pull failure is the one case worth an
+            // operator's attention — everything past this point is expected, routine flakiness.
+            _logger.LogWarning(ex, "Failed to pull screenshot image {Image}", _options.ScreenshotImage);
             return null;
         }
 
@@ -391,6 +397,9 @@ public sealed class SiteDockerExecutor : IDisposable
             // Covers our own ScreenshotTimeoutSeconds firing (not the caller's ct), a page that
             // crashed instead of rendering, and the archive endpoint 404ing because chromium never
             // wrote the file — all of these mean "no screenshot this time," never a hard failure.
+            // Debug, not Warning: routine enough (a cold container just needing another attempt)
+            // that Warning-level would be noise — turn on Debug when actually investigating.
+            _logger.LogDebug(ex, "Screenshot capture failed for container {ContainerId}", created.ID);
             return null;
         }
         finally
