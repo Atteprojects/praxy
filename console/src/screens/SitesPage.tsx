@@ -107,61 +107,77 @@ function CreateSiteModal({ projectId, onClose }: { projectId: string; onClose: (
     onClose();
   }
 
+  const urlPreview = `${key || "key"}.${projectId}.sites.<your domain>`;
+
   return (
-    <Modal title="Create site" onClose={onClose}>
-      <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
-        {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
-        <Field label="Name" error={error?.fieldErrors("name")[0]}>
-          <input
-            className="input-base"
-            required
-            autoFocus
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!keyTouched) setKey(slugify(e.target.value));
-            }}
-            placeholder="Marketing site"
-          />
-        </Field>
-        <Field label="Key" error={error?.fieldErrors("key")[0]}>
-          <input
-            className="input-base font-mono"
-            required
-            value={key}
-            onChange={(e) => {
-              setKeyTouched(true);
-              setKey(e.target.value);
-            }}
-            placeholder="marketing-site"
-          />
-          <span className="mt-1 block text-[11px] text-ink-500">
-            Part of the site's public URL: {key || "key"}.{projectId}.sites.&lt;your domain&gt;
-          </span>
-        </Field>
-        <Field label="Root directory (optional)" error={error?.fieldErrors("rootDirectory")[0]}>
-          <input
-            className="input-base font-mono text-xs"
-            value={rootDirectory}
-            onChange={(e) => setRootDirectory(e.target.value)}
-            placeholder="Leave blank if next.config.js is at the tar's root"
-          />
-        </Field>
-        <div>
-          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
-            Your app must set
-          </span>
-          <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-300">
-            {`// next.config.js\nmodule.exports = { output: "standalone" };`}
-          </pre>
-          <span className="mt-1 block text-[11px] text-ink-500">
-            Required — the build fails with a clear message if this is missing.
-          </span>
-        </div>
-        <button type="submit" className="btn-primary w-full" disabled={create.isPending}>
-          {create.isPending ? <Spinner /> : "Create site"}
-        </button>
-      </form>
+    <Modal title="Create site" onClose={onClose} size="lg">
+      <div className="flex flex-col gap-6 sm:flex-row">
+        <form onSubmit={(e) => void onSubmit(e)} className="min-w-0 flex-1 space-y-4">
+          {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
+          <Field label="Name" error={error?.fieldErrors("name")[0]}>
+            <input
+              className="input-base"
+              required
+              autoFocus
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!keyTouched) setKey(slugify(e.target.value));
+              }}
+              placeholder="Marketing site"
+            />
+          </Field>
+          <Field label="Key" error={error?.fieldErrors("key")[0]}>
+            <input
+              className="input-base font-mono"
+              required
+              value={key}
+              onChange={(e) => {
+                setKeyTouched(true);
+                setKey(e.target.value);
+              }}
+              placeholder="marketing-site"
+            />
+            <span className="mt-1 block text-[11px] text-ink-500">Part of the site's public URL: {urlPreview}</span>
+          </Field>
+          <Field label="Root directory (optional)" error={error?.fieldErrors("rootDirectory")[0]}>
+            <input
+              className="input-base font-mono text-xs"
+              value={rootDirectory}
+              onChange={(e) => setRootDirectory(e.target.value)}
+              placeholder="Leave blank if next.config.js is at the tar's root"
+            />
+          </Field>
+          <div>
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
+              Your app must set
+            </span>
+            <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-300">
+              {`// next.config.js\nmodule.exports = { output: "standalone" };`}
+            </pre>
+            <span className="mt-1 block text-[11px] text-ink-500">
+              Required — the build fails with a clear message if this is missing.
+            </span>
+          </div>
+          <button type="submit" className="btn-primary w-full" disabled={create.isPending}>
+            {create.isPending ? <Spinner /> : "Create site"}
+          </button>
+        </form>
+
+        <aside className="w-full shrink-0 space-y-4 rounded-lg border border-ink-800 bg-ink-950 p-4 sm:w-52">
+          <span className="block text-xs font-medium uppercase tracking-wide text-ink-500">Preview</span>
+          <div>
+            <p className="truncate text-sm font-medium text-ink-100">{name.trim() || "Untitled site"}</p>
+            <div className="mt-2">
+              <Badge tone="ink">Next.js</Badge>
+            </div>
+          </div>
+          <div>
+            <span className="block text-[11px] uppercase tracking-wide text-ink-600">Public URL</span>
+            <p className="mt-1 break-all font-mono text-xs text-iris-300">{urlPreview}</p>
+          </div>
+        </aside>
+      </div>
     </Modal>
   );
 }

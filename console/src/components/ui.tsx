@@ -210,7 +210,18 @@ function useDialogChrome(onClose: () => void) {
 let dialogTitleSeq = 0;
 
 /** Modal shell: backdrop click and Escape close it; content stops propagation. */
-export function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) {
+export function Modal({
+  onClose,
+  title,
+  children,
+  size = "md",
+}: {
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+  /** `lg` for a form that pairs with a live preview panel; `md` (default) suits a plain form. */
+  size?: "md" | "lg";
+}) {
   const ref = useDialogChrome(onClose);
   const [titleId] = useState(() => `dialog-title-${++dialogTitleSeq}`);
 
@@ -225,7 +236,9 @@ export function Modal({ onClose, title, children }: { onClose: () => void; title
         role="dialog"
         aria-modal
         aria-labelledby={titleId}
-        className="surface animate-modal-in flex max-h-[85vh] w-full max-w-md flex-col p-5 outline-none sm:p-6"
+        className={`surface animate-modal-in flex max-h-[85vh] w-full flex-col p-5 outline-none sm:p-6 ${
+          size === "lg" ? "max-w-2xl" : "max-w-md"
+        }`}
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 id={titleId} className="text-lg font-semibold tracking-tight">
@@ -297,6 +310,14 @@ export function Sheet({
   );
 }
 
+/** Formats a duration in seconds as "Xs" or "Xm Ys" — shared by `useElapsed` and static duration readouts. */
+export function formatElapsed(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
 /** Live "Xs"/"Xm Ys" elapsed readout, ticking once a second while `active`. */
 export function useElapsed(since: string | null | undefined, active: boolean): string {
   const [, setTick] = useState(0);
@@ -307,10 +328,7 @@ export function useElapsed(since: string | null | undefined, active: boolean): s
   }, [active]);
 
   if (!since) return "0s";
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ${seconds % 60}s`;
+  return formatElapsed((Date.now() - new Date(since).getTime()) / 1000);
 }
 
 export function Toggle({
