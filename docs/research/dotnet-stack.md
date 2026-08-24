@@ -454,51 +454,6 @@ idempotent if the directories already exist, and turns an app-shape edge case in
 a build failure with no actionable message (the same "don't let this become an opaque Docker error"
 discipline the missing-`output: "standalone"` check already follows).
 
-## Site preview screenshots — image choice and Docker.DotNet.Enhanced APIs (Sites post-Phase-1)
-
-**`zenika/alpine-chrome:124`** — chosen for the ephemeral headless-Chromium capture container
-(`SiteDockerExecutor.CaptureScreenshotAsync`) over `chromedp/headless-shell` because it supports a
-single-invocation CLI screenshot mode (`chromium-browser --headless --screenshot=... <url>`, its own
-`ENTRYPOINT`) with no external CDP driver process needed — matching this codebase's existing
-"ephemeral one-off container" style (site builds, Functions cold starts) rather than introducing a
-long-lived driven service. Multi-arch (amd64+arm64) confirmed via Docker Hub's own tags API, not the
-project's README (which only documents amd64 explicitly and lists stale tag numbers) —
-`https://hub.docker.com/v2/repositories/zenika/alpine-chrome/tags` shows tag `124` built for both
-architectures as recently as 2026-08-20, i.e. actively maintained, not abandoned. The image's actual
-`Dockerfile` (fetched from `github.com/Zenika/alpine-chrome`, not assumed from the README) was checked
-directly for two load-bearing details: `WORKDIR /usr/src/app` (where a relative `--screenshot=name.png`
-lands, needed to know what path to request back via `GetArchiveFromContainerAsync`) and `ENTRYPOINT
-["chromium-browser", "--headless"]` (a plain exec-form array — the image's own `CHROMIUM_FLAGS` env var
-is *not* actually consumed by anything, despite being set in the Dockerfile; don't rely on it, pass
-flags directly as `Cmd`).
-
-**Three `Docker.DotNet.Enhanced` 4.3.3 APIs new to this codebase, all confirmed via the same
-reflection-against-the-installed-`net10.0`-assembly discipline the rest of this section uses** (the
-package's own docs are thin enough that guessing from memory or generic Docker.DotNet-version
-tutorials online is not reliable — this version's shape has already diverged from historical
-`Docker.DotNet` idiom once, per the `DockerClientBuilder` note above):
-
-- `IImageOperations.CreateImageAsync(ImagesCreateParameters, AuthConfig?, IProgress<JSONMessage>,
-  CancellationToken)` — the pull API, needed because (unlike `node:22-alpine` or a site's own built
-  image) `zenika/alpine-chrome` is a third-party image nothing else in this codebase ever pulls
-  implicitly; `ImagesCreateParameters.FromImage`/`.Tag` take the repo and tag split apart, not one
-  combined `image:tag` string. `IContainerOperations.WaitContainerAsync(string, CancellationToken)` →
-  `Task<ContainerWaitResponse>` has no built-in timeout parameter of its own — wrap it in a linked
-  `CancellationTokenSource` the same way `BuildImageAsync` already does for `BuildTimeoutSeconds`.
-  `IContainerOperations.GetArchiveFromContainerAsync(string, ContainerPathStatParameters, bool,
-  CancellationToken)` → `Task<ContainerArchiveResponse>` (not `GetArchiveFromContainerResponse` — a
-  plausible-looking guess that doesn't exist in this version) — `.Stream` is the tar archive Docker's
-  copy-from-container API always wraps even a single file in; read it with the same
-  `System.Formats.Tar.TarReader` pattern `SiteRuntimeTemplates` already uses for build contexts, take
-  the first `RegularFile` entry's `DataStream`.
-- `HostConfig.ExtraHosts` is `IList<string>` — **not nullable** (assigning `null` is a compile error
-  under this codebase's nullable-reference-types settings, unlike `NetworkingConfig?` itself); use `[]`
-  for "no extra hosts needed" rather than `null`. This is the mechanism (with the well-known
-  `host.docker.internal:host-gateway` entry) that lets an ephemeral capture container reach a site
-  container published to `127.0.0.1` on the *host* — the bare-`dotnet run`-dev-mode case where
-  `Praxy:Sites:DockerNetwork` is unset — since a second, unrelated bridge-network container can't
-  otherwise resolve the host's own loopback address at all.
-
 ## Caddy on-demand TLS — current directive syntax (Sites Phase 1)
 
 Verified against Caddy's own current docs (`caddyserver.com/docs/caddyfile/options`,

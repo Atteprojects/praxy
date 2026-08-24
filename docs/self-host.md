@@ -147,8 +147,6 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Functions:DockerNetwork` | `""` | Docker network function containers join instead of publishing a host port; required when `api` itself runs in a container (this repo's own compose file sets it to `praxy-functions`) — see [Functions and the Docker socket](#functions-and-the-docker-socket). |
 | `Praxy:Sites:*` | see `docs/handoff/sites-phase-1-report.md` | Docker endpoint, base image, build/startup timeouts, reconciliation cadence, resource limits. |
 | `Praxy:Sites:DockerNetwork` | `""` | Same shape as `Praxy:Functions:DockerNetwork`, but a separate network (this repo's own compose file sets it to `praxy-sites`) — a site's container and a function's container can't reach each other by default. See [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
-| `Praxy:Sites:ScreenshotImage` | `zenika/alpine-chrome:124` | Headless-Chromium image used to capture each site's preview screenshot for the console's card grid. Pulled on first use (a third-party image, not one this codebase builds) — needs outbound registry access the same way a site's own `npm install` does. |
-| `Praxy:Sites:ScreenshotTimeoutSeconds` / `ScreenshotMaxAttempts` / `ScreenshotRetryDelaySeconds` | `20` / `3` / `15` | Per-capture timeout, bounded retry count, and the cooldown between attempts — see [Site preview screenshots](#site-preview-screenshots). |
 | `Praxy:Sites:PreviewIdleSeconds` / `PreviewSweepIntervalSeconds` | `600` / `60` | How long an on-demand preview deployment's container may sit with no proxied request before it's stopped, and how often that sweep runs — see [Preview URLs and idle sweep](#preview-urls-and-idle-sweep). Never applies to a site's active/production container. |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
 | `Praxy:Retention:SweepIntervalSeconds` | 3600 | How often the retention sweep runs. |
@@ -278,38 +276,6 @@ nobody's requested it for `Praxy:Sites:PreviewIdleSeconds` (`SitePreviewSweeper`
 up. `Praxy:Quotas:MaxPreviewContainersPerProject` bounds how many of these can be running for one
 project at once, so a project that's accumulated many stale `ready` deployments can't be previewed all
 at once into exhausting the host's Docker/memory capacity.
-
-### Site preview screenshots
-
-Once a site's container is live, `SiteScreenshotWorker` captures a preview screenshot for the
-console's sites list card — an ephemeral `zenika/alpine-chrome` container on the same Docker network
-as the site itself (`Praxy:Sites:DockerNetwork`), never a persistent service. This is best-effort and
-never blocks a deployment going live: a capture that fails or times out (bounded by
-`ScreenshotTimeoutSeconds`, retried up to `ScreenshotMaxAttempts` times) just leaves the card showing
-a plain placeholder instead of a preview — nothing else about the site is affected.
-
-Bare `dotnet run` dev mode (no `Praxy:Sites:DockerNetwork` configured, so the site's own container
-publishes to `127.0.0.1` on the host rather than joining a named network) needs the capture container
-to reach that host port from inside its own network namespace — `host.docker.internal` plus the
-`host-gateway` `ExtraHosts` entry Docker 20.10+ and Docker Desktop both support. This is automatic
-(`SiteDockerExecutor.CaptureScreenshotAsync` branches on the same `DockerNetwork` setting Sites
-already uses everywhere else), not something you configure separately.
-
-**A fresh install's very first capture is the most likely to fail, and the retry spacing matters more
-than it looks** — found live deploying this feature to production: `zenika/alpine-chrome` isn't
-pulled until the first capture actually runs, and a *fresh* `docker compose ... up -d --build` has a
-lot competing for the host at once (the image build itself, every background worker's first pass,
-Postgres migrations). A pull that's merely slow under that load, retried every
-`BuildPollIntervalSeconds` with no cooldown, can burn through all `ScreenshotMaxAttempts` in under a
-minute — permanently giving up on that deployment's screenshot with nothing logged anywhere, since a
-capture failure is deliberately silent everywhere except this one path. `ScreenshotRetryDelaySeconds`
-(a real pause after a failed attempt, not shared with the build worker's tight poll) exists
-specifically to give a slow-but-fine pull room to finish before the retry budget runs out. If a site's
-card is stuck on the placeholder and you suspect this, `docker compose logs api | grep -i screenshot`
-shows the pull failure at `Warning` (or bump the log level to `Debug` for the per-attempt detail);
-`UPDATE praxy.site_deployments SET screenshot_attempts = 0 WHERE id = '<id>'` forces a retry once the
-underlying cause (usually just "image now cached") is resolved — there is no console action for this
-yet.
 
 ## Backup and restore
 

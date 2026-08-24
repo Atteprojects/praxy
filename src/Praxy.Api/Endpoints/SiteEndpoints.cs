@@ -17,11 +17,11 @@ public sealed record SetSiteEnvVarRequest(string Value);
 
 public sealed record SiteResponse(
     string Id, string Key, string Name, string RootDirectory, bool Enabled, string? ActiveDeploymentId,
-    bool IsRunning, bool HasScreenshot, string PublicUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    bool IsRunning, string PublicUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
-    public static SiteResponse From(Site s, bool isRunning, bool hasScreenshot, string publicUrl) => new(
+    public static SiteResponse From(Site s, bool isRunning, string publicUrl) => new(
         Ids.Wire(s.Id), s.Key, s.Name, s.RootDirectory, s.Enabled,
-        s.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isRunning, hasScreenshot, publicUrl, s.CreatedAt, s.UpdatedAt);
+        s.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isRunning, publicUrl, s.CreatedAt, s.UpdatedAt);
 }
 
 public sealed record SiteEnvVarResponse(string Key, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
@@ -61,7 +61,6 @@ public static class SiteEndpoints
         admin.MapGet("/{siteId}", GetSite).Produces<SiteResponse>();
         admin.MapPatch("/{siteId}", UpdateSite).Produces<SiteResponse>();
         admin.MapDelete("/{siteId}", DeleteSite).Produces(StatusCodes.Status204NoContent);
-        admin.MapGet("/{siteId}/screenshot", GetScreenshot).Produces<byte[]>(StatusCodes.Status200OK, "image/png");
 
         admin.MapGet("/{siteId}/env", ListEnvVars).Produces<SiteEnvVarListResponse>();
         admin.MapPut("/{siteId}/env/{envKey}", SetEnvVar).Produces<SiteEnvVarResponse>();
@@ -81,14 +80,12 @@ public static class SiteEndpoints
 
     // ---- sites ----------------------------------------------------------------------------------
 
-    private static async Task<IResult> ListSites(HttpContext http, PraxyDb db, SitesService sites, SitesOptions options, CancellationToken ct)
+    private static async Task<IResult> ListSites(HttpContext http, SitesService sites, SitesOptions options, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
         var list = await sites.ListAsync(project.Id, ct);
-        var screenshotted = await ScreenshottedDeploymentsAsync(db, list, ct);
         return Results.Ok(new SiteListResponse(
-            list.Count, [.. list.Select(s => SiteResponse.From(
-                s, sites.IsRunning(s), s.ActiveDeploymentId is { } d && screenshotted.Contains(d), PublicUrl(s, options)))]));
+            list.Count, [.. list.Select(s => SiteResponse.From(s, sites.IsRunning(s), PublicUrl(s, options)))]));
     }
 
     private static async Task<IResult> CreateSite(
@@ -101,16 +98,14 @@ public static class SiteEndpoints
         await AuditAsync(db, http, project.Id, "sites.create", $"site/{Ids.Wire(site.Id)}", ct);
         return Results.Created(
             $"/v1/console/projects/{project.Id}/sites/{Ids.Wire(site.Id)}",
-            SiteResponse.From(site, false, false, PublicUrl(site, options)));
+            SiteResponse.From(site, false, PublicUrl(site, options)));
     }
 
-    private static async Task<IResult> GetSite(string siteId, HttpContext http, PraxyDb db, SitesService sites, SitesOptions options, CancellationToken ct)
+    private static async Task<IResult> GetSite(string siteId, HttpContext http, SitesService sites, SitesOptions options, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
         var site = await FindAsync(sites, project.Id, siteId, ct);
-        var hasScreenshot = site.ActiveDeploymentId is { } d
-            && await db.SiteDeploymentScreenshots.AsNoTracking().AnyAsync(s => s.DeploymentId == d, ct);
-        return Results.Ok(SiteResponse.From(site, sites.IsRunning(site), hasScreenshot, PublicUrl(site, options)));
+        return Results.Ok(SiteResponse.From(site, sites.IsRunning(site), PublicUrl(site, options)));
     }
 
     private static async Task<IResult> UpdateSite(
@@ -120,32 +115,7 @@ public static class SiteEndpoints
         var site = await FindAsync(sites, project.Id, siteId, ct);
         var updated = await sites.UpdateAsync(site, req.Name, req.RootDirectory, req.Enabled, ct);
         await AuditAsync(db, http, project.Id, "sites.update", $"site/{siteId}", ct);
-        var hasScreenshot = updated.ActiveDeploymentId is { } d
-            && await db.SiteDeploymentScreenshots.AsNoTracking().AnyAsync(s => s.DeploymentId == d, ct);
-        return Results.Ok(SiteResponse.From(updated, sites.IsRunning(updated), hasScreenshot, PublicUrl(updated, options)));
-    }
-
-    /// <summary>
-    /// Serves the currently active deployment's captured preview PNG — the sites list card grid's
-    /// image, resolved server-side from <c>site.ActiveDeploymentId</c> so the console never needs to
-    /// know a deployment id just to render a thumbnail. Cached aggressively (a deployment's content
-    /// never changes after activation): the console cache-busts by appending the site's own
-    /// <c>updatedAt</c>, which <see cref="SiteScreenshotWorker"/> bumps the moment a capture lands.
-    /// </summary>
-    private static async Task<IResult> GetScreenshot(string siteId, HttpContext http, PraxyDb db, SitesService sites, CancellationToken ct)
-    {
-        var project = ConsoleProjectFilter.Current(http);
-        var site = await FindAsync(sites, project.Id, siteId, ct);
-        if (site.ActiveDeploymentId is not { } deploymentId)
-            throw PraxyException.NotFound(ErrorTypes.SiteScreenshotNotFound, "This site has no active deployment yet.");
-
-        var screenshot = await db.SiteDeploymentScreenshots.AsNoTracking()
-            .FirstOrDefaultAsync(s => s.DeploymentId == deploymentId, ct);
-        if (screenshot is null)
-            throw PraxyException.NotFound(ErrorTypes.SiteScreenshotNotFound, "No screenshot has been captured for this site yet.");
-
-        http.Response.Headers.CacheControl = "private, max-age=86400, immutable";
-        return Results.Bytes(screenshot.Png, "image/png");
+        return Results.Ok(SiteResponse.From(updated, sites.IsRunning(updated), PublicUrl(updated, options)));
     }
 
     private static async Task<IResult> DeleteSite(string siteId, HttpContext http, PraxyDb db, SitesService sites, CancellationToken ct)
@@ -277,17 +247,6 @@ public static class SiteEndpoints
     }
 
     // ---- helpers --------------------------------------------------------------------------------
-
-    /// <summary>Which of these sites' active deployments have a captured screenshot — one query for the whole list rather than one per row.</summary>
-    private static async Task<HashSet<Guid>> ScreenshottedDeploymentsAsync(PraxyDb db, IReadOnlyList<Site> sites, CancellationToken ct)
-    {
-        var activeIds = sites.Where(s => s.ActiveDeploymentId is not null).Select(s => s.ActiveDeploymentId!.Value).ToList();
-        if (activeIds.Count == 0)
-            return [];
-        var present = await db.SiteDeploymentScreenshots.AsNoTracking()
-            .Where(s => activeIds.Contains(s.DeploymentId)).Select(s => s.DeploymentId).ToListAsync(ct);
-        return [.. present];
-    }
 
     private static string PublicUrl(Site site, SitesOptions options) =>
         SiteUrl(site.Key, site.ProjectId, options);

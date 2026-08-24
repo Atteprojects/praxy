@@ -44,7 +44,6 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<SiteEnvVar> SiteEnvVars => Set<SiteEnvVar>();
     public DbSet<SiteDeployment> SiteDeployments => Set<SiteDeployment>();
     public DbSet<SiteDeploymentSource> SiteDeploymentSources => Set<SiteDeploymentSource>();
-    public DbSet<SiteDeploymentScreenshot> SiteDeploymentScreenshots => Set<SiteDeploymentScreenshot>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
     public DbSet<MessagingTarget> MessagingTargets => Set<MessagingTarget>();
@@ -369,8 +368,6 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.HasIndex(x => x.SiteId);
             // SiteBuildWorker's claim query: queued builds, oldest first.
             e.HasIndex(x => x.Status);
-            // SiteScreenshotWorker's claim query: activated deployments still missing a screenshot.
-            e.HasIndex(x => new { x.ActivatedAt, x.ScreenshotCapturedAt });
         });
 
         b.Entity<SiteDeploymentSource>(e =>
@@ -379,15 +376,6 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.HasKey(x => x.DeploymentId);
             e.Property(x => x.Tar).HasColumnType("bytea");
             e.HasOne<SiteDeployment>().WithOne().HasForeignKey<SiteDeploymentSource>(x => x.DeploymentId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        b.Entity<SiteDeploymentScreenshot>(e =>
-        {
-            e.ToTable("site_deployment_screenshots");
-            e.HasKey(x => x.DeploymentId);
-            e.Property(x => x.Png).HasColumnType("bytea");
-            e.HasOne<SiteDeployment>().WithOne().HasForeignKey<SiteDeploymentScreenshot>(x => x.DeploymentId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

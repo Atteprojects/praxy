@@ -18,7 +18,7 @@ namespace Praxy.Sites;
 /// </summary>
 public sealed class SitesService(
     PraxyDb db, InstanceKey key, SiteDockerExecutor docker, SiteContainerRegistry registry,
-    SiteBuildSignal buildSignal, SiteScreenshotSignal screenshotSignal, SitesOptions options)
+    SiteBuildSignal buildSignal, SitesOptions options)
 {
     // ---- sites ------------------------------------------------------------------------------------
 
@@ -225,9 +225,6 @@ public sealed class SitesService(
         deployment.ContainerId = running.ContainerId;
         deployment.ActivatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        // Best-effort, off this method's own critical path — SiteScreenshotWorker does the actual
-        // capture asynchronously, so a slow or failed screenshot can never delay activation itself.
-        screenshotSignal.Notify();
 
         if (previousDeploymentId is { } prevId && prevId != deployment.Id)
         {

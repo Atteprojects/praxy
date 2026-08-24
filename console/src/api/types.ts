@@ -473,8 +473,6 @@ export interface PraxySite {
   activeDeploymentId: string | null;
   /** Whether the active deployment's container is actually running right now — distinct from the deployment's own "ready" status, which only means "buildable." */
   isRunning: boolean;
-  /** Whether the active deployment has a captured preview screenshot yet — see `useSiteScreenshotUrl`. */
-  hasScreenshot: boolean;
   publicUrl: string;
   createdAt: string;
   updatedAt: string;
