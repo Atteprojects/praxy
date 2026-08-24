@@ -161,12 +161,17 @@ export function useCreateSiteDeployment(projectId: string, siteId: string) {
 }
 
 /** Deploys the bundled Next.js starter template as this site's first deployment — no file to pick, the server sources the tar itself. */
-export function useDeploySiteStarterTemplate(projectId: string, siteId: string) {
+/**
+ * `siteId` is a call-time argument to `mutateAsync`, not a hook parameter — unlike most mutations
+ * here, the caller doesn't always know the site id up front (the create-site modal deploys the
+ * template for a site it just created in the same submit, before any route/param carries its id).
+ */
+export function useDeploySiteStarterTemplate(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (siteId: string) =>
       api<SiteDeployment>(`${base(projectId)}/${siteId}/deployments/from-starter-template`, { method: "POST" }),
-    onSuccess: () => {
+    onSuccess: (_result, siteId) => {
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "deployments"] });
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId] });
     },
