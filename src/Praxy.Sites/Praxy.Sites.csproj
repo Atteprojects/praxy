@@ -8,5 +8,6 @@
     <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
     <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
     <ProjectReference Include="..\Praxy.Auth\Praxy.Auth.csproj" />
+    <ProjectReference Include="..\Praxy.Tables\Praxy.Tables.csproj" />
   </ItemGroup>
 </Project>

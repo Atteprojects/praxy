@@ -505,6 +505,8 @@ export interface SiteDeployment {
   buildLog: string;
   error: string | null;
   imageTag: string | null;
+  /** This deployment's own preview URL — set once it's `ready`, regardless of whether it's the site's active deployment. Null before that. */
+  previewUrl: string | null;
   createdAt: string;
   updatedAt: string;
   activatedAt: string | null;

@@ -89,6 +89,39 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
     }
 
     /// <summary>
+    /// Sites Phase 2: caps concurrent on-demand preview containers per project. Checked on the
+    /// request path (a cold preview start), not against a durable counter table like every other
+    /// dimension here — <paramref name="currentlyTrackedDeploymentIds"/> is <c>SiteContainerRegistry</c>'s
+    /// own in-memory snapshot at call time, so this is a best-effort check: two concurrent cold
+    /// starts for different deployments in the same project can both pass before either registers,
+    /// the same small race every soft resource guard in this codebase (e.g. WarmPool eviction)
+    /// accepts rather than serializing the whole request path over it.
+    /// </summary>
+    public async Task EnsurePreviewQuotaAsync(
+        string projectId, IReadOnlyCollection<Guid> currentlyTrackedDeploymentIds, CancellationToken ct)
+    {
+        if (currentlyTrackedDeploymentIds.Count == 0) return;
+        if (await OrgIdForProjectAsync(projectId, ct) is not { } orgId) return;
+        var limits = await GetOrgLimitsAsync(orgId, ct);
+        var max = limits.MaxPreviewContainersPerProject ?? defaults.MaxPreviewContainersPerProject;
+
+        var activeIds = await db.Sites
+            .Where(s => s.ProjectId == projectId && s.ActiveDeploymentId != null)
+            .Select(s => s.ActiveDeploymentId!.Value)
+            .ToListAsync(ct);
+        var activeSet = activeIds.ToHashSet();
+
+        var trackedInProject = await db.SiteDeployments
+            .Where(d => d.ProjectId == projectId && currentlyTrackedDeploymentIds.Contains(d.Id))
+            .Select(d => d.Id)
+            .ToListAsync(ct);
+        var previewCount = trackedInProject.Count(id => !activeSet.Contains(id));
+
+        if (previewCount >= max)
+            throw Exceeded("project", "concurrent preview containers", max);
+    }
+
+    /// <summary>
     /// The console's usage-vs-limit surfacing, entered by project id: there is no org-id entry
     /// point, so this reports the numbers that matter for the caller's own project.
     /// Per-table/per-database dimensions are reported as "the busiest one in this project" rather

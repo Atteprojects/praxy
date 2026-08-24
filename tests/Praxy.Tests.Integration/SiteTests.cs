@@ -27,6 +27,10 @@ public class SiteTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         // Real, but quiet — the reconciler's own periodic pass shouldn't race the test's explicit
         // activate/rollback calls mid-assertion.
         ["Praxy:Sites:ReconcileIntervalSeconds"] = "3600",
+        // Short enough that the idle-sweep test observes a real sweep within its own timeout,
+        // without waiting anywhere close to the 600s production default.
+        ["Praxy:Sites:PreviewIdleSeconds"] = "3",
+        ["Praxy:Sites:PreviewSweepIntervalSeconds"] = "1",
     };
 
     /// <summary>
@@ -144,6 +148,95 @@ public class SiteTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 
         var site = await GetSiteAsync(operatorToken, projectId, siteId);
         Assert.False(site.TryGetProperty("activeDeploymentId", out _));
+    }
+
+    /// <summary>
+    /// Sites Phase 2's own owner-test flow: a superseded deployment stays reachable at its own
+    /// preview URL while production serves whatever's currently active; concurrent cold starts of
+    /// the same preview don't race into two containers; an idle preview gets swept automatically
+    /// without ever touching the still-serving production container; a very-stale preview cold-starts
+    /// correctly again on demand; and re-activating a preview (a graceful blue-green swap) never lets
+    /// a tight polling loop against production observe a single failed request across the swap.
+    /// </summary>
+    [Fact]
+    public async Task Preview_urls_serve_independently_idle_sweep_runs_and_activation_has_no_gap()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "previews");
+        var prodHostname = $"previews.{projectId}.sites.localhost";
+        var docker = Factory.Services.GetRequiredService<Praxy.Sites.SiteDockerExecutor>();
+
+        var v1Deployment = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildNextAppTar("v1"));
+        await WaitForDeploymentStatusAsync(operatorToken, projectId, siteId, v1Deployment, "ready");
+        await WaitForSiteActiveAsync(operatorToken, projectId, siteId, v1Deployment);
+        Assert.Contains("praxy-site-v1", await GetSiteBodyAsync(prodHostname));
+
+        // v2 auto-activates on success, superseding v1 — v1 is now "ready, but not active": exactly
+        // the preview shape (an older, still-reachable build that's no longer production).
+        var v2Deployment = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildNextAppTar("v2"));
+        await WaitForDeploymentStatusAsync(operatorToken, projectId, siteId, v2Deployment, "ready");
+        await WaitForSiteActiveAsync(operatorToken, projectId, siteId, v2Deployment);
+        Assert.Contains("praxy-site-v2", await GetSiteBodyAsync(prodHostname));
+
+        var previewHostname = $"{v1Deployment}.previews.{projectId}.sites.localhost";
+        // SiteDockerExecutor.StartContainerAsync labels a container with the deployment id's raw
+        // Guid.ToString() (dashed), not its wire form (v1Deployment, 32 hex chars no dashes) — the
+        // same convention Phase 1's ActivateAsync already used for the active deployment's container.
+        var previewLabel = $"praxy.deployment={Guid.ParseExact(v1Deployment, "N")}";
+
+        // ---- cold start: several concurrent first-requests to the same cold preview must not race
+        //      into two containers ----
+        var bodies = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => GetSiteBodyAsync(previewHostname)));
+        Assert.All(bodies, b => Assert.Contains("praxy-site-v1", b));
+        Assert.Equal(1, await docker.CountRunningContainersAsync(previewLabel, CancellationToken.None));
+        // Production was never touched by any of this.
+        Assert.Contains("praxy-site-v2", await GetSiteBodyAsync(prodHostname));
+
+        // ---- idle sweep: nobody hits the preview again, so SitePreviewSweeper (PreviewIdleSeconds=3
+        //      / PreviewSweepIntervalSeconds=1 in this test class) stops it on its own ----
+        var sweepDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTime.UtcNow < sweepDeadline
+               && await docker.CountRunningContainersAsync(previewLabel, CancellationToken.None) > 0)
+            await Task.Delay(500);
+        Assert.Equal(0, await docker.CountRunningContainersAsync(previewLabel, CancellationToken.None));
+        // The sweep must never have touched the still-active production container.
+        Assert.Contains("praxy-site-v2", await GetSiteBodyAsync(prodHostname));
+
+        // ---- a very-stale preview cold-starts correctly again on demand ----
+        Assert.Contains("praxy-site-v1", await GetSiteBodyAsync(previewHostname));
+
+        // ---- graceful activation: re-activating v1 (a blue-green swap, not stop-old-then-start-new)
+        //      must never let a tight concurrent poll against production see a failed request ----
+        var failures = 0;
+        using var pollCts = new CancellationTokenSource();
+        var pollTask = Task.Run(async () =>
+        {
+            while (!pollCts.IsCancellationRequested)
+            {
+                try
+                {
+                    var response = await Client.SendAsync(
+                        new HttpRequestMessage(HttpMethod.Get, "/") { Headers = { Host = prodHostname } });
+                    if ((int)response.StatusCode != 200)
+                        Interlocked.Increment(ref failures);
+                }
+                catch
+                {
+                    Interlocked.Increment(ref failures);
+                }
+                await Task.Delay(20);
+            }
+        });
+
+        var activate = await Client.SendAsync(Authed(HttpMethod.Post,
+            $"/v1/console/projects/{projectId}/sites/{siteId}/deployments/{v1Deployment}/activate", operatorToken));
+        Assert.Equal(200, (int)activate.StatusCode);
+        await Task.Delay(500);
+        pollCts.Cancel();
+        await pollTask;
+
+        Assert.Equal(0, failures);
+        Assert.Contains("praxy-site-v1", await GetSiteBodyAsync(prodHostname));
     }
 
     // ---- helpers ------------------------------------------------------------------------------

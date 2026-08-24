@@ -96,7 +96,8 @@ try
         MaxTablesPerDatabase: builder.Configuration.GetValue("Praxy:Quotas:MaxTablesPerDatabase", 200),
         MaxColumnsPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxColumnsPerTable", 200),
         MaxIndexesPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxIndexesPerTable", 64),
-        MaxSitesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxSitesPerProject", 20)));
+        MaxSitesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxSitesPerProject", 20),
+        MaxPreviewContainersPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxPreviewContainersPerProject", 10)));
     builder.Services.AddScoped<QuotaService>();
 
     // ---- Phase 2: schema engine ----
@@ -229,7 +230,9 @@ try
         ScreenshotMaxAttempts: builder.Configuration.GetValue("Praxy:Sites:ScreenshotMaxAttempts", 3),
         ScreenshotRetryDelaySeconds: builder.Configuration.GetValue("Praxy:Sites:ScreenshotRetryDelaySeconds", 15),
         ScreenshotWidth: builder.Configuration.GetValue("Praxy:Sites:ScreenshotWidth", 1280),
-        ScreenshotHeight: builder.Configuration.GetValue("Praxy:Sites:ScreenshotHeight", 800));
+        ScreenshotHeight: builder.Configuration.GetValue("Praxy:Sites:ScreenshotHeight", 800),
+        PreviewIdleSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewIdleSeconds", 600),
+        PreviewSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewSweepIntervalSeconds", 60));
     builder.Services.AddSingleton(sitesOptions);
     builder.Services.AddSingleton<SiteDockerExecutor>();
     builder.Services.AddSingleton<SiteContainerRegistry>();
@@ -239,6 +242,7 @@ try
     builder.Services.AddHostedService<SiteBuildWorker>();
     builder.Services.AddHostedService<SiteReconciler>();
     builder.Services.AddHostedService<SiteScreenshotWorker>();
+    builder.Services.AddHostedService<SitePreviewSweeper>();
     // Direct forwarding (not the route/cluster config model) — SiteProxyMiddleware resolves its own
     // destination per request from the DB + SiteContainerRegistry, so it only needs the low-level
     // IHttpForwarder adapter, not YARP's routing layer.

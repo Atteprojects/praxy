@@ -54,15 +54,16 @@ public sealed class SiteReconciler(
         foreach (var site in candidates)
         {
             ct.ThrowIfCancellationRequested();
+            var activeId = site.ActiveDeploymentId!.Value;
 
-            if (registry.TryGet(site.Id, out var tracked))
+            if (registry.TryGet(activeId, out var tracked))
             {
                 if (await docker.IsRunningAsync(tracked.ContainerId, ct))
                     continue;
-                registry.Remove(site.Id);
+                registry.Remove(activeId);
             }
 
-            var deployment = await db.SiteDeployments.FirstOrDefaultAsync(d => d.Id == site.ActiveDeploymentId, ct);
+            var deployment = await db.SiteDeployments.FirstOrDefaultAsync(d => d.Id == activeId, ct);
             if (deployment is null || deployment.Status != "ready" || deployment.ImageTag is null)
                 continue;
 
@@ -74,7 +75,7 @@ public sealed class SiteReconciler(
             {
                 try
                 {
-                    registry.Set(site.Id, await docker.InspectAddressAsync(containerId, ct));
+                    registry.Set(activeId, await docker.InspectAddressAsync(containerId, ct));
                     continue;
                 }
                 catch (Exception ex)

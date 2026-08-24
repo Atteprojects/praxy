@@ -5,9 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Praxy.Sites;
 
-/// <summary>One running site container — <c>SiteContainerRegistry</c>'s unit of tracking.</summary>
-public sealed record RunningSiteContainer(string ContainerId, string Host, int Port);
-
 /// <summary>
 /// Thin wrapper over <c>Docker.DotNet.Enhanced</c>, the Sites-specific sibling of
 /// <c>Praxy.Functions.DockerExecutor</c>. Deliberately duplicated rather than shared — the same
@@ -253,6 +250,24 @@ public sealed class SiteDockerExecutor : IDisposable
         {
             // Best-effort cleanup.
         }
+    }
+
+    /// <summary>
+    /// How many currently-running containers carry a given Docker label (<c>key=value</c>) — a real
+    /// <c>Docker.DotNet</c> query, kept here so test code (e.g. <c>SiteTests</c>' preview-container
+    /// assertions) never needs to shell out to a raw <c>docker ps</c> CLI, matching this class's own
+    /// "no raw CLI shell-outs" discipline that its cleanup callers already follow.
+    /// </summary>
+    public async Task<int> CountRunningContainersAsync(string label, CancellationToken ct)
+    {
+        var containers = await _client.Containers.ListContainersAsync(new ContainersListParameters
+        {
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["label"] = new Dictionary<string, bool> { [label] = true },
+            },
+        }, ct);
+        return containers.Count;
     }
 
     /// <summary>Whether <paramref name="containerId"/> is currently running — SiteReconciler's own health check, distinct from the initial start-time readiness probe.</summary>

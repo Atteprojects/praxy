@@ -206,22 +206,46 @@ number), this is a fresh initiative with its own internal phase breakdown. Full 
 [research/praxy-sites.md](research/praxy-sites.md). Owner ask: research how Appwrite implemented Sites and
 add the equivalent to Praxy, starting with Next.js.
 
-**Sites Phase 1** (kickoff: `docs/handoff/sites-phase-1-prompt.md`) — Next.js hosting only. A new `Site`
-resource under Project (console tar upload → Docker multi-stage build requiring `next.config.js`'s
-`output: "standalone"` → a long-lived container per active deployment, crash-restarted by Docker, not
-idle-swept like Functions). Public reachability via **subdomain-per-site**
-(`<key>.<projectId>.sites.<domain>`, owner's choice over path-based or console-preview-only), served by a
-new streaming-capable reverse-proxy middleware in `Praxy.Api` (not Functions' JSON-envelope invoke model —
-that has no streaming/binary support, the wrong shape for a web app), fronted by Caddy **on-demand TLS**
-(not a DNS-01 wildcard cert — no DNS-provider credentials needed) with a strict allow-list "ask" endpoint.
-Env vars injected at both build and runtime (Next.js needs `NEXT_PUBLIC_*` at build time). New `praxy-sites`
-Docker network, separate from Functions' `praxy-functions`. Extends `QuotaService` with a `sites`
-dimension. Full architecture, the exact data model, and everything explicitly deferred: see
-[research/praxy-sites.md](research/praxy-sites.md).
+**Sites Phase 1 — shipped 2026-08-21** (report: `docs/handoff/sites-phase-1-report.md`; PR #7, plus
+follow-up fixes PR #8 for Caddy's on-demand-TLS wildcard depth and PR #9/#10 for console polish and
+sites-card preview screenshots). Next.js hosting only. A new `Site` resource under Project (console tar
+upload → Docker multi-stage build requiring `next.config.js`'s `output: "standalone"` → a long-lived
+container per active deployment, crash-restarted by Docker, not idle-swept like Functions). Public
+reachability via **subdomain-per-site** (`<key>.<projectId>.sites.<domain>`), served by
+`SiteProxyMiddleware` (YARP direct forwarding, not Functions' JSON-envelope invoke model — that has no
+streaming/binary support, the wrong shape for a web app), fronted by Caddy **on-demand TLS** with a strict
+allow-list `/v1/sites/_ask-tls` endpoint. Env vars injected at both build and runtime. Separate
+`praxy-sites` Docker network. `QuotaService` gained a `sites` dimension. Live in `src/Praxy.Sites/`,
+`SiteEndpoints.cs`, and the console's `SitesPage.tsx`/`SiteDeploymentsPage.tsx`/`SiteSettingsPage.tsx`.
+Full architecture, data model, and deviations found while building it: see
+[research/praxy-sites.md](research/praxy-sites.md) and the phase-1 report above.
 
-**Sites Phase 2+** — sketched only, not detailed until Phase 1 ships: custom domains, per-deployment
-preview URLs, graceful container swap on redeploy, git integration (push-to-deploy/PR previews),
-additional framework presets beyond Next.js.
+**Sites Phase 2 — preview URLs + graceful redeploy — shipped 2026-08-23** (report:
+`docs/handoff/sites-phase-2-report.md`). Every `ready` deployment now gets its own reachable preview URL
+(`<deploymentId>.<key>.<projectId>.sites.<domain>` — a third leading label), cold-started on first request
+and idle-swept once nobody's hit it in a while — never the always-on production one.
+`SiteContainerRegistry` moved from keyed-by-site (one entry, active deployment only) to keyed-by-deployment
+to support that. Redeploys now swap containers gracefully (start-new fully through the readiness probe,
+swap the registry pointer, then stop-old) instead of Phase 1's brief stop-old-then-start-new gap. New
+`Praxy:Quotas:MaxPreviewContainersPerProject` caps concurrent previews per project. Caddy needed a third
+site block (`*.*.*.{$PRAXY_SITES_DOMAIN}`) for the extra wildcard label, verified against real Caddy the
+same way Phase 1's own fix was — see `research/dotnet-stack.md`'s Caddy section. No new DNS record needed
+(the existing wildcard already covers any depth). Full design: `research/praxy-sites.md`'s "Phase 2"
+section.
+
+**Sites Phase 3 — custom domains.** Real design in `research/praxy-sites.md` (on-demand TLS, already built
+in Phase 1, generalizes to custom domains almost for free — no DNS-provider credentials needed, unlike
+Appwrite's own self-host approach). Not started, not yet scoped — `docs/handoff/sites-phase-2-report.md`
+deliberately left `sites-phase-3-prompt.md` unwritten, since nothing learned in Phase 2 changed the
+existing sketch. Needs its own scoping session when the owner is ready.
+
+**Sites Phase 4 — git integration** (push-to-deploy, PR previews). Sketch only in `research/praxy-sites.md`
+— the largest and most structurally different phase (a self-hosted owner-configured GitHub App, nothing
+else in Praxy looks like this integration shape), needs its own dedicated scoping session when its turn
+comes.
+
+**Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
+(2026-08-22).
 
 ---
 

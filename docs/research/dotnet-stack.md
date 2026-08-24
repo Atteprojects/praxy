@@ -567,6 +567,51 @@ served the actual page. **Lesson for future phases:** `caddy validate` proves th
 does not prove the automation policies actually match the hostnames the application generates —
 that needs a real request against a real deployed Caddy instance, which is exactly the gap here.
 
+## Caddy on-demand TLS — 3-label preview hostnames (Sites Phase 2)
+
+Sites Phase 2 adds a per-deployment preview URL, a third leading label in front of the existing
+2-label production pattern: `<deploymentId>.<key>.<projectId>.{PRAXY_SITES_DOMAIN}`. Given the Phase 1
+postmortem above, this session verified the wildcard-depth question against real Caddy **before**
+touching `deploy/Caddyfile`, rather than assuming one more `*.` label would obviously be correct.
+
+**Method** (no internet/ACME needed — the failure mode lives entirely in local automation-policy
+matching, before any network call): ran `caddy:2` in a throwaway Docker container with `debug`
+logging on, `on_demand_tls { ask http://host.docker.internal:9999/ask }` pointed at a local Python
+HTTP server that logs every hit and always denies (404) — enough to prove whether the automation
+policy matched at all, without needing a real ask-endpoint allow or a real Let's Encrypt round trip.
+
+- **Negative control**, reproducing Phase 1's exact bug one label short: a Caddyfile with only
+  `*.*.{$PRAXY_SITES_DOMAIN}` (2 wildcard labels, the current production block) received a TLS
+  handshake for a genuine 3-label hostname (`abc123deploy.mykey.myproj.sites.praxytest.local`). The
+  ask server's log stayed empty — never called — and Caddy's debug log showed exactly Phase 1's
+  signature: `"msg":"no certificate matching TLS ClientHello", ..., "on_demand":false`.
+- **Fix, verified**: adding a second Caddyfile site block, `*.*.*.{$PRAXY_SITES_DOMAIN}` (3 wildcard
+  labels), alongside the existing 2-label one. The same 3-label hostname now correctly triggered
+  `"msg":"asking for permission for on-demand certificate"`, called the ask endpoint
+  (`http://host.docker.internal:9999/ask?domain=abc123deploy.mykey.myproj.sites.praxytest.local`,
+  visible in both Caddy's log and the ask server's own), and — since the test server always denies —
+  cleanly failed with `"on-demand certificate issuance denied" ... non-2xx status code 404`, the
+  correct behavior for a real deny, not a silent policy mismatch. The existing 2-label hostname was
+  re-tested against the same combined config and still matched its own block correctly (the two
+  blocks don't shadow each other — Caddy picks the most specific matching subject).
+
+**DNS: no new record needed.** Unlike the TLS automation-policy match (exactly one label per `*.`,
+confirmed above), a DNS wildcard record matches *any* number of labels below its owner name, not just
+one, as long as no more specific record intercepts it first (RFC 4592) — `*.sites.<domain>` (Phase 1's
+existing record) already resolves both `<key>.<projectId>.sites.<domain>` (2 extra labels) and
+`<deploymentId>.<key>.<projectId>.sites.<domain>` (3 extra labels) to the same IP with zero
+configuration change. This asymmetry between DNS wildcards (any depth) and TLS wildcard matching
+(exactly one label) is exactly why Caddy needs a dedicated automation-policy block per hostname depth
+even though DNS itself never needed one — consistent with Phase 1's own fix having been Caddyfile-only
+despite going from a 1-label to a 2-label pattern.
+
+**Full ACME issuance against a real public domain was not re-verified in this session** (no internet-
+reachable test domain in this environment) — the local verification above proves the piece Phase 1's
+postmortem showed is the actual risk (automation-policy subject matching), the same scope Phase 1's
+own pre-deploy session verified before its later live-deploy correction. Confirm the first real preview
+URL gets an actual Let's Encrypt cert the same way Phase 1's live fix was confirmed, the first time this
+ships to a real domain.
+
 ## Other notes
 
 - **OpenAPI UI only in Development.** It discloses the full API surface.

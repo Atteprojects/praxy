@@ -12,7 +12,7 @@ import {
 import type { SiteDeployment, SiteDeploymentStatus } from "../api/types";
 import { SiteDetailHeader } from "./SiteDetailHeader";
 
-const HEADERS = ["Created", "Status", "Size", "Image", ""];
+const HEADERS = ["Created", "Status", "Size", "Image", "", ""];
 
 export function SiteDeploymentsPage() {
   const { projectId, siteId } = useParams({ strict: false }) as { projectId: string; siteId: string };
@@ -58,6 +58,24 @@ export function SiteDeploymentsPage() {
       // activatedAt stays set on a deployment forever once it's first activated, even after a
       // redeploy supersedes it, so activatedAt alone can't tell "active" from "was active once."
       cell: ({ row }) => (row.original.id === activeDeploymentId ? <Badge tone="mint">active</Badge> : null),
+    },
+    {
+      id: "preview",
+      header: "",
+      // Every ready deployment gets its own reachable preview URL (Sites Phase 2), active or not —
+      // stop the row-click (which opens the deployment sheet) from also firing on this link.
+      cell: ({ row }) =>
+        row.original.previewUrl ? (
+          <a
+            href={row.original.previewUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-iris-300 hover:text-iris-200 hover:underline"
+          >
+            Preview ↗
+          </a>
+        ) : null,
     },
   ], [activeDeploymentId]);
 
@@ -224,10 +242,31 @@ function DeploymentSheet({
       <div className="space-y-4 text-sm">
         <div className="flex items-center gap-2">
           <DeploymentStatusBadge status={d.status} />
+          {/* Which deployment is live on the site's production URL vs. merely buildable/previewable —
+              activatedAt alone can't tell this apart (see the "active" column's own comment above). */}
+          {isActive ? (
+            <Badge tone="mint">active — production</Badge>
+          ) : d.status === "ready" ? (
+            <Badge tone="ink">previewable</Badge>
+          ) : null}
           <span className="text-xs text-ink-500">{elapsedLabel}</span>
           {d.imageTag ? <span className="font-mono text-xs text-ink-400">{d.imageTag}</span> : null}
         </div>
         {d.error ? <ErrorNote message={d.error} /> : null}
+        {!showSuccess && d.previewUrl ? (
+          <div className="rounded-lg border border-ink-800 bg-ink-900 px-3.5 py-2.5 text-xs text-ink-400">
+            {canActivate ? "Not live yet — " : ""}
+            <a
+              href={d.previewUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-iris-300 hover:text-iris-200 hover:underline"
+            >
+              {canActivate ? "preview this build ↗" : "open its preview URL ↗"}
+            </a>
+            {canActivate ? " before activating it." : ""}
+          </div>
+        ) : null}
 
         {showSuccess ? (
           <DeploymentSuccessView

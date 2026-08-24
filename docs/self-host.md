@@ -138,6 +138,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Quotas:MaxColumnsPerTable` | 200 | Columns per table (org-overridable). |
 | `Praxy:Quotas:MaxIndexesPerTable` | 64 | Indexes per table (org-overridable). |
 | `Praxy:Quotas:MaxSitesPerProject` | 20 | Sites per project (org-overridable). |
+| `Praxy:Quotas:MaxPreviewContainersPerProject` | 10 | Concurrent on-demand preview containers per project (org-overridable) — see [Preview URLs and idle sweep](#preview-urls-and-idle-sweep). |
 | `Praxy:Tables:SchemaJobs:PollIntervalSeconds` | 2 | `CREATE INDEX CONCURRENTLY` / type-change job runner cadence. |
 | `Praxy:Tables:SchemaJobs:IndexBuildTimeoutSeconds` | 1800 | Job wall-clock timeout before it's marked failed. |
 | `Praxy:Realtime:MaxConnectionsPerProject` | 1000 | WebSocket connection quota. |
@@ -148,6 +149,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Sites:DockerNetwork` | `""` | Same shape as `Praxy:Functions:DockerNetwork`, but a separate network (this repo's own compose file sets it to `praxy-sites`) — a site's container and a function's container can't reach each other by default. See [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
 | `Praxy:Sites:ScreenshotImage` | `zenika/alpine-chrome:124` | Headless-Chromium image used to capture each site's preview screenshot for the console's card grid. Pulled on first use (a third-party image, not one this codebase builds) — needs outbound registry access the same way a site's own `npm install` does. |
 | `Praxy:Sites:ScreenshotTimeoutSeconds` / `ScreenshotMaxAttempts` / `ScreenshotRetryDelaySeconds` | `20` / `3` / `15` | Per-capture timeout, bounded retry count, and the cooldown between attempts — see [Site preview screenshots](#site-preview-screenshots). |
+| `Praxy:Sites:PreviewIdleSeconds` / `PreviewSweepIntervalSeconds` | `600` / `60` | How long an on-demand preview deployment's container may sit with no proxied request before it's stopped, and how often that sweep runs — see [Preview URLs and idle sweep](#preview-urls-and-idle-sweep). Never applies to a site's active/production container. |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
 | `Praxy:Retention:SweepIntervalSeconds` | 3600 | How often the retention sweep runs. |
 | `Praxy:Retention:EventsMaxAgeDays` | 90 | Age past which a `praxy.events` row is deleted — only once **both** `WebhooksDispatchedAt` and `FunctionsDispatchedAt` are set; an unclaimed row past this age is left for the next sweep rather than force-deleted. |
@@ -256,6 +258,26 @@ every site with no error anywhere (found and fixed post-Phase-1; see the correct
 `docs/research/dotnet-stack.md`'s Caddy section for the full failure signature if you ever see this
 again after hand-editing the Caddyfile). `docs/research/dotnet-stack.md`'s Caddy section has the full
 verified directive syntax if you're adapting this by hand.
+
+### Preview URLs and idle sweep
+
+Every `ready` deployment — not just the one currently live on the site's production URL — gets its own
+reachable preview URL: `<deploymentId>.<site key>.<project id>.<PRAXY_SITES_DOMAIN>`, a third label in
+front of the production pattern above. **No extra DNS record is needed** — the same
+`*.sites.your.domain.com` wildcard already covers it, since a DNS wildcard matches any number of
+labels below its owner name, not just one (unlike TLS wildcard matching, which is exactly one label —
+see the correction above). `deploy/Caddyfile` does need its own extra block for this
+(`*.*.*.{$PRAXY_SITES_DOMAIN}`, three wildcard labels), already present if you're running the shipped
+Caddyfile unmodified; re-add it if you've hand-edited yours, verified the same way the two-label block
+was (`docs/research/dotnet-stack.md`'s Caddy section has the transcript).
+
+A preview's container is **not** started until the first request actually hits its URL (bounded by
+`Praxy:Sites:StartupTimeoutSeconds`, same as any other cold start), and is stopped automatically once
+nobody's requested it for `Praxy:Sites:PreviewIdleSeconds` (`SitePreviewSweeper`, re-checked every
+`Praxy:Sites:PreviewSweepIntervalSeconds`) — unlike a site's production container, which always stays
+up. `Praxy:Quotas:MaxPreviewContainersPerProject` bounds how many of these can be running for one
+project at once, so a project that's accumulated many stale `ready` deployments can't be previewed all
+at once into exhausting the host's Docker/memory capacity.
 
 ### Site preview screenshots
 

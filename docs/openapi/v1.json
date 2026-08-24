@@ -13438,6 +13438,7 @@
           "buildLog",
           "error",
           "imageTag",
+          "previewUrl",
           "createdAt",
           "updatedAt",
           "activatedAt"
@@ -13468,6 +13469,12 @@
             ]
           },
           "imageTag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previewUrl": {
             "type": [
               "null",
               "string"

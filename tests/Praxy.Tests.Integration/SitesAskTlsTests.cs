@@ -91,6 +91,37 @@ public class SitesAskTlsTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         await AssertAskTls(hostname, expectAllowed: false);
     }
 
+    [Fact]
+    public async Task A_ready_deployments_3_label_preview_hostname_is_allowed_even_when_not_active()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "blog");
+
+        // v1 builds and auto-activates; v2 builds afterward and auto-activates too, superseding
+        // v1 — SiteBuildWorker always auto-activates the freshest successful build (Phase 1's own
+        // behavior, unchanged), so v1 is now "ready, but no longer active," exactly the preview
+        // shape being asserted here (the same state SiteTests' rollback scenario relies on).
+        var v1 = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildFakeServerTar());
+        await WaitForSiteRunningAsync(operatorToken, projectId, siteId, v1);
+        var v2 = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildFakeServerTar());
+        await WaitForSiteRunningAsync(operatorToken, projectId, siteId, v2);
+
+        var previewHostname = $"{v1}.blog.{projectId}.sites.localhost";
+        await AssertAskTls(previewHostname, expectAllowed: true);
+
+        // A made-up deployment id under a real site/key still gets rejected — the allow-list checks
+        // the deployment actually exists and belongs to this site, not just the hostname's shape.
+        var fakeDeploymentId = Guid.NewGuid().ToString("n");
+        await AssertAskTls($"{fakeDeploymentId}.blog.{projectId}.sites.localhost", expectAllowed: false);
+
+        // Disabling the site rejects its previews too, not just its production hostname — a site
+        // being taken offline must go dark everywhere, previews included.
+        var disable = await Client.SendAsync(Authed(HttpMethod.Patch,
+            $"/v1/console/projects/{projectId}/sites/{siteId}", operatorToken, new { enabled = false }));
+        Assert.Equal(200, (int)disable.StatusCode);
+        await AssertAskTls(previewHostname, expectAllowed: false);
+    }
+
     // ---- helpers ------------------------------------------------------------------------------
 
     private async Task AssertAskTls(string domain, bool expectAllowed)

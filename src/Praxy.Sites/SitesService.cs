@@ -29,7 +29,7 @@ public sealed class SitesService(
         await db.Sites.FirstOrDefaultAsync(s => s.Id == id && s.ProjectId == projectId, ct)
         ?? throw PraxyException.NotFound(ErrorTypes.SiteNotFound, "Site not found.");
 
-    public bool IsRunning(Site site) => site.ActiveDeploymentId is { } id && registry.TryGet(site.Id, out _);
+    public bool IsRunning(Site site) => site.ActiveDeploymentId is { } id && registry.TryGet(id, out _);
 
     public async Task<Site> CreateAsync(string projectId, string key_, string name, string rootDirectory, CancellationToken ct)
     {
@@ -77,11 +77,14 @@ public sealed class SitesService(
 
     public async Task DeleteAsync(Site site, CancellationToken ct)
     {
-        if (site.ActiveDeploymentId is { } active && registry.TryGet(site.Id, out var running))
-        {
-            registry.Remove(site.Id);
-            await docker.StopAndRemoveAsync(running.ContainerId, CancellationToken.None);
-        }
+        // Not just the active deployment — Phase 2 previews mean any of this site's deployments
+        // may have a live (on-demand-started) container tracked in the registry right now.
+        var deploymentIds = await db.SiteDeployments
+            .Where(d => d.SiteId == site.Id).Select(d => d.Id).ToListAsync(ct);
+        foreach (var deploymentId in deploymentIds)
+            if (registry.TryRemove(deploymentId, out var running))
+                await docker.StopAndRemoveAsync(running.ContainerId, CancellationToken.None);
+
         db.Sites.Remove(site);
         await db.SaveChangesAsync(ct);
     }
@@ -182,9 +185,10 @@ public sealed class SitesService(
     }
 
     /// <summary>
-    /// Starts a new container for <paramref name="deployment"/>'s image, points the site at it, and
-    /// stops whatever was running before — the "brief stop-old/start-new gap" tradeoff Phase 1
-    /// deliberately accepted over a graceful blue-green swap. Called both by
+    /// Starts <paramref name="deployment"/>'s container (or promotes one already warm as a preview —
+    /// see below), fully through the same readiness probe as a cold start, points the site at it, and
+    /// only then stops whatever was running before — a graceful blue-green swap, closing Phase 1's
+    /// "known gap" (a brief stop-old/start-new downtime window on every redeploy). Called both by
     /// <see cref="SiteBuildWorker"/> (auto-activate the freshest successful build) and the console's
     /// explicit rollback endpoint (re-activate an older one).
     /// </summary>
@@ -194,18 +198,33 @@ public sealed class SitesService(
             throw new PraxyException(400, ErrorTypes.SiteInvalidDeploymentState,
                 $"Only a 'ready' deployment can be activated (this one is '{deployment.Status}').");
 
-        var envVars = await DecryptedEnvVarsAsync(site.Id, ct);
-        var running = await docker.StartContainerAsync(deployment.ImageTag, envVars, deployment.Id.ToString(), ct);
+        // If this exact deployment was already running as an on-demand preview container (Phase 2),
+        // promote it directly instead of starting a second one for the same image — an optimization,
+        // not required for correctness (the cold-start branch below is just as correct).
+        if (!registry.TryGet(deployment.Id, out var running))
+        {
+            var envVars = await DecryptedEnvVarsAsync(site.Id, ct);
+            running = await docker.StartContainerAsync(deployment.ImageTag, envVars, deployment.Id.ToString(), ct);
+        }
 
         var previousDeploymentId = site.ActiveDeploymentId;
-        var hadPreviousContainer = registry.TryGet(site.Id, out var previousContainer);
+
+        // Register the new deployment's container BEFORE flipping the DB pointer. The proxy
+        // middleware resolves "the site's current container" as site.ActiveDeploymentId, then a
+        // registry lookup by that id — if the DB write committed first, a request landing in the gap
+        // would read the new deployment id but find no registry entry yet (a real, if brief, outage
+        // this ordering exists to close). The old, site-keyed registry never had this problem because
+        // Set() was a same-key replace; keying by deployment id (Phase 2) reintroduces it, so the
+        // ordering has to close it explicitly instead. The proxy never observes a moment with no
+        // entry to serve: readers between here and the DB commit still see the old deployment id and
+        // find its still-running container untouched below.
+        registry.Set(deployment.Id, running);
 
         site.ActiveDeploymentId = deployment.Id;
         site.UpdatedAt = DateTimeOffset.UtcNow;
         deployment.ContainerId = running.ContainerId;
         deployment.ActivatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        registry.Set(site.Id, running);
         // Best-effort, off this method's own critical path — SiteScreenshotWorker does the actual
         // capture asynchronously, so a slow or failed screenshot can never delay activation itself.
         screenshotSignal.Notify();
@@ -214,7 +233,7 @@ public sealed class SitesService(
         {
             await db.SiteDeployments.Where(d => d.Id == prevId)
                 .ExecuteUpdateAsync(s => s.SetProperty(d => d.ContainerId, (string?)null), ct);
-            if (hadPreviousContainer)
+            if (registry.TryRemove(prevId, out var previousContainer))
                 await docker.StopAndRemoveAsync(previousContainer.ContainerId, CancellationToken.None);
         }
 
