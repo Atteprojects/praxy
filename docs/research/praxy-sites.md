@@ -229,18 +229,129 @@ be shown prominently on the list/detail screens.
 
 ## Phased rollout
 
-- **Phase 1** (see `docs/handoff/sites-phase-1-prompt.md`): everything above — Next.js only, subdomain
-  routing + on-demand TLS, console upload (no git integration), single always-on container per site, no
-  custom domains beyond the `*.sites.<domain>` wildcard, no preview-per-deployment URLs (only the active
-  deployment is reachable).
-- **Phase 2** (sketch only — not detailed here, do not pull forward): custom domains (owner's own domain
-  pointed at a site, with its own on-demand-TLS-style ownership check); possibly preview URLs per
-  non-active deployment; possibly graceful (blue-green) container swap on redeploy instead of brief
-  stop-old/start-new downtime.
-- **Phase 3+** (sketch only): git integration (push-to-deploy, PR previews) if the owner wants it;
-  additional framework presets (Nuxt, SvelteKit, Astro, static) once the Next.js pipeline is proven — each
-  is mostly a new `SiteRuntimeTemplates` Dockerfile variant plus a `framework` field on `sites`.
+- **Phase 1 — shipped 2026-08-21.** Everything above, plus two follow-up fixes: Caddy's on-demand TLS
+  needed a two-label wildcard (`*.*.{$PRAXY_SITES_DOMAIN}`), not one — its automation-policy subject
+  matching is as strict about wildcard depth as a real TLS wildcard cert, and the one-label version
+  silently refused every real site with no error above debug-level Caddy logs; and a rollback bug where
+  the console's Activate button stayed permanently disabled on a superseded deployment. Full report:
+  `docs/handoff/sites-phase-1-report.md`.
+- **Phase 2 — preview URLs + graceful redeploy** (kickoff: `docs/handoff/sites-phase-2-prompt.md`). Real
+  design below — this is the immediate next phase.
+- **Phase 3 — custom domains.** Real design below, one phase out — do not start until Phase 2 ships and
+  gets its own kickoff prompt written from this sketch.
+- **Phase 4 — git integration** (push-to-deploy, PR previews). Sketch only, the least detailed of the
+  three below — the largest and most structurally different phase, needs its own dedicated
+  research/scoping pass when its turn comes.
+- **Additional framework presets** (Nuxt, SvelteKit, Astro, static) — explicitly deferred past all of the
+  above, owner's own call (2026-08-22): "we will do that another time." Each is mostly a new
+  `SiteRuntimeTemplates` Dockerfile variant plus a `framework` field on `sites` when it happens.
 
 Explicitly out of scope indefinitely, unlike Appwrite: multi-replica/auto-scaling per site (no
 orchestration layer — single-node Docker-socket model, same constraint Functions already accepted) and
 edge/CDN execution (Appwrite Cloud-specific; self-hosted Praxy has one region, the box it runs on).
+
+### Phase 2 — preview URLs + graceful redeploy
+
+Bundled because both touch the same container-lifecycle code (`SiteContainerRegistry`,
+`SitesService.ActivateAsync`, `SiteBuildWorker`) rather than because they're small.
+
+**Preview URLs for non-active deployments.** Every `ready` deployment, not just the active one, gets its
+own reachable URL: `<shortDeploymentId>.<key>.<projectId>.{Domain}` — a third label in front of today's
+two-label pattern.
+
+- `SiteHostPattern.TryParse` (`src/Praxy.Sites/SiteHostPattern.cs`) currently hard-rejects anything but
+  exactly 2 labels (`labels.Length != 2`). It's the single shared parse both `SiteProxyMiddleware` and the
+  `_ask-tls` endpoint consume, by explicit design (its own doc comment: "a looser one in either place
+  widens what an attacker can probe") — extend it in that one place to accept 2 *or* 3 labels, don't add a
+  second parser.
+- The Caddyfile's on-demand-TLS block currently matches `*.*.{$PRAXY_SITES_DOMAIN}` (exactly two wildcard
+  labels) — a 3-label preview hostname needs its own matching block or pattern. **Verify this against real
+  Caddy, the same way Phase 1 eventually had to for the 2-label fix** — that postmortem is explicit that
+  `caddy validate` only checks syntax, not whether the automation policy's subject pattern actually matches
+  real hostnames, and that a depth mismatch fails silently (no ask call, no ACME attempt, just a TLS
+  `internal_error` alert with nothing above debug-level Caddy logs). Test against a real 3-label hostname
+  getting a real cert before calling this done.
+- `SiteContainerRegistry` (`src/Praxy.Sites/SiteContainerRegistry.cs`) is currently one entry per **site**
+  (`Dictionary<Guid, RunningSiteContainer>` keyed by site id), by design — its own doc comment says so,
+  because today only the active deployment ever runs. Previews need it keyed by **deployment** id instead;
+  the active container for a site becomes "look up `site.ActiveDeploymentId` in the same registry." This
+  is a real refactor of a class every Sites code path already depends on — re-run the full Sites test suite
+  after.
+- Container lifecycle for previews should differ deliberately from the active deployment's always-on
+  model: starting a container for every `ready` deployment forever is unbounded growth. Recommend
+  on-demand start (first proxied request to a preview hostname cold-starts it, bounded by the existing
+  `StartupTimeoutSeconds`) plus idle-sweep after a new `Praxy:Sites:PreviewIdleSeconds` — closer to
+  Functions' `WarmPool` than to Sites' current model. Starting a container from inside
+  `SiteProxyMiddleware.InvokeAsync` on a request thread needs real concurrency control (two simultaneous
+  first-requests to the same cold preview must not race to start two containers) — a per-deployment
+  async start-lock, or routing through a signal to a background starter the way builds already use
+  `SiteBuildSignal`, are both reasonable; pick whichever fits once actually building it.
+- New quota: cap concurrent preview containers per site/project, so a project with many stale `ready`
+  deployments can't exhaust host resources.
+
+**Graceful (blue-green) container swap on redeploy.** Today, `SiteBuildWorker.BuildAsync` calls
+`SitesService.ActivateAsync` on build success, which — per the Phase 1 report's own "known gaps" — does a
+brief stop-old-then-start-new, a real (if short) downtime window. Fix: start the new deployment's container
+first, run it through the same readiness probe `SiteDockerExecutor` already has for cold activation, and
+only once it's genuinely responding, atomically swap `SiteContainerRegistry`'s entry for the site from old
+to new — then stop/remove the old container. The proxy middleware should never have a moment with no entry
+to serve. If preview-container infrastructure ships in the same phase, a redeploy that was already being
+previewed can potentially be promoted directly (already warm) instead of starting fresh — a nice-to-have,
+not required for the core mechanism.
+
+### Phase 3 — custom domains
+
+New `site_domains` table: `id, site_id, project_id, hostname, status(pending|verified), created_at,
+verified_at`. Console: add/remove a domain per site, shown alongside the existing `*.sites.<domain>` URL.
+
+Checked how Appwrite itself handles this for **self-hosted** instances specifically (not Cloud's
+managed-nameserver approach, which doesn't apply here): the owner points an A/AAAA record (or a CNAME, for
+a subdomain of their own domain — apex domains can't use CNAME, a DNS protocol limitation, not an Appwrite
+one) at the box, and Appwrite's own self-host docs are candid that they *don't* fully automate certificates
+for custom site domains — either a manual `ssl --domain=` command per site or a Traefik DNS-challenge setup
+for wildcards is required.
+
+Praxy is in a better position here because of the Phase 1 on-demand-TLS choice: a custom domain's cert can
+go through the exact same `on_demand_tls { ask ... }` mechanism already built, no DNS-provider credentials
+or manual per-domain commands needed. And "verification" doesn't need a separate DNS-polling worker either
+— a domain's first successful on-demand TLS cert issuance (an HTTP-01 challenge, which requires the domain
+to actually resolve to the box) is itself as strong a proof of control as a dedicated DNS-TXT-record check
+would be. Propose: mark a `site_domains` row `verified` the moment its first cert issuance succeeds via the
+`_ask-tls` flow, no polling job.
+
+This does widen `_ask-tls`'s responsibility meaningfully: `SiteHostPattern`'s strict 2-label parse doesn't
+apply to a custom domain (no fixed shape), so `_ask-tls` — and `SiteProxyMiddleware`'s host resolution —
+need a second lookup path: an exact-hostname match against `site_domains`, alongside the existing
+`<key>.<projectId>.{Domain}` pattern match. It becomes the only thing standing between the box and
+answering an on-demand-TLS "ask" for arbitrary attacker-supplied hostnames, not just within a wildcard
+suffix — get this exactly as strict as the existing wildcard check.
+
+Caddy needs a second, non-wildcard on-demand-TLS site block (or a catch-all) for custom domains, ordered so
+it never accidentally shadows the console/API's own domain block or the sites-wildcard block.
+
+### Phase 4 — git integration (sketch)
+
+The largest and most structurally different phase — expect it to need its own dedicated research/scoping
+pass, this is a starting point, not a spec. Checked Appwrite's own **self-hosted** git-integration docs
+(again, not Cloud's shared managed App): a self-hosted instance's owner creates and configures **their own**
+GitHub App (Appwrite doesn't provide a shared one for self-hosters), with repo permissions covering
+Contents (read), Pull requests (read/write), Checks or Commit statuses (write), Metadata (read), account
+email (read), subscribed to push and pull_request webhook events — six config values
+(`_APP_VCS_GITHUB_APP_NAME`/`APP_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`PRIVATE_KEY`/`WEBHOOK_SECRET` in
+Appwrite's own naming) plus an OAuth callback URL and a webhook URL the instance exposes.
+
+Praxy's equivalent shape: a new `Praxy:Sites:GitHub:*` config section (`AppId`, `ClientId`, `ClientSecret`,
+`PrivateKey`, `WebhookSecret`), an OAuth installation callback and a webhook receiver (e.g.
+`/v1/sites/vcs/github/callback` and `/v1/sites/vcs/github/webhook`), console "Connect repository" per site
+(repo + production branch), push-to-that-branch triggering a normal build+activate, and PR
+open/synchronize triggering a **preview** build (using Phase 2's preview-URL infrastructure) with the
+preview link posted back via the GitHub Checks/Commit Status API using a short-lived installation token.
+Webhook signature verification should reuse `Praxy.Webhooks`' existing HMAC-SHA256 pattern from Phase 6,
+not reinvent it. The build source changes from an uploaded tar to a git checkout —
+`SiteRuntimeTemplates.BuildContextAsync` currently starts from a `MemoryStream` over uploaded bytes; a
+git-sourced build needs an equivalent path from a shallow clone/checkout, while console tar upload keeps
+working unchanged for sites that never connect a repository.
+
+Nothing here today resembles "the self-hosted owner configures a third-party App with a client secret and
+a private key and receives webhooks from it" — the closest precedent, Google OAuth for end-user login, is a
+much narrower single-purpose integration. Budget real research time for this one.

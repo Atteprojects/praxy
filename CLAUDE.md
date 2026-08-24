@@ -80,7 +80,13 @@ Filled in as phases land — keep this section current.
   site is live, `SiteScreenshotWorker` best-effort captures a preview screenshot for the console's
   sites card grid via an ephemeral `Praxy:Sites:ScreenshotImage` (`zenika/alpine-chrome:124`)
   container — pulled from Docker Hub on first use, so this also needs outbound registry access; see
-  `docs/self-host.md`'s "Site preview screenshots" section.
+  `docs/self-host.md`'s "Site preview screenshots" section. Since Phase 2 (2026-08-23), every `ready`
+  deployment also gets its own preview URL — a third leading label, `<deploymentId>.<key>.<projectId>.
+  {Praxy:Sites:Domain}` — cold-started on first request and idle-swept by `SitePreviewSweeper`
+  (`Praxy:Sites:PreviewIdleSeconds`/`PreviewSweepIntervalSeconds`, capped by
+  `Praxy:Quotas:MaxPreviewContainersPerProject`); redeploys now swap containers gracefully
+  (start-new/swap/stop-old, no downtime window) instead of Phase 1's brief stop-old-then-start-new.
+  See `docs/handoff/sites-phase-2-report.md`'s Commands section for the full new-knob list.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)
