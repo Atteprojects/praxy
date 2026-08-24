@@ -160,6 +160,19 @@ export function useCreateSiteDeployment(projectId: string, siteId: string) {
   });
 }
 
+/** Deploys the bundled Next.js starter template as this site's first deployment — no file to pick, the server sources the tar itself. */
+export function useDeploySiteStarterTemplate(projectId: string, siteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<SiteDeployment>(`${base(projectId)}/${siteId}/deployments/from-starter-template`, { method: "POST" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "deployments"] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId] });
+    },
+  });
+}
+
 export function useActivateSiteDeployment(projectId: string, siteId: string) {
   const queryClient = useQueryClient();
   return useMutation({

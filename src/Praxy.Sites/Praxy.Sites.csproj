@@ -5,6 +5,11 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The bundled starter template (SiteStarterTemplate.cs) needs these on disk next to the
+         running assembly, in both `dotnet run` and the published Docker image. -->
+    <Content Include="Templates\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
     <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
     <ProjectReference Include="..\Praxy.Auth\Praxy.Auth.csproj" />
