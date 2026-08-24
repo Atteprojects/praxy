@@ -20,7 +20,7 @@ export function SiteDeploymentsPage() {
   const site = useSite(projectId, siteId);
   const deployments = useSiteDeployments(projectId, siteId);
   const create = useCreateSiteDeployment(projectId, siteId);
-  const deployTemplate = useDeploySiteStarterTemplate(projectId, siteId);
+  const deployTemplate = useDeploySiteStarterTemplate(projectId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
@@ -94,7 +94,7 @@ export function SiteDeploymentsPage() {
   }
 
   async function onDeployTemplate() {
-    const created = await deployTemplate.mutateAsync();
+    const created = await deployTemplate.mutateAsync(siteId);
     setSelectedId(created.id);
   }
 
@@ -102,7 +102,7 @@ export function SiteDeploymentsPage() {
     <div>
       <SiteDetailHeader projectId={projectId} site={site.data} active="deployments" />
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-xl text-xs text-ink-500">
           Upload a <code className="text-ink-300">.tar</code> of your Next.js app's source (
           <code className="text-ink-300">next.config.js</code> must set{" "}
@@ -110,7 +110,7 @@ export function SiteDeploymentsPage() {
           template to see a working site without one. A successful build activates automatically —
           starting a real container — and older ready builds can be re-activated below to roll back.
         </p>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button
             type="button"
             className="btn-ghost border border-ink-700"

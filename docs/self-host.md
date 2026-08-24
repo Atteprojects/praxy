@@ -357,6 +357,25 @@ more than one `api` replica, they won't race each other: whichever one wins the 
 migrations while the others block, then find nothing pending and continue straight to serving
 traffic.
 
+> **If your upgrade touches `deploy/Caddyfile`, also restart Caddy — `docker compose up -d --build`
+> alone does not.** Found live on praxycore.dev: the Sites Phase 2 release added a third wildcard
+> block to `deploy/Caddyfile` (preview URLs), but every deploy since then only recreated `api` — the
+> documented, intentional behavior ("rebuilds and recreates only the `api` container; Caddy/Postgres
+> stay up untouched"). Caddy bind-mounts the file (`./Caddyfile:/etc/caddy/Caddyfile:ro`) and parses
+> it once at startup; a bind mount makes the new bytes visible inside the container immediately, but
+> Caddy itself doesn't watch the file and re-read it on its own. The result: the file on disk was
+> correct, but the *running* Caddy process kept serving its original config for days, so every
+> preview URL silently failed TLS (`tlsv1 alert internal error`, no ask-endpoint call at all — the
+> same symptom as a genuinely wrong Caddyfile, indistinguishable from the outside). `caddy reload
+> --config /etc/caddy/Caddyfile --adapter caddyfile` (graceful, meant for exactly this) did **not**
+> reliably pick up the change either in this environment — only a full
+> `docker compose restart caddy` did. Confirmed via `docker exec praxy-caddy-1 caddy adapt --config
+> /etc/caddy/Caddyfile` before/after: the automation policy's `subjects` list only gained the new
+> wildcard pattern after the restart. **Safest habit: `docker compose restart caddy` after any
+> upgrade, whether or not you think the Caddyfile changed** — it's a cheap, near-zero-downtime
+> operation for a reverse proxy, and confirming "did the Caddyfile change" by eye is exactly the kind
+> of check that's easy to get wrong.
+
 **Verified against real data for v0.1.0** (there being no previous tag to literally check out yet,
 per the roadmap this proves the mechanism rather than replaying a specific past release):
 
