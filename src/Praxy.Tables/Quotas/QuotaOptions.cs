@@ -13,4 +13,9 @@ public sealed record QuotaOptions(
     int MaxTablesPerDatabase = 200,
     int MaxColumnsPerTable = 200,
     int MaxIndexesPerTable = 64,
-    int MaxSitesPerProject = 20);
+    int MaxSitesPerProject = 20,
+    // Sites Phase 2: bounds how many on-demand preview containers (any ready-but-not-active
+    // deployment) a single project can have running at once, so a project accumulating many stale
+    // `ready` deployments can't exhaust host Docker/memory capacity. Project-level, not per-site —
+    // the resource being protected (the host's Docker daemon) is shared across a project's sites.
+    int MaxPreviewContainersPerProject = 10);

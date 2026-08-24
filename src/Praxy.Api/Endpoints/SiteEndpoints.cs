@@ -31,10 +31,10 @@ public sealed record SiteEnvVarResponse(string Key, DateTimeOffset CreatedAt, Da
 
 public sealed record SiteDeploymentResponse(
     string Id, string Status, long SourceSizeBytes, string BuildLog, string? Error, string? ImageTag,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? ActivatedAt)
+    string? PreviewUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? ActivatedAt)
 {
-    public static SiteDeploymentResponse From(SiteDeployment d) => new(
-        Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.BuildLog, d.Error, d.ImageTag, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
+    public static SiteDeploymentResponse From(SiteDeployment d, string? previewUrl) => new(
+        Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.BuildLog, d.Error, d.ImageTag, previewUrl, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
 }
 
 public sealed record SiteListResponse(int Total, IReadOnlyList<SiteResponse> Sites);
@@ -188,12 +188,14 @@ public static class SiteEndpoints
 
     // ---- deployments ----------------------------------------------------------------------------
 
-    private static async Task<IResult> ListDeployments(string siteId, HttpContext http, SitesService sites, CancellationToken ct)
+    private static async Task<IResult> ListDeployments(
+        string siteId, HttpContext http, SitesService sites, SitesOptions options, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
         var site = await FindAsync(sites, project.Id, siteId, ct);
         var list = await sites.ListDeploymentsAsync(site.Id, ct);
-        return Results.Ok(new SiteDeploymentListResponse(list.Count, [.. list.Select(SiteDeploymentResponse.From)]));
+        return Results.Ok(new SiteDeploymentListResponse(
+            list.Count, [.. list.Select(d => SiteDeploymentResponse.From(d, PreviewUrl(site, d, options)))]));
     }
 
     private static async Task<IResult> CreateDeployment(
@@ -206,26 +208,27 @@ public static class SiteEndpoints
         await AuditAsync(db, http, project.Id, "sites.deployments.create", $"site/{siteId}/deployment/{Ids.Wire(deployment.Id)}", ct);
         return Results.Created(
             $"/v1/console/projects/{project.Id}/sites/{siteId}/deployments/{Ids.Wire(deployment.Id)}",
-            SiteDeploymentResponse.From(deployment));
+            SiteDeploymentResponse.From(deployment, PreviewUrl(site, deployment, options)));
     }
 
-    private static async Task<IResult> GetDeployment(string siteId, string deploymentId, HttpContext http, SitesService sites, CancellationToken ct)
+    private static async Task<IResult> GetDeployment(
+        string siteId, string deploymentId, HttpContext http, SitesService sites, SitesOptions options, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
         var site = await FindAsync(sites, project.Id, siteId, ct);
         var deployment = await FindDeploymentAsync(sites, site.Id, deploymentId, ct);
-        return Results.Ok(SiteDeploymentResponse.From(deployment));
+        return Results.Ok(SiteDeploymentResponse.From(deployment, PreviewUrl(site, deployment, options)));
     }
 
     private static async Task<IResult> ActivateDeployment(
-        string siteId, string deploymentId, HttpContext http, PraxyDb db, SitesService sites, CancellationToken ct)
+        string siteId, string deploymentId, HttpContext http, PraxyDb db, SitesService sites, SitesOptions options, CancellationToken ct)
     {
         var project = ConsoleProjectFilter.Current(http);
         var site = await FindAsync(sites, project.Id, siteId, ct);
         var deployment = await FindDeploymentAsync(sites, site.Id, deploymentId, ct);
         var activated = await sites.ActivateAsync(site, deployment, ct);
         await AuditAsync(db, http, project.Id, "sites.deployments.activate", $"site/{siteId}/deployment/{deploymentId}", ct);
-        return Results.Ok(SiteDeploymentResponse.From(activated));
+        return Results.Ok(SiteDeploymentResponse.From(activated, PreviewUrl(site, activated, options)));
     }
 
     // ---- ask-tls --------------------------------------------------------------------------------
@@ -233,26 +236,42 @@ public static class SiteEndpoints
     /// <summary>
     /// Caddy calls <c>GET /v1/sites/_ask-tls?domain=&lt;host&gt;</c> before issuing each on-demand
     /// cert, treating any 2xx as authorization to proceed. Returns <c>204</c> (no body — there is
-    /// nothing to say beyond the status) only for a hostname that parses as
-    /// <c>&lt;key&gt;.&lt;projectId&gt;.{Domain}</c> AND resolves to a real, enabled site AND that
-    /// site has an active <c>ready</c> deployment — anything else is <c>404</c>. All three checks
-    /// matter: skipping the enabled/deployed check would let an operator who disabled a site (or
-    /// never finished deploying it) still have Caddy mint it a public cert; skipping the DB lookup
-    /// entirely (accepting any hostname merely shaped like the pattern) turns this into an open
-    /// oracle for anyone who points DNS at the box, which can also burn through Let's Encrypt's rate
-    /// limits. Deliberately does not distinguish its failure reasons in the response — a 404 here
-    /// must not become a way to enumerate which site keys exist.
+    /// nothing to say beyond the status) for a hostname that parses as either the production shape
+    /// (<c>&lt;key&gt;.&lt;projectId&gt;.{Domain}</c>, requiring the site's <em>active</em> deployment
+    /// to be <c>ready</c>) or a preview shape (<c>&lt;deploymentId&gt;.&lt;key&gt;.&lt;projectId&gt;.{Domain}</c>,
+    /// Phase 2 — requiring only that specific deployment to belong to the site and be <c>ready</c>,
+    /// active or not) AND resolves to a real, enabled site — anything else is <c>404</c>. All the
+    /// checks matter: skipping the enabled/ready check would let an operator who disabled a site (or
+    /// a deployment that never finished building) still have Caddy mint it a public cert; skipping
+    /// the DB lookup entirely (accepting any hostname merely shaped like either pattern) turns this
+    /// into an open oracle for anyone who points DNS at the box, which can also burn through Let's
+    /// Encrypt's rate limits. Deliberately does not distinguish its failure reasons in the response —
+    /// a 404 here must not become a way to enumerate which site keys or deployment ids exist.
     /// </summary>
     private static async Task<IResult> AskTls(HttpContext http, PraxyDb db, SitesOptions options, CancellationToken ct)
     {
         var domain = http.Request.Query["domain"].FirstOrDefault();
-        if (string.IsNullOrEmpty(domain) || !SiteHostPattern.TryParse(domain, options.Domain, out var key, out var projectId))
+        if (string.IsNullOrEmpty(domain)
+            || !SiteHostPattern.TryParse(domain, options.Domain, out var key, out var projectId, out var deploymentRef))
             return Results.NotFound();
 
-        var deployable = await db.Sites.AsNoTracking()
-            .Where(s => s.ProjectId == projectId && s.Key == key && s.Enabled && s.ActiveDeploymentId != null)
-            .Join(db.SiteDeployments.AsNoTracking(), s => s.ActiveDeploymentId, d => d.Id, (s, d) => d.Status)
-            .AnyAsync(status => status == "ready", ct);
+        var site = await db.Sites.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.ProjectId == projectId && s.Key == key && s.Enabled, ct);
+        if (site is null)
+            return Results.NotFound();
+
+        bool deployable;
+        if (deploymentRef is null)
+        {
+            deployable = site.ActiveDeploymentId is { } activeId
+                && await db.SiteDeployments.AsNoTracking().AnyAsync(d => d.Id == activeId && d.Status == "ready", ct);
+        }
+        else
+        {
+            deployable = Ids.TryParseWire(deploymentRef, out var deploymentId)
+                && await db.SiteDeployments.AsNoTracking()
+                    .AnyAsync(d => d.Id == deploymentId && d.SiteId == site.Id && d.Status == "ready", ct);
+        }
 
         return deployable ? Results.NoContent() : Results.NotFound();
     }
@@ -270,10 +289,17 @@ public static class SiteEndpoints
         return [.. present];
     }
 
-    private static string PublicUrl(Site site, SitesOptions options)
+    private static string PublicUrl(Site site, SitesOptions options) =>
+        SiteUrl(site.Key, site.ProjectId, options);
+
+    /// <summary>A deployment's preview URL — only meaningful once it's built (<c>ready</c>); null otherwise, matching "every ready deployment gets its own reachable URL" (Sites Phase 2).</summary>
+    private static string? PreviewUrl(Site site, SiteDeployment deployment, SitesOptions options) =>
+        deployment.Status == "ready" ? SiteUrl($"{Ids.Wire(deployment.Id)}.{site.Key}", site.ProjectId, options) : null;
+
+    private static string SiteUrl(string hostPrefix, string projectId, SitesOptions options)
     {
         var scheme = options.Domain.EndsWith("localhost", StringComparison.OrdinalIgnoreCase) ? "http" : "https";
-        return $"{scheme}://{site.Key}.{site.ProjectId}.{options.Domain}";
+        return $"{scheme}://{hostPrefix}.{projectId}.{options.Domain}";
     }
 
     private static async Task<Site> FindAsync(SitesService sites, string projectId, string siteId, CancellationToken ct)

@@ -110,7 +110,7 @@ public sealed class SiteScreenshotWorker(
             return;
         }
 
-        if (!registry.TryGet(site.Id, out var running))
+        if (!registry.TryGet(claimed.Id, out var running))
         {
             // Not up yet (still starting, or briefly down) — leave ScreenshotCapturedAt null so the
             // claim query picks it up again, bounded by ScreenshotMaxAttempts.

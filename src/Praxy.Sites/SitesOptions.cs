@@ -49,4 +49,13 @@ public sealed record SitesOptions(
     // room for a transient failure to clear before giving up for good.
     int ScreenshotRetryDelaySeconds = 15,
     int ScreenshotWidth = 1280,
-    int ScreenshotHeight = 800);
+    int ScreenshotHeight = 800,
+    // How long a preview (non-active) deployment's container may sit with no proxied request
+    // before SitePreviewSweeper stops it. Reference point, not a mandate, per
+    // docs/handoff/sites-phase-2-prompt.md: Functions' WarmPool defaults to 300s for a much
+    // cheaper invoke-shaped workload; a real Next.js SSR server is heavier to cold-start and a
+    // developer reviewing a preview leaves real gaps between requests, so this defaults higher.
+    int PreviewIdleSeconds = 600,
+    // How often SitePreviewSweeper re-scans for idle preview containers — same cadence as
+    // SiteReconciler's own ReconcileIntervalSeconds by default, tunable independently.
+    int PreviewSweepIntervalSeconds = 60);

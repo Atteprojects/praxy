@@ -29,3 +29,18 @@
 	}
 	reverse_proxy api:8080
 }
+
+# A single deployment's preview URL (Sites Phase 2): <deploymentId>.<key>.<projectId>.{PRAXY_SITES_DOMAIN}.
+# Three wildcard labels, not two — same wildcard-depth strictness as the block above, confirmed by the
+# same "against real Caddy, not pattern-matched" discipline the Phase 1 postmortem demanded: a
+# throwaway Caddy instance with only the two-label block above got `"no certificate matching TLS
+# ClientHello"` / `"on_demand":false` for a real three-label hostname, with the ask endpoint never
+# called — reproducing Phase 1's exact bug shape one wildcard label short. Adding this dedicated block
+# (an extra `*.`) made the same hostname correctly reach the ask endpoint. See
+# docs/research/dotnet-stack.md's Caddy section for the full transcript.
+*.*.*.{$PRAXY_SITES_DOMAIN} {
+	tls {
+		on_demand
+	}
+	reverse_proxy api:8080
+}
