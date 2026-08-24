@@ -225,23 +225,15 @@ try
         MemoryLimitMb: builder.Configuration.GetValue("Praxy:Sites:MemoryLimitMb", 512L),
         CpuLimit: builder.Configuration.GetValue("Praxy:Sites:CpuLimit", 1.0),
         MaxSourceBytes: builder.Configuration.GetValue("Praxy:Sites:MaxSourceBytes", 26_214_400L),
-        ScreenshotImage: builder.Configuration["Praxy:Sites:ScreenshotImage"] ?? "zenika/alpine-chrome:124",
-        ScreenshotTimeoutSeconds: builder.Configuration.GetValue("Praxy:Sites:ScreenshotTimeoutSeconds", 20),
-        ScreenshotMaxAttempts: builder.Configuration.GetValue("Praxy:Sites:ScreenshotMaxAttempts", 3),
-        ScreenshotRetryDelaySeconds: builder.Configuration.GetValue("Praxy:Sites:ScreenshotRetryDelaySeconds", 15),
-        ScreenshotWidth: builder.Configuration.GetValue("Praxy:Sites:ScreenshotWidth", 1280),
-        ScreenshotHeight: builder.Configuration.GetValue("Praxy:Sites:ScreenshotHeight", 800),
         PreviewIdleSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewIdleSeconds", 600),
         PreviewSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewSweepIntervalSeconds", 60));
     builder.Services.AddSingleton(sitesOptions);
     builder.Services.AddSingleton<SiteDockerExecutor>();
     builder.Services.AddSingleton<SiteContainerRegistry>();
     builder.Services.AddSingleton<SiteBuildSignal>();
-    builder.Services.AddSingleton<SiteScreenshotSignal>();
     builder.Services.AddScoped<SitesService>();
     builder.Services.AddHostedService<SiteBuildWorker>();
     builder.Services.AddHostedService<SiteReconciler>();
-    builder.Services.AddHostedService<SiteScreenshotWorker>();
     builder.Services.AddHostedService<SitePreviewSweeper>();
     // Direct forwarding (not the route/cluster config model) — SiteProxyMiddleware resolves its own
     // destination per request from the DB + SiteContainerRegistry, so it only needs the low-level

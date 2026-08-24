@@ -32,24 +32,6 @@ public sealed record SitesOptions(
     long MemoryLimitMb = 512,
     double CpuLimit = 1.0,
     long MaxSourceBytes = 26_214_400,
-    // zenika/alpine-chrome: a small (~180MB compressed), actively-maintained, multi-arch
-    // (amd64+arm64) headless-Chromium image with a single-invocation CLI screenshot mode — no
-    // driver process needed, matching this codebase's existing "ephemeral one-off container"
-    // style rather than a long-lived capture service. Pinned to a numbered tag, not `latest`,
-    // per the repo's own machine-verified-pins discipline (docs/research/dotnet-stack.md).
-    string ScreenshotImage = "zenika/alpine-chrome:124",
-    int ScreenshotTimeoutSeconds = 20,
-    // Bounded retry, not infinite — a deployment whose container never renders anything
-    // meaningful (crashes on every request, etc.) shouldn't be re-attempted forever.
-    int ScreenshotMaxAttempts = 3,
-    // Cooldown after a failed capture before the same deployment can be reclaimed — found live: a
-    // fresh deploy's startup load (image build, migrations, every worker's first run competing at
-    // once) can make a cold image pull flaky, and without this a worker polling every
-    // BuildPollIntervalSeconds burns through ScreenshotMaxAttempts in well under a minute, with no
-    // room for a transient failure to clear before giving up for good.
-    int ScreenshotRetryDelaySeconds = 15,
-    int ScreenshotWidth = 1280,
-    int ScreenshotHeight = 800,
     // How long a preview (non-active) deployment's container may sit with no proxied request
     // before SitePreviewSweeper stops it. Reference point, not a mandate, per
     // docs/handoff/sites-phase-2-prompt.md: Functions' WarmPool defaults to 300s for a much

@@ -90,7 +90,6 @@ public static class ErrorTypes
     public const string SiteInvalidDeploymentState = "site_invalid_deployment_state";
     public const string SiteInvalidSource = "site_invalid_source";
     public const string SiteNoActiveDeployment = "site_no_active_deployment";
-    public const string SiteScreenshotNotFound = "site_screenshot_not_found";
 
     public const string MessagingProviderNotFound = "messaging_provider_not_found";
     public const string MessagingProviderInvalid = "messaging_provider_invalid";
@@ -178,7 +177,6 @@ public static class ErrorTypes
         SiteInvalidDeploymentState,
         SiteInvalidSource,
         SiteNoActiveDeployment,
-        SiteScreenshotNotFound,
         MessagingProviderNotFound,
         MessagingProviderInvalid,
         MessagingTopicNotFound,
