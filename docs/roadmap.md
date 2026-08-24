@@ -233,11 +233,13 @@ same way Phase 1's own fix was — see `research/dotnet-stack.md`'s Caddy sectio
 (the existing wildcard already covers any depth). Full design: `research/praxy-sites.md`'s "Phase 2"
 section.
 
-**Sites Phase 3 — custom domains.** Real design in `research/praxy-sites.md` (on-demand TLS, already built
-in Phase 1, generalizes to custom domains almost for free — no DNS-provider credentials needed, unlike
-Appwrite's own self-host approach). Not started, not yet scoped — `docs/handoff/sites-phase-2-report.md`
-deliberately left `sites-phase-3-prompt.md` unwritten, since nothing learned in Phase 2 changed the
-existing sketch. Needs its own scoping session when the owner is ready.
+**Sites Phase 3 — custom domains** (kickoff: `docs/handoff/sites-phase-3-prompt.md`, written
+2026-08-24) — not yet implemented. Real design in `research/praxy-sites.md` (on-demand TLS, already
+built in Phase 1, generalizes to custom domains almost for free — no DNS-provider credentials needed,
+unlike Appwrite's own self-host approach). The kickoff prompt also folds in the exact current shape of
+`SiteHostPattern`/`SiteProxyMiddleware`/`AskTls` (grounded in the real post-Phase-2 code, not the
+original sketch) and the hard-won "always restart Caddy after touching `deploy/Caddyfile`" lesson from
+that phase's own production incident.
 
 **Sites Phase 4 — git integration** (push-to-deploy, PR previews). Sketch only in `research/praxy-sites.md`
 — the largest and most structurally different phase (a self-hosted owner-configured GitHub App, nothing
