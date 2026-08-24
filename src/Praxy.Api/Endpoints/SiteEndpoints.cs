@@ -68,6 +68,8 @@ public static class SiteEndpoints
 
         admin.MapGet("/{siteId}/deployments", ListDeployments).Produces<SiteDeploymentListResponse>();
         admin.MapPost("/{siteId}/deployments", CreateDeployment).Produces<SiteDeploymentResponse>(StatusCodes.Status201Created);
+        admin.MapPost("/{siteId}/deployments/from-starter-template", CreateDeploymentFromStarterTemplate)
+            .Produces<SiteDeploymentResponse>(StatusCodes.Status201Created);
         admin.MapGet("/{siteId}/deployments/{deploymentId}", GetDeployment).Produces<SiteDeploymentResponse>();
         admin.MapPost("/{siteId}/deployments/{deploymentId}/activate", ActivateDeployment).Produces<SiteDeploymentResponse>();
 
@@ -174,6 +176,26 @@ public static class SiteEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var site = await FindAsync(sites, project.Id, siteId, ct);
         var tar = await ReadCappedAsync(http.Request.Body, options.MaxSourceBytes, ct);
+        var deployment = await sites.CreateDeploymentAsync(site, tar, ct);
+        await AuditAsync(db, http, project.Id, "sites.deployments.create", $"site/{siteId}/deployment/{Ids.Wire(deployment.Id)}", ct);
+        return Results.Created(
+            $"/v1/console/projects/{project.Id}/sites/{siteId}/deployments/{Ids.Wire(deployment.Id)}",
+            SiteDeploymentResponse.From(deployment, PreviewUrl(site, deployment, options)));
+    }
+
+    /// <summary>
+    /// Deploys the bundled Next.js starter template (<see cref="SiteStarterTemplate"/>) as this
+    /// site's first deployment — lets a brand-new user see a real, working site with one click
+    /// instead of needing their own Next.js app ready first. Goes through the exact same
+    /// build/activate pipeline as a real upload; the only difference is where the tar bytes come
+    /// from.
+    /// </summary>
+    private static async Task<IResult> CreateDeploymentFromStarterTemplate(
+        string siteId, HttpContext http, PraxyDb db, SitesService sites, SitesOptions options, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        var tar = await SiteStarterTemplate.BuildTarAsync(ct);
         var deployment = await sites.CreateDeploymentAsync(site, tar, ct);
         await AuditAsync(db, http, project.Id, "sites.deployments.create", $"site/{siteId}/deployment/{Ids.Wire(deployment.Id)}", ct);
         return Results.Created(

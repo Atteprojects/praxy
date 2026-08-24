@@ -1,7 +1,8 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  useActivateSiteDeployment, useCreateSiteDeployment, useSite, useSiteDeployment, useSiteDeployments,
+  useActivateSiteDeployment, useCreateSiteDeployment, useDeploySiteStarterTemplate, useSite,
+  useSiteDeployment, useSiteDeployments,
 } from "../api/sites";
 import { ApiError } from "../api/client";
 import type { DataGridColumn } from "../components/DataGrid";
@@ -19,10 +20,12 @@ export function SiteDeploymentsPage() {
   const site = useSite(projectId, siteId);
   const deployments = useSiteDeployments(projectId, siteId);
   const create = useCreateSiteDeployment(projectId, siteId);
+  const deployTemplate = useDeploySiteStarterTemplate(projectId, siteId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
   const uploadError = create.error instanceof ApiError ? create.error : null;
+  const templateError = deployTemplate.error instanceof ApiError ? deployTemplate.error : null;
 
   const activeDeploymentId = site.data?.activeDeploymentId ?? null;
 
@@ -90,6 +93,11 @@ export function SiteDeploymentsPage() {
     if (fileInput.current) fileInput.current.value = "";
   }
 
+  async function onDeployTemplate() {
+    const created = await deployTemplate.mutateAsync();
+    setSelectedId(created.id);
+  }
+
   return (
     <div>
       <SiteDetailHeader projectId={projectId} site={site.data} active="deployments" />
@@ -98,11 +106,19 @@ export function SiteDeploymentsPage() {
         <p className="max-w-xl text-xs text-ink-500">
           Upload a <code className="text-ink-300">.tar</code> of your Next.js app's source (
           <code className="text-ink-300">next.config.js</code> must set{" "}
-          <code className="text-ink-300">output: "standalone"</code>). A successful build activates
-          automatically — starting a real container — and older ready builds can be re-activated below
-          to roll back.
+          <code className="text-ink-300">output: "standalone"</code>), or deploy the starter
+          template to see a working site without one. A successful build activates automatically —
+          starting a real container — and older ready builds can be re-activated below to roll back.
         </p>
-        <div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost border border-ink-700"
+            disabled={deployTemplate.isPending}
+            onClick={() => void onDeployTemplate()}
+          >
+            {deployTemplate.isPending ? <Spinner /> : "Deploy starter template"}
+          </button>
           <input
             ref={fileInput}
             type="file"
@@ -122,9 +138,23 @@ export function SiteDeploymentsPage() {
         </div>
       </div>
       {uploadError ? <div className="mb-4"><ErrorNote message={uploadError.message} /></div> : null}
+      {templateError ? <div className="mb-4"><ErrorNote message={templateError.message} /></div> : null}
 
       {deployments.data.total === 0 ? (
-        <EmptyState headers={HEADERS} title="No deployments yet. Upload a tar to build the first one." />
+        <EmptyState
+          headers={HEADERS}
+          title="No deployments yet. Upload your own tar, or deploy the starter template to see a real site live in seconds."
+          action={
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={deployTemplate.isPending}
+              onClick={() => void onDeployTemplate()}
+            >
+              {deployTemplate.isPending ? <Spinner /> : "Deploy starter template"}
+            </button>
+          }
+        />
       ) : (
         <DataGrid
           columns={columns}
