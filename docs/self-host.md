@@ -18,9 +18,10 @@ document.
   **wildcard DNS record** (`*.sites.your.domain.com` → this host's IP) in addition to the plain
   `your.domain.com` record `up.sh` already asks for. See
   [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain) below.
-- If you plan to connect a Site to a GitHub repository (push-to-deploy): your own GitHub App (there's
-  no shared Praxy-provided one) and a public, internet-reachable instance — GitHub delivers webhooks
-  to a real URL, so `localhost` needs a tunnel. See [Git integration](#git-integration) below.
+- If you plan to connect a Site or a Function to a GitHub repository (push-to-deploy): your own GitHub
+  App (there's no shared Praxy-provided one) and a public, internet-reachable instance — GitHub
+  delivers webhooks to a real URL, so `localhost` needs a tunnel. See
+  [Git integration](#git-integration) below.
 
 ## Quick start
 
@@ -322,12 +323,16 @@ reads it at its own startup. See the Upgrading section below.
 
 ## Git integration
 
-Connect a site to a GitHub repository so a push to its production branch builds and goes live
-automatically, and a push to any other branch builds a preview (its own Phase 2 preview URL, above)
-without ever touching production. This needs **your own GitHub App** — there is no shared
-Praxy-provided one, the same self-host story Appwrite's own git integration follows. Nothing here
-works until you create one and set the five `Praxy:Vcs:GitHub:*` config values above; until then the
-console's GitHub settings page shows a clean "not configured" message rather than an error.
+Connect a site or a function to a GitHub repository so a push to its production branch builds and goes
+live automatically — a site's push to any other branch builds a preview (its own Phase 2 preview URL,
+above) without ever touching production; a function's push to any other branch builds a deployment
+that finishes `ready` without activating, reachable only via the console's explicit Activate action.
+One GitHub App and one webhook endpoint cover both resource types — the same repository can be
+connected to a site and a function at once, and a single push deploys both independently. This needs
+**your own GitHub App** — there is no shared Praxy-provided one, the same self-host story Appwrite's
+own git integration follows. Nothing here works until you create one and set the five
+`Praxy:Vcs:GitHub:*` config values above; until then the console's GitHub settings page shows a clean
+"not configured" message rather than an error.
 
 **Your instance must be internet-reachable for this to work at all** — GitHub delivers the webhook
 that drives the whole feature to a real public URL, so a bare `dotnet run` on `localhost` needs a
@@ -380,8 +385,9 @@ fallback is automatic, not something you need to configure).
 Set all five values, restart `api`, then in the console go to **Settings → GitHub** and click
 **Connect GitHub** — this redirects to GitHub's own installation flow; approve it for the account/org
 and repositories you want reachable, and GitHub redirects back to the Callback URL above, which
-records the installation. From there, connect a specific site to a specific repository and pick its
-production branch from the site's own Settings page, the same place custom domains live.
+records the installation. From there, connect a specific site or function to a specific repository and
+pick its production branch from its own Settings page — a site's alongside custom domains, a
+function's alongside its execute-access and schedule settings.
 
 **Repository access is always checked live against GitHub**, never cached — Praxy doesn't store which
 installation covers which repository, only that *some* installation exists (a cheap "has GitHub been

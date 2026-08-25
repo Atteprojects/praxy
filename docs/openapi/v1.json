@@ -7580,6 +7580,139 @@
         }
       }
     },
+    "/v1/console/projects/{projectId}/functions/{functionId}/git/branches": {
+      "get": {
+        "tags": [
+          "FunctionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "functionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repository",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionGitBranchesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/functions/{functionId}/git": {
+      "post": {
+        "tags": [
+          "FunctionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "functionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectFunctionGitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "FunctionEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "functionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/console/projects/{projectId}/functions/{functionId}/deployments": {
       "get": {
         "tags": [
@@ -11240,6 +11373,21 @@
           }
         }
       },
+      "ConnectFunctionGitRequest": {
+        "required": [
+          "repositoryFullName",
+          "productionBranch"
+        ],
+        "type": "object",
+        "properties": {
+          "repositoryFullName": {
+            "type": "string"
+          },
+          "productionBranch": {
+            "type": "string"
+          }
+        }
+      },
       "ConnectSiteGitRequest": {
         "required": [
           "repositoryFullName",
@@ -12153,6 +12301,10 @@
           "id",
           "status",
           "sourceSizeBytes",
+          "source",
+          "commitSha",
+          "commitMessage",
+          "branch",
           "buildLog",
           "error",
           "imageTag",
@@ -12175,6 +12327,27 @@
               "string"
             ],
             "format": "int64"
+          },
+          "source": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "commitMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "branch": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "buildLog": {
             "type": "string"
@@ -12368,6 +12541,20 @@
           }
         }
       },
+      "FunctionGitBranchesResponse": {
+        "required": [
+          "branches"
+        ],
+        "type": "object",
+        "properties": {
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "FunctionListResponse": {
         "required": [
           "total",
@@ -12406,6 +12593,8 @@
           "nextScheduledRunAt",
           "activeDeploymentId",
           "isWarm",
+          "repositoryFullName",
+          "productionBranch",
           "createdAt",
           "updatedAt"
         ],
@@ -12470,6 +12659,18 @@
           },
           "isWarm": {
             "type": "boolean"
+          },
+          "repositoryFullName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "productionBranch": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "createdAt": {
             "type": "string",
