@@ -329,29 +329,59 @@ suffix — get this exactly as strict as the existing wildcard check.
 Caddy needs a second, non-wildcard on-demand-TLS site block (or a catch-all) for custom domains, ordered so
 it never accidentally shadows the console/API's own domain block or the sites-wildcard block.
 
-### Phase 4 — git integration (sketch)
+### Phase 4 — git integration
 
-The largest and most structurally different phase — expect it to need its own dedicated research/scoping
-pass, this is a starting point, not a spec. Checked Appwrite's own **self-hosted** git-integration docs
-(again, not Cloud's shared managed App): a self-hosted instance's owner creates and configures **their own**
-GitHub App (Appwrite doesn't provide a shared one for self-hosters), with repo permissions covering
-Contents (read), Pull requests (read/write), Checks or Commit statuses (write), Metadata (read), account
-email (read), subscribed to push and pull_request webhook events — six config values
-(`_APP_VCS_GITHUB_APP_NAME`/`APP_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`PRIVATE_KEY`/`WEBHOOK_SECRET` in
-Appwrite's own naming) plus an OAuth callback URL and a webhook URL the instance exposes.
+Real design, scoped 2026-08-24 after re-checking Appwrite's actual git-deploy docs (`deploy-from-git`,
+not just the self-host App-setup page cited in the original sketch) — two findings there meaningfully
+**cut** scope versus that sketch, not added to it:
 
-Praxy's equivalent shape: a new `Praxy:Sites:GitHub:*` config section (`AppId`, `ClientId`, `ClientSecret`,
-`PrivateKey`, `WebhookSecret`), an OAuth installation callback and a webhook receiver (e.g.
-`/v1/sites/vcs/github/callback` and `/v1/sites/vcs/github/webhook`), console "Connect repository" per site
-(repo + production branch), push-to-that-branch triggering a normal build+activate, and PR
-open/synchronize triggering a **preview** build (using Phase 2's preview-URL infrastructure) with the
-preview link posted back via the GitHub Checks/Commit Status API using a short-lived installation token.
-Webhook signature verification should reuse `Praxy.Webhooks`' existing HMAC-SHA256 pattern from Phase 6,
-not reinvent it. The build source changes from an uploaded tar to a git checkout —
-`SiteRuntimeTemplates.BuildContextAsync` currently starts from a `MemoryStream` over uploaded bytes; a
-git-sourced build needs an equivalent path from a shallow clone/checkout, while console tar upload keeps
-working unchanged for sites that never connect a repository.
+1. **Appwrite does not post commit statuses or PR comments back to GitHub.** Its own docs make no mention
+   of it. Drop that from Praxy's design too — it was speculative in the original sketch, not something
+   the reference implementation actually does.
+2. **Build settings (install/build/output command) are manually configured, not auto-detected**, in
+   Appwrite's own flow. Moot for Praxy anyway — the build pipeline is already fixed to Next.js +
+   `SiteRuntimeTemplates`'s generated Dockerfile; there is no framework-detection step to add.
 
-Nothing here today resembles "the self-hosted owner configures a third-party App with a client secret and
-a private key and receives webhooks from it" — the closest precedent, Google OAuth for end-user login, is a
-much narrower single-purpose integration. Budget real research time for this one.
+The other key finding **reuses** existing infrastructure directly: Appwrite's own branch model is "push to
+the production branch → build and activate immediately; push to any other branch → build, don't activate,
+generate a preview link." That preview-link half is *exactly* what Sites Phase 2 already built — a
+non-production-branch push just needs to create a `SiteDeployment` and let it sit `ready`-but-not-active,
+and the existing `<deploymentId>.<key>.<projectId>.{Domain}` preview URL mechanism (on-demand start, idle
+sweep, quota) already does the rest with zero new serving-side code.
+
+**Self-hosted setup** (Appwrite's `version-control` self-host doc, re-confirmed): the instance owner
+creates and configures **their own** GitHub App — Appwrite provides no shared one for self-hosters, and
+neither should Praxy. Six config values in Appwrite's own naming
+(`_APP_VCS_GITHUB_APP_NAME`/`APP_ID`/`CLIENT_ID`/`CLIENT_SECRET`/`PRIVATE_KEY`/`WEBHOOK_SECRET`), a webhook
+URL (`/v1/vcs/github/events` in their naming), an OAuth installation callback, and — important operational
+caveat carried into Praxy's own design — **the instance must be internet-reachable** for GitHub to deliver
+webhooks; a bare `localhost` dev setup needs a tunnel (ngrok or equivalent) to test this phase at all.
+`praxycore.dev` is already public, so the real owner-test should target that, not local dev.
+
+**Praxy's shape**:
+
+- New `Praxy:Sites:GitHub:*` config: `AppId`, `ClientId`, `ClientSecret`, `PrivateKey` (PEM), `WebhookSecret`
+  — instance-wide, not per-project, matching how the GitHub App itself is configured once per instance.
+- `GET /v1/sites/vcs/github/callback` — GitHub's installation-flow redirect target; exchanges the
+  installation for a stored record (new `vcs_installations` table: `id, installation_id, account_login,
+  account_type, created_at` — instance-wide, since one GitHub App installation can cover every project).
+- `POST /v1/sites/vcs/github/webhook` — verifies GitHub's own signature format (see Landmines — **not**
+  the same scheme `Praxy.Webhooks`' `WebhookSignature` class uses), parses `push` events, matches
+  `repository.full_name` against any connected `sites` rows, and creates a `SiteDeployment` sourced from a
+  fresh clone rather than an upload.
+- `sites` gains `repository_full_name`, `production_branch` (both nullable — a site can still be
+  tar-upload-only, unchanged). `site_deployments` gains `source` (`upload`|`git`), `commit_sha`,
+  `commit_message`, `branch` — for console display and to know which deployments came from a push.
+- Build source: a git-sourced deployment clones (shallow, at the pushed commit, using a short-lived
+  installation access token — see Landmines for the two-step token exchange) instead of reading an
+  uploaded tar. `SiteRuntimeTemplates.BuildContextAsync` currently starts from a `MemoryStream` of tar
+  bytes; the cleanest extension is a sibling method building the same Docker context directly from a
+  checked-out directory, skipping the tar round-trip entirely for this path — the generated Dockerfile
+  itself doesn't need to change at all, only where the source files come from.
+- Console: a "Git repository" card on Site Settings (mirroring the "Custom domains" card Phase 3 just
+  shipped) — connect/disconnect, pick production branch from the repo's real branch list, show the
+  connected repo + branch once set.
+
+Explicitly **not** in this phase (see Non-goals in the eventual kickoff prompt for the full list): commit
+statuses/PR comments, branch-pattern filters beyond one fixed production branch (Appwrite only added that
+in a later 1.9.5 release — a real future enhancement, not v1), any git provider besides GitHub.
