@@ -14,5 +14,6 @@
     <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
     <ProjectReference Include="..\Praxy.Auth\Praxy.Auth.csproj" />
     <ProjectReference Include="..\Praxy.Tables\Praxy.Tables.csproj" />
+    <ProjectReference Include="..\Praxy.Vcs\Praxy.Vcs.csproj" />
   </ItemGroup>
 </Project>

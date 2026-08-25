@@ -6,6 +6,7 @@ using Praxy.Persistence;
 using Praxy.Persistence.Entities;
 using Praxy.Sites;
 using Praxy.Tables.Quotas;
+using Praxy.Vcs;
 
 namespace Praxy.Api.Endpoints;
 
@@ -17,13 +18,17 @@ public sealed record SetSiteEnvVarRequest(string Value);
 
 public sealed record CreateSiteDomainRequest(string Hostname);
 
+public sealed record ConnectSiteGitRequest(string RepositoryFullName, string ProductionBranch);
+
 public sealed record SiteResponse(
     string Id, string Key, string Name, string RootDirectory, bool Enabled, string? ActiveDeploymentId,
-    bool IsRunning, string PublicUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    bool IsRunning, string PublicUrl, string? RepositoryFullName, string? ProductionBranch,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static SiteResponse From(Site s, bool isRunning, string publicUrl) => new(
         Ids.Wire(s.Id), s.Key, s.Name, s.RootDirectory, s.Enabled,
-        s.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isRunning, publicUrl, s.CreatedAt, s.UpdatedAt);
+        s.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isRunning, publicUrl,
+        s.RepositoryFullName, s.ProductionBranch, s.CreatedAt, s.UpdatedAt);
 }
 
 public sealed record SiteEnvVarResponse(string Key, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
@@ -32,17 +37,21 @@ public sealed record SiteEnvVarResponse(string Key, DateTimeOffset CreatedAt, Da
 }
 
 public sealed record SiteDeploymentResponse(
-    string Id, string Status, long SourceSizeBytes, string BuildLog, string? Error, string? ImageTag,
-    string? PreviewUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? ActivatedAt)
+    string Id, string Status, long SourceSizeBytes, string Source, string? CommitSha, string? CommitMessage,
+    string? Branch, string BuildLog, string? Error, string? ImageTag, string? PreviewUrl,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? ActivatedAt)
 {
     public static SiteDeploymentResponse From(SiteDeployment d, string? previewUrl) => new(
-        Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.BuildLog, d.Error, d.ImageTag, previewUrl, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
+        Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.Source, d.CommitSha, d.CommitMessage, d.Branch,
+        d.BuildLog, d.Error, d.ImageTag, previewUrl, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
 }
 
 public sealed record SiteDomainResponse(string Id, string Hostname, string Status, DateTimeOffset CreatedAt, DateTimeOffset? VerifiedAt)
 {
     public static SiteDomainResponse From(SiteDomain d) => new(Ids.Wire(d.Id), d.Hostname, d.Status, d.CreatedAt, d.VerifiedAt);
 }
+
+public sealed record SiteGitBranchesResponse(IReadOnlyList<string> Branches);
 
 public sealed record SiteListResponse(int Total, IReadOnlyList<SiteResponse> Sites);
 public sealed record SiteEnvVarListResponse(int Total, IReadOnlyList<SiteEnvVarResponse> Vars);
@@ -77,6 +86,10 @@ public static class SiteEndpoints
         admin.MapGet("/{siteId}/domains", ListDomains).Produces<SiteDomainListResponse>();
         admin.MapPost("/{siteId}/domains", AddDomain).Produces<SiteDomainResponse>(StatusCodes.Status201Created);
         admin.MapDelete("/{siteId}/domains/{domainId}", DeleteDomain).Produces(StatusCodes.Status204NoContent);
+
+        admin.MapGet("/{siteId}/git/branches", ListGitBranches).Produces<SiteGitBranchesResponse>();
+        admin.MapPost("/{siteId}/git", ConnectGit).Produces<SiteResponse>();
+        admin.MapDelete("/{siteId}/git", DisconnectGit).Produces<SiteResponse>();
 
         admin.MapGet("/{siteId}/deployments", ListDeployments).Produces<SiteDeploymentListResponse>();
         admin.MapPost("/{siteId}/deployments", CreateDeployment).Produces<SiteDeploymentResponse>(StatusCodes.Status201Created);
@@ -202,6 +215,37 @@ public static class SiteEndpoints
         await sites.DeleteDomainAsync(site.Id, parsed, ct);
         await AuditAsync(db, http, project.Id, "sites.domains.delete", $"site/{siteId}/domain/{domainId}", ct);
         return Results.NoContent();
+    }
+
+    // ---- git repository (Sites Phase 4) ------------------------------------------------------
+
+    private static async Task<IResult> ListGitBranches(
+        string siteId, string repository, HttpContext http, SitesService sites, GitHubAppService github, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        await FindAsync(sites, project.Id, siteId, ct);
+        var branches = await github.ListBranchesForRepositoryAsync(repository, ct);
+        return Results.Ok(new SiteGitBranchesResponse(branches));
+    }
+
+    private static async Task<IResult> ConnectGit(
+        string siteId, ConnectSiteGitRequest req, HttpContext http, PraxyDb db, SitesService sites, SitesOptions options, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        var connected = await sites.ConnectRepositoryAsync(site, req.RepositoryFullName, req.ProductionBranch, ct);
+        await AuditAsync(db, http, project.Id, "sites.git.connect", $"site/{siteId}", ct);
+        return Results.Ok(SiteResponse.From(connected, sites.IsRunning(connected), PublicUrl(connected, options)));
+    }
+
+    private static async Task<IResult> DisconnectGit(
+        string siteId, HttpContext http, PraxyDb db, SitesService sites, SitesOptions options, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        var disconnected = await sites.DisconnectRepositoryAsync(site, ct);
+        await AuditAsync(db, http, project.Id, "sites.git.disconnect", $"site/{siteId}", ct);
+        return Results.Ok(SiteResponse.From(disconnected, sites.IsRunning(disconnected), PublicUrl(disconnected, options)));
     }
 
     // ---- deployments ----------------------------------------------------------------------------

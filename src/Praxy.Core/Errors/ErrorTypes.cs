@@ -93,6 +93,12 @@ public static class ErrorTypes
     public const string SiteDomainNotFound = "site_domain_not_found";
     public const string SiteDomainAlreadyExists = "site_domain_already_exists";
     public const string SiteDomainInvalid = "site_domain_invalid";
+    public const string SiteGitRepositoryInvalid = "site_git_repository_invalid";
+
+    public const string VcsGithubNotConfigured = "vcs_github_not_configured";
+    public const string VcsGithubInstallationRequired = "vcs_github_installation_required";
+    public const string VcsGithubRepositoryInaccessible = "vcs_github_repository_inaccessible";
+    public const string VcsWebhookInvalidSignature = "vcs_webhook_invalid_signature";
 
     public const string MessagingProviderNotFound = "messaging_provider_not_found";
     public const string MessagingProviderInvalid = "messaging_provider_invalid";
@@ -183,6 +189,11 @@ public static class ErrorTypes
         SiteDomainNotFound,
         SiteDomainAlreadyExists,
         SiteDomainInvalid,
+        SiteGitRepositoryInvalid,
+        VcsGithubNotConfigured,
+        VcsGithubInstallationRequired,
+        VcsGithubRepositoryInaccessible,
+        VcsWebhookInvalidSignature,
         MessagingProviderNotFound,
         MessagingProviderInvalid,
         MessagingTopicNotFound,

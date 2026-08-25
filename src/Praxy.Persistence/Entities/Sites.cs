@@ -20,6 +20,17 @@ public class Site
     /// <summary>The deployment currently serving public traffic. Null until a build first succeeds.</summary>
     public Guid? ActiveDeploymentId { get; set; }
 
+    /// <summary>
+    /// The connected GitHub repository, <c>"owner/repo"</c> (Sites Phase 4) — null until a git
+    /// repository is connected via the console. Both this and <see cref="ProductionBranch"/> are set
+    /// together (<c>SitesService.ConnectRepositoryAsync</c>) and cleared together
+    /// (<c>DisconnectRepositoryAsync</c>); a site connects to at most one repository at a time.
+    /// </summary>
+    public string? RepositoryFullName { get; set; }
+
+    /// <summary>A push to this branch builds and auto-activates; a push to any other branch of the connected repository builds a deployment that stays on its Phase 2 preview URL without touching production.</summary>
+    public string? ProductionBranch { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -56,6 +67,13 @@ public class SiteDeployment
 
     /// <summary>queued | building | ready | failed</summary>
     public string Status { get; set; } = "queued";
+
+    /// <summary>upload | git — an "upload" deployment has a <see cref="SiteDeploymentSource"/> row; a "git" one instead has <see cref="CommitSha"/>/<see cref="CommitMessage"/>/<see cref="Branch"/> set and is cloned fresh by <c>SiteBuildWorker</c> at build time.</summary>
+    public string Source { get; set; } = "upload";
+
+    public string? CommitSha { get; set; }
+    public string? CommitMessage { get; set; }
+    public string? Branch { get; set; }
 
     public string BuildLog { get; set; } = "";
     public string? Error { get; set; }
