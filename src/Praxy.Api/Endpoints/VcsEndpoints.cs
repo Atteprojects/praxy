@@ -1,6 +1,7 @@
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
 using Praxy.Core.Errors;
+using Praxy.Functions;
 using Praxy.Persistence.Entities;
 using Praxy.Sites;
 using Praxy.Vcs;
@@ -76,7 +77,8 @@ public static class VcsEndpoints
     /// could be computed against the exact bytes GitHub signed, the landmine
     /// docs/handoff/sites-phase-4-prompt.md calls out explicitly.
     /// </summary>
-    private static async Task<IResult> Webhook(HttpContext http, VcsOptions options, SitesService sites, CancellationToken ct)
+    private static async Task<IResult> Webhook(
+        HttpContext http, VcsOptions options, SitesService sites, FunctionsService functions, CancellationToken ct)
     {
         var raw = await ReadCappedAsync(http.Request.Body, options.MaxWebhookBodyBytes, ct);
         var signature = http.Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
@@ -99,8 +101,12 @@ public static class VcsEndpoints
             throw PraxyException.ArgumentInvalid(ex.Message);
         }
 
-        // A push for a repository no connected site references is a no-op, not an error — HandleGitPushAsync's own query simply matches zero rows.
+        // A push for a repository no connected site/function references is a no-op, not an error —
+        // each HandleGitPushAsync's own query simply matches zero rows. Both run unconditionally, one
+        // after the other, so the same repository connected to a site and a function both deploy from
+        // a single push, independently — see FunctionsService.HandleGitPushAsync's own remarks.
         await sites.HandleGitPushAsync(evt, ct);
+        await functions.HandleGitPushAsync(evt, ct);
         return Results.NoContent();
     }
 

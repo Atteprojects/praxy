@@ -8,15 +8,19 @@ using Npgsql;
 using Praxy.Core;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Vcs;
 
 namespace Praxy.Functions;
 
 /// <summary>
 /// Consumes <c>praxy.function_deployments</c> with <c>FOR UPDATE SKIP LOCKED</c> — the same
 /// claim/execute shape as <c>SchemaJobRunner</c> and <c>WebhookDeliveryWorker</c>: build the
-/// uploaded tar into an image, stream the log into a queryable row as it happens, and on success
-/// auto-activate the deployment (evicting any previously-active deployment's warm container so the
-/// next invocation runs the new code, not a stale image in an already-warm container).
+/// uploaded tar (or, for a git-sourced deployment — Functions git integration — a fresh clone of the
+/// pushed commit) into an image, stream the log into a queryable row as it happens, and on success
+/// auto-activate the deployment — but only when the build came from an upload, or from a git push to
+/// the function's configured production branch. A git-sourced push to any other branch builds and
+/// goes <c>ready</c> without activating, staying reachable only via the console's explicit "Activate"
+/// action, exactly the state an unactivated upload could already be in.
 /// </summary>
 public sealed class FunctionBuildWorker(
     IServiceScopeFactory scopeFactory,
@@ -24,6 +28,7 @@ public sealed class FunctionBuildWorker(
     FunctionsOptions options,
     DockerExecutor docker,
     WarmPool pool,
+    IGitRepositoryCloner cloner,
     ILogger<FunctionBuildWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -97,8 +102,9 @@ public sealed class FunctionBuildWorker(
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
-            RETURNING id, function_id, project_id, source_size_bytes, status, build_log, error,
-                      image_tag, created_at, updated_at, activated_at
+            RETURNING id, function_id, project_id, source_size_bytes, status, source, commit_sha,
+                      commit_message, branch, build_log, error, image_tag, created_at, updated_at,
+                      activated_at
             """;
         await using var cmd = new NpgsqlCommand(sql, conn);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -112,12 +118,16 @@ public sealed class FunctionBuildWorker(
             ProjectId = reader.GetString(2),
             SourceSizeBytes = reader.GetInt64(3),
             Status = reader.GetString(4),
-            BuildLog = reader.GetString(5),
-            Error = reader.IsDBNull(6) ? null : reader.GetString(6),
-            ImageTag = reader.IsDBNull(7) ? null : reader.GetString(7),
-            CreatedAt = reader.GetFieldValue<DateTimeOffset>(8),
-            UpdatedAt = reader.GetFieldValue<DateTimeOffset>(9),
-            ActivatedAt = reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10),
+            Source = reader.GetString(5),
+            CommitSha = reader.IsDBNull(6) ? null : reader.GetString(6),
+            CommitMessage = reader.IsDBNull(7) ? null : reader.GetString(7),
+            Branch = reader.IsDBNull(8) ? null : reader.GetString(8),
+            BuildLog = reader.GetString(9),
+            Error = reader.IsDBNull(10) ? null : reader.GetString(10),
+            ImageTag = reader.IsDBNull(11) ? null : reader.GetString(11),
+            CreatedAt = reader.GetFieldValue<DateTimeOffset>(12),
+            UpdatedAt = reader.GetFieldValue<DateTimeOffset>(13),
+            ActivatedAt = reader.IsDBNull(14) ? null : reader.GetFieldValue<DateTimeOffset>(14),
         };
     }
 
@@ -126,11 +136,20 @@ public sealed class FunctionBuildWorker(
         using var loadScope = scopeFactory.CreateScope();
         var loadDb = loadScope.ServiceProvider.GetRequiredService<PraxyDb>();
         var fn = await loadDb.Functions.FirstOrDefaultAsync(f => f.Id == deployment.FunctionId, ct);
-        var source = await loadDb.FunctionDeploymentSources.FirstOrDefaultAsync(s => s.DeploymentId == deployment.Id, ct);
+        var isGit = deployment.Source == "git";
 
-        if (fn is null || source is null)
+        // An upload-sourced deployment needs its stored tar bytes; a git-sourced one instead needs
+        // the function to still have a connected repository and the deployment to carry the commit it
+        // was queued for — either missing means there's nothing left to build from.
+        var source = isGit ? null : await loadDb.FunctionDeploymentSources.FirstOrDefaultAsync(s => s.DeploymentId == deployment.Id, ct);
+        var missingSource = isGit
+            ? fn?.RepositoryFullName is null || deployment.CommitSha is null
+            : source is null;
+        if (fn is null || missingSource)
         {
-            await FinalizeFailedAsync(deployment.Id, "", "Function or uploaded source no longer exists.", ct);
+            await FinalizeFailedAsync(deployment.Id, "",
+                isGit ? "Function, its connected repository, or the pushed commit no longer exists."
+                      : "Function or uploaded source no longer exists.", ct);
             return;
         }
 
@@ -145,12 +164,27 @@ public sealed class FunctionBuildWorker(
         DockerExecutor.BuildResult result;
         try
         {
-            await using var userTar = new MemoryStream(source.Tar);
-            await using var context = await RuntimeTemplates.BuildContextAsync(fn.Runtime, fn.Entrypoint, baseImage, userTar, ct);
-            result = await docker.BuildImageAsync(context, imageTag, line =>
+            if (isGit)
             {
-                lock (logLock) logBuffer.Append(line);
-            }, ct);
+                var githubApp = loadScope.ServiceProvider.GetRequiredService<GitHubAppService>();
+                var token = await githubApp.GetInstallationTokenForRepositoryAsync(fn.RepositoryFullName!, ct);
+                await using var checkout = await cloner.CloneAsync(fn.RepositoryFullName!, deployment.CommitSha!, token, ct);
+                await using var context = await RuntimeTemplates.BuildContextFromDirectoryAsync(
+                    fn.Runtime, fn.Entrypoint, baseImage, checkout.Path, ct);
+                result = await docker.BuildImageAsync(context, imageTag, line =>
+                {
+                    lock (logLock) logBuffer.Append(line);
+                }, ct);
+            }
+            else
+            {
+                await using var userTar = new MemoryStream(source!.Tar);
+                await using var context = await RuntimeTemplates.BuildContextAsync(fn.Runtime, fn.Entrypoint, baseImage, userTar, ct);
+                result = await docker.BuildImageAsync(context, imageTag, line =>
+                {
+                    lock (logLock) logBuffer.Append(line);
+                }, ct);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -195,13 +229,20 @@ public sealed class FunctionBuildWorker(
             .SetProperty(d => d.Status, "ready")
             .SetProperty(d => d.BuildLog, finalLog)
             .SetProperty(d => d.ImageTag, imageTag)
-            .SetProperty(d => d.ActivatedAt, now)
             .SetProperty(d => d.UpdatedAt, now), ct);
 
-        // Auto-activate the freshest successful build — the console's explicit "Activate" action on
-        // any ready deployment still exists for rollback; this default is what the owner-test's
-        // "deploy from console → invoke sync" expects without an extra click.
+        // Auto-activate every successful upload-sourced build — the console's explicit "Activate"
+        // action on any ready deployment still exists for rollback; this default is what the
+        // owner-test's "deploy from console → invoke sync" expects without an extra click. A
+        // git-sourced build only auto-activates when it came from the function's configured
+        // production branch (Functions git integration); a push to any other branch builds and stops
+        // here, staying `ready` but unactivated until the console's explicit Activate action.
+        if (isGit && deployment.Branch != fn.ProductionBranch)
+            return;
+
         var previousActiveId = fn.ActiveDeploymentId;
+        await finalizeDb.FunctionDeployments.Where(d => d.Id == deployment.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.ActivatedAt, now), ct);
         await finalizeDb.Functions.Where(f => f.Id == fn.Id).ExecuteUpdateAsync(s => s
             .SetProperty(f => f.ActiveDeploymentId, deployment.Id)
             .SetProperty(f => f.UpdatedAt, now), ct);

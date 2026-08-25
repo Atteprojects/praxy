@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Cronos;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -6,6 +7,7 @@ using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Vcs;
 
 namespace Praxy.Functions;
 
@@ -15,7 +17,9 @@ namespace Praxy.Functions;
 /// (<see cref="FunctionBuildWorker"/>) and invoking (<see cref="FunctionExecutionService"/>) never
 /// route through here.
 /// </summary>
-public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool, FunctionBuildSignal buildSignal, FunctionsOptions options)
+public sealed partial class FunctionsService(
+    PraxyDb db, InstanceKey key, WarmPool pool, FunctionBuildSignal buildSignal, FunctionsOptions options,
+    GitHubAppService github)
 {
     /// <summary>Cap on a function's execute list — a bound like every other limit, not a silent free-for-all.</summary>
     public const int MaxExecuteRoles = 100;
@@ -301,5 +305,85 @@ public sealed class FunctionsService(PraxyDb db, InstanceKey key, WarmPool pool,
         var total = await query.CountAsync(ct);
         var page = await query.Skip(offset).Take(limit).ToListAsync(ct);
         return (total, page);
+    }
+
+    // ---- git repository (Functions git integration) --------------------------------------------
+
+    // GitHub's own username/repo-name rules, permissively — the real gate is EnsureRepositoryAccessibleAsync
+    // actually asking GitHub, this just keeps obviously-malformed input from reaching that call.
+    [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$")]
+    private static partial Regex RepositoryPattern();
+
+    /// <summary>Current connection state — both null until a repository is connected.</summary>
+    public (string? RepositoryFullName, string? ProductionBranch) GitConnection(FunctionDef fn) =>
+        (fn.RepositoryFullName, fn.ProductionBranch);
+
+    /// <summary>
+    /// Connects <paramref name="fn"/> to a GitHub repository: validates the <c>owner/repo</c> shape,
+    /// confirms the instance's GitHub App installation actually covers it, and confirms
+    /// <paramref name="productionBranch"/> is a real branch of that repository — mirrors
+    /// <c>SitesService.ConnectRepositoryAsync</c> exactly.
+    /// </summary>
+    public async Task<FunctionDef> ConnectRepositoryAsync(FunctionDef fn, string repositoryFullName, string productionBranch, CancellationToken ct)
+    {
+        if (!RepositoryPattern().IsMatch(repositoryFullName) || string.IsNullOrWhiteSpace(productionBranch) || productionBranch.Length > 256)
+            throw new PraxyException(400, ErrorTypes.FunctionGitRepositoryInvalid,
+                "Invalid repository or branch.");
+
+        await github.EnsureRepositoryAccessibleAsync(repositoryFullName, ct);
+        var branches = await github.ListBranchesForRepositoryAsync(repositoryFullName, ct);
+        if (!branches.Contains(productionBranch))
+            throw new PraxyException(400, ErrorTypes.FunctionGitRepositoryInvalid,
+                $"'{productionBranch}' is not a branch of '{repositoryFullName}'.");
+
+        fn.RepositoryFullName = repositoryFullName;
+        fn.ProductionBranch = productionBranch;
+        fn.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return fn;
+    }
+
+    public async Task<FunctionDef> DisconnectRepositoryAsync(FunctionDef fn, CancellationToken ct)
+    {
+        fn.RepositoryFullName = null;
+        fn.ProductionBranch = null;
+        fn.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return fn;
+    }
+
+    /// <summary>Queues a git-sourced build — no <see cref="FunctionDeploymentSource"/> row (there are no uploaded bytes); <see cref="FunctionBuildWorker"/> clones the commit fresh at build time.</summary>
+    public async Task<FunctionDeployment> CreateGitDeploymentAsync(
+        FunctionDef fn, string commitSha, string commitMessage, string branch, CancellationToken ct)
+    {
+        var deployment = new FunctionDeployment
+        {
+            Id = Ids.NewUuid(),
+            FunctionId = fn.Id,
+            ProjectId = fn.ProjectId,
+            Source = "git",
+            CommitSha = commitSha,
+            CommitMessage = commitMessage,
+            Branch = branch,
+        };
+        db.FunctionDeployments.Add(deployment);
+        await db.SaveChangesAsync(ct);
+        buildSignal.Notify();
+        return deployment;
+    }
+
+    /// <summary>
+    /// The webhook's dispatch target for Functions — matches a parsed push event against connected
+    /// functions and queues a deployment for each. A direct parallel query to
+    /// <c>SitesService.HandleGitPushAsync</c>, not a shared abstraction — the same repository can be
+    /// connected to a site and a function simultaneously, and a single push must trigger both
+    /// independently. A push for a repository no function references is a no-op, not an error.
+    /// </summary>
+    public async Task<int> HandleGitPushAsync(GitHubPushEvent evt, CancellationToken ct)
+    {
+        var matches = await db.Functions.Where(f => f.RepositoryFullName == evt.RepositoryFullName).ToListAsync(ct);
+        foreach (var fn in matches)
+            await CreateGitDeploymentAsync(fn, evt.CommitSha, evt.CommitMessage, evt.Branch, ct);
+        return matches.Count;
     }
 }
