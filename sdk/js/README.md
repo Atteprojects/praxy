@@ -1,7 +1,9 @@
 # Praxy Next.js SDK
 
-The second Praxy SDK, after Flutter — groundwork for an eventual Sites-style hosting feature (itself
-not yet planned; see `docs/research/nextjs-sdk.md`). **App Router only** — no Pages Router support.
+The second Praxy SDK, after Flutter — originally built as groundwork for [Sites](../../docs/research/praxy-sites.md),
+Praxy's self-hosted Next.js hosting feature (see `docs/research/nextjs-sdk.md` for that history); Sites has
+since shipped and is what actually runs a Next.js app built with this SDK. **App Router only** — no
+Pages Router support.
 
 ## Packages
 
