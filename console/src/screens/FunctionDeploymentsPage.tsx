@@ -10,7 +10,7 @@ import { Badge, EmptyState, ErrorNote, FullPageSpinner, Sheet, Spinner, timeAgo 
 import type { FunctionDeployment, FunctionDeploymentStatus } from "../api/types";
 import { FunctionDetailHeader } from "./FunctionDetailHeader";
 
-const HEADERS = ["Created", "Status", "Size", "Image", ""];
+const HEADERS = ["Created", "Status", "Source", "Size", "Image", ""];
 
 export function FunctionDeploymentsPage() {
   const { projectId, functionId } = useParams({ strict: false }) as { projectId: string; functionId: string };
@@ -31,6 +31,20 @@ export function FunctionDeploymentsPage() {
       id: "status",
       header: "Status",
       cell: ({ row }) => <DeploymentStatusBadge status={row.original.status} />,
+    },
+    {
+      id: "source",
+      header: "Source",
+      cell: ({ row }) => {
+        const d = row.original;
+        if (d.source !== "git") return <span className="text-xs text-ink-600">upload</span>;
+        return (
+          <span className="font-mono text-xs text-ink-400" title={d.commitMessage ?? undefined}>
+            {d.branch}
+            {d.commitSha ? ` @ ${d.commitSha.slice(0, 7)}` : ""}
+          </span>
+        );
+      },
     },
     {
       id: "size",
@@ -171,6 +185,18 @@ function DeploymentSheet({
           <DeploymentStatusBadge status={d.status} />
           {d.imageTag ? <span className="font-mono text-xs text-ink-400">{d.imageTag}</span> : null}
         </div>
+        {d.source === "git" ? (
+          <div className="text-xs text-ink-500">
+            pushed to <span className="font-mono text-ink-300">{d.branch}</span>
+            {d.commitSha ? (
+              <>
+                {" "}
+                @ <span className="font-mono text-ink-300">{d.commitSha.slice(0, 7)}</span>
+              </>
+            ) : null}
+            {d.commitMessage ? <span> — {d.commitMessage}</span> : null}
+          </div>
+        ) : null}
         {d.error ? <ErrorNote message={d.error} /> : null}
         <div>
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-500">

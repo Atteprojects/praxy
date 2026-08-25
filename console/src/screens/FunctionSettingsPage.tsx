@@ -1,12 +1,14 @@
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  useDeleteEnvVar, useDeleteFunction, useFunction, useFunctionEnvVars, useSetEnvVar, useUpdateFunction,
+  useConnectFunctionGit, useDeleteEnvVar, useDeleteFunction, useDisconnectFunctionGit, useFunction,
+  useFunctionEnvVars, useFunctionGitBranches, useSetEnvVar, useUpdateFunction,
 } from "../api/functions";
+import { useGithubInstallations } from "../api/vcs";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { AddRoleButton, RoleLabel } from "../components/RolePicker";
-import { ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
+import { Badge, ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
 import { FunctionDetailHeader } from "./FunctionDetailHeader";
 
 const EVENT_PRESETS = [
@@ -24,6 +26,9 @@ export function FunctionSettingsPage() {
   const setVar = useSetEnvVar(projectId, functionId);
   const deleteVar = useDeleteEnvVar(projectId, functionId);
   const deleteFn = useDeleteFunction(projectId);
+  const installations = useGithubInstallations();
+  const connectGit = useConnectFunctionGit(projectId, functionId);
+  const disconnectGit = useDisconnectFunctionGit(projectId, functionId);
 
   const [entrypoint, setEntrypoint] = useState<string | null>(null);
   const [timeoutSeconds, setTimeoutSeconds] = useState<number | null>(null);
@@ -31,11 +36,16 @@ export function FunctionSettingsPage() {
   const [newVarKey, setNewVarKey] = useState("");
   const [newVarValue, setNewVarValue] = useState("");
   const [confirmName, setConfirmName] = useState("");
+  const [repoInput, setRepoInput] = useState("");
+  const [branchInput, setBranchInput] = useState("");
   const error = update.error instanceof ApiError ? update.error : null;
+  const gitError = connectGit.error instanceof ApiError ? connectGit.error : null;
+  const branches = useFunctionGitBranches(projectId, functionId, repoInput.trim());
 
-  if (fn.isPending || envVars.isPending) return <FullPageSpinner />;
+  if (fn.isPending || envVars.isPending || installations.isPending) return <FullPageSpinner />;
   if (fn.isError) throw fn.error;
   if (envVars.isError) throw envVars.error;
+  if (installations.isError) throw installations.error;
 
   const events = fn.data.events;
   const execute = fn.data.execute;
@@ -264,6 +274,95 @@ export function FunctionSettingsPage() {
               {setVar.isPending ? <Spinner /> : "+ Add"}
             </button>
           </div>
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">Git repository</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Connect a GitHub repository to push-to-deploy: a push to the production branch builds and
+            activates automatically, just like an upload does today. A push to any other branch builds
+            a deployment too, but it stays <span className="font-mono text-ink-300">ready</span> without
+            activating — production stays untouched.
+          </p>
+
+          {installations.data.total === 0 ? (
+            <p className="text-xs text-ink-500">
+              No GitHub App is connected to this instance yet.{" "}
+              <Link to="/project/$projectId/github" params={{ projectId }} className="text-ink-300 underline">
+                Connect one in Settings → GitHub
+              </Link>{" "}
+              first.
+            </p>
+          ) : fn.data.repositoryFullName ? (
+            <div className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-ink-200">{fn.data.repositoryFullName}</span>
+                <Badge>{fn.data.productionBranch}</Badge>
+              </div>
+              <ConfirmButton
+                label="Disconnect"
+                title="Disconnect repository?"
+                confirmLabel="Disconnect"
+                successMessage="Repository disconnected."
+                className="text-xs text-ink-500 hover:text-coral-400 cursor-pointer"
+                body={
+                  <>
+                    Pushes to <span className="font-mono text-ink-300">{fn.data.repositoryFullName}</span>{" "}
+                    stop deploying this function. Its commits and branches on GitHub are untouched — this
+                    only disconnects Praxy's side.
+                  </>
+                }
+                onConfirm={() => disconnectGit.mutateAsync()}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {gitError ? <ErrorNote message={gitError.message} /> : null}
+              <input
+                className="input-base w-full font-mono text-xs"
+                placeholder="owner/repo"
+                value={repoInput}
+                onChange={(e) => {
+                  setRepoInput(e.target.value);
+                  setBranchInput("");
+                }}
+              />
+              <div className="flex gap-2">
+                <select
+                  className="input-base flex-1 text-xs"
+                  value={branchInput}
+                  onChange={(e) => setBranchInput(e.target.value)}
+                  disabled={!branches.data || branches.data.branches.length === 0}
+                >
+                  <option value="">
+                    {branches.isFetching
+                      ? "Loading branches…"
+                      : branches.data
+                        ? "Select the production branch"
+                        : "Enter a repository above"}
+                  </option>
+                  {branches.data?.branches.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn-ghost shrink-0 border border-ink-700 text-xs"
+                  disabled={!branchInput || connectGit.isPending}
+                  onClick={() =>
+                    void connectGit.mutateAsync({ repositoryFullName: repoInput.trim(), productionBranch: branchInput })
+                  }
+                >
+                  {connectGit.isPending ? <Spinner /> : "Connect"}
+                </button>
+              </div>
+              {branches.isError ? (
+                <p className="text-[11px] text-coral-400">
+                  {branches.error instanceof ApiError ? branches.error.message : "Couldn't load branches."}
+                </p>
+              ) : null}
+            </div>
+          )}
         </section>
 
         <section className="surface border-coral-400/20 p-5">
