@@ -233,13 +233,16 @@ same way Phase 1's own fix was — see `research/dotnet-stack.md`'s Caddy sectio
 (the existing wildcard already covers any depth). Full design: `research/praxy-sites.md`'s "Phase 2"
 section.
 
-**Sites Phase 3 — custom domains** (kickoff: `docs/handoff/sites-phase-3-prompt.md`, written
-2026-08-24) — not yet implemented. Real design in `research/praxy-sites.md` (on-demand TLS, already
-built in Phase 1, generalizes to custom domains almost for free — no DNS-provider credentials needed,
-unlike Appwrite's own self-host approach). The kickoff prompt also folds in the exact current shape of
-`SiteHostPattern`/`SiteProxyMiddleware`/`AskTls` (grounded in the real post-Phase-2 code, not the
-original sketch) and the hard-won "always restart Caddy after touching `deploy/Caddyfile`" lesson from
-that phase's own production incident.
+**Sites Phase 3 — custom domains — shipped 2026-08-24** (report:
+`docs/handoff/sites-phase-3-report.md`). A site owner can point their own domain at a site's active
+deployment via a new `site_domains` table (globally unique hostname, `pending`/`verified` status) — a
+new `SiteCustomDomainLookup` exact-match DB lookup sits alongside `SiteHostPattern`'s pure-parse
+`TryParse`, consumed by both `SiteProxyMiddleware` and `_ask-tls`. On-demand TLS (Phase 1) generalizes to
+arbitrary hostnames almost for free via a fourth Caddy site block, a bare `https:// { tls { on_demand }
+}` catch-all — verified live against real Caddy for automation-policy shadowing, the same discipline
+Phase 1 and 2's own Caddy fixes were held to. A domain flips `pending → verified` on the first
+successfully proxied request through it, not inside `_ask-tls` (which only permits an ACME attempt, not
+proof it succeeded). Full design: `research/praxy-sites.md`'s "Phase 3" section.
 
 **Sites Phase 4 — git integration** (push-to-deploy, PR previews). Sketch only in `research/praxy-sites.md`
 — the largest and most structurally different phase (a self-hosted owner-configured GitHub App, nothing

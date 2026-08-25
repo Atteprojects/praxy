@@ -277,6 +277,41 @@ up. `Praxy:Quotas:MaxPreviewContainersPerProject` bounds how many of these can b
 project at once, so a project that's accumulated many stale `ready` deployments can't be previewed all
 at once into exhausting the host's Docker/memory capacity.
 
+### Custom domains
+
+A site's built-in `<key>.<projectId>.<PRAXY_SITES_DOMAIN>` URL always keeps working — a custom domain
+is an additional way to reach a site's **active** deployment, not a replacement (no preview-URL
+equivalent for custom domains). Add one from the site's Settings page in the console; it needs no
+extra config on this box's side, just a DNS record you configure at your own domain's registrar/DNS
+host:
+
+- **A subdomain of your own domain** (e.g. `app.example.com`): add a `CNAME` record pointing at the
+  site's own `<key>.<projectId>.<PRAXY_SITES_DOMAIN>` hostname (shown on the Settings page next to the
+  add-domain form). This is the recommended path — no need to know or track this box's own IP.
+- **An apex/root domain** (e.g. `example.com`): DNS doesn't allow `CNAME` at a zone apex, so point an
+  `A`/`AAAA` record directly at this box's own public IP instead — the same IP your `*.sites.<domain>`
+  wildcard record already resolves to. Praxy doesn't know or auto-fill this IP for you; it's the same
+  one you already configured for `PRAXY_DOMAIN`/`PRAXY_SITES_DOMAIN`.
+
+**`pending` vs `verified`**: a newly added domain starts `pending`. It flips to `verified` on its own,
+with no separate step or polling job, the first time a real request through that hostname actually
+completes — which only happens after Caddy's on-demand TLS has already gotten it a real Let's Encrypt
+certificate (the same on-demand mechanism Phase 1's wildcard hostnames use, generalized to arbitrary
+hostnames via an exact `site_domains` lookup — see `docs/research/dotnet-stack.md`'s Caddy section for
+the verified automation-policy/shadowing behavior). Until your DNS record resolves to this box,
+requests to a `pending` domain simply won't arrive here at all — nothing to debug on the Praxy side; fix
+the DNS record and it resolves the next real visit. An unregistered or made-up hostname is rejected by
+the `_ask-tls` endpoint before Caddy ever attempts a certificate, so it never gets one.
+
+Removing a domain from the console stops it resolving to the site immediately. It does not touch or
+remove the DNS record itself — take that down separately at your registrar if you're retiring the
+domain entirely, or it'll keep pointing at this box with nothing behind it.
+
+Same Caddyfile landmine as the section above applies here too: this feature adds a new catch-all
+`https://` site block to `deploy/Caddyfile`. **After deploying it, restart Caddy** (`docker compose -f
+deploy/docker-compose.yml restart caddy`) — bind-mounting the new file alone isn't enough, Caddy only
+reads it at its own startup. See the Upgrading section below.
+
 ## Backup and restore
 
 Two things need backing up, because they live in different Postgres schemas and neither one alone is
