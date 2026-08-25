@@ -274,6 +274,53 @@
         }
       }
     },
+    "/v1/vcs/github/callback": {
+      "get": {
+        "tags": [
+          "VcsEndpoints"
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vcs/github/webhook": {
+      "post": {
+        "tags": [
+          "VcsEndpoints"
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/console": {
       "get": {
         "tags": [
@@ -10252,6 +10299,139 @@
         }
       }
     },
+    "/v1/console/projects/{projectId}/sites/{siteId}/git/branches": {
+      "get": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repository",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteGitBranchesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/projects/{projectId}/sites/{siteId}/git": {
+      "post": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectSiteGitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "SiteEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "siteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/console/projects/{projectId}/sites/{siteId}/deployments": {
       "get": {
         "tags": [
@@ -10444,6 +10624,64 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SiteDeploymentResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/vcs/github/installations": {
+      "get": {
+        "tags": [
+          "VcsEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VcsInstallationListResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/console/vcs/github/install-url": {
+      "get": {
+        "tags": [
+          "VcsEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VcsInstallUrlResponse"
                 }
               }
             }
@@ -10998,6 +11236,21 @@
             "type": "string"
           },
           "secret": {
+            "type": "string"
+          }
+        }
+      },
+      "ConnectSiteGitRequest": {
+        "required": [
+          "repositoryFullName",
+          "productionBranch"
+        ],
+        "type": "object",
+        "properties": {
+          "repositoryFullName": {
+            "type": "string"
+          },
+          "productionBranch": {
             "type": "string"
           }
         }
@@ -13571,6 +13824,10 @@
           "id",
           "status",
           "sourceSizeBytes",
+          "source",
+          "commitSha",
+          "commitMessage",
+          "branch",
           "buildLog",
           "error",
           "imageTag",
@@ -13594,6 +13851,27 @@
               "string"
             ],
             "format": "int64"
+          },
+          "source": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "commitMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "branch": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "buildLog": {
             "type": "string"
@@ -13732,6 +14010,20 @@
           }
         }
       },
+      "SiteGitBranchesResponse": {
+        "required": [
+          "branches"
+        ],
+        "type": "object",
+        "properties": {
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "SiteListResponse": {
         "required": [
           "total",
@@ -13765,6 +14057,8 @@
           "activeDeploymentId",
           "isRunning",
           "publicUrl",
+          "repositoryFullName",
+          "productionBranch",
           "createdAt",
           "updatedAt"
         ],
@@ -13796,6 +14090,18 @@
           },
           "publicUrl": {
             "type": "string"
+          },
+          "repositoryFullName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "productionBranch": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "createdAt": {
             "type": "string",
@@ -14504,6 +14810,73 @@
           }
         }
       },
+      "VcsInstallationListResponse": {
+        "required": [
+          "total",
+          "installations"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VcsInstallationResponse"
+            }
+          }
+        }
+      },
+      "VcsInstallationResponse": {
+        "required": [
+          "id",
+          "installationId",
+          "accountLogin",
+          "accountType",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "installationId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "accountLogin": {
+            "type": "string"
+          },
+          "accountType": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VcsInstallUrlResponse": {
+        "required": [
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        }
+      },
       "WebhookDeliveryListResponse": {
         "required": [
           "total",
@@ -14697,6 +15070,9 @@
     },
     {
       "name": "SiteEndpoints"
+    },
+    {
+      "name": "VcsEndpoints"
     },
     {
       "name": "ConsoleAuthEndpoints"

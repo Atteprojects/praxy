@@ -16,6 +16,7 @@ import { FunctionDeploymentsPage } from "./screens/FunctionDeploymentsPage";
 import { FunctionExecutionsPage } from "./screens/FunctionExecutionsPage";
 import { FunctionSettingsPage } from "./screens/FunctionSettingsPage";
 import { FunctionsPage } from "./screens/FunctionsPage";
+import { GitHubSettingsPage } from "./screens/GitHubSettingsPage";
 import { IndexesPage } from "./screens/IndexesPage";
 import { LoginPage } from "./screens/LoginPage";
 import { MessagesPage } from "./screens/MessagesPage";
@@ -268,6 +269,12 @@ const platformsRoute = createRoute({
   component: PlatformsPage,
 });
 
+const githubRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "github",
+  component: GitHubSettingsPage,
+});
+
 const auditRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "audit",
@@ -307,6 +314,7 @@ const routeTree = rootRoute.addChildren([
       messagingProvidersRoute,
       apiKeysRoute,
       platformsRoute,
+      githubRoute,
       auditRoute,
     ]),
   ]),

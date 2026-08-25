@@ -1,0 +1,78 @@
+import { useGithubInstallUrl, useGithubInstallations } from "../api/vcs";
+import { ApiError } from "../api/client";
+import { DataTable, EmptyState, ErrorNote, FullPageSpinner, PageHeader, Spinner, timeAgo } from "../components/ui";
+
+const HEADERS = ["Account", "Type", "Installation ID", "Connected"];
+
+/**
+ * Sites Phase 4: instance-wide GitHub App status — not project- or site-scoped, even though it lives
+ * under a project's nav for shell consistency (the console has no top-level, outside-project route
+ * today). A site connects to a specific repository from its own Settings page once an installation
+ * shows up here.
+ */
+export function GitHubSettingsPage() {
+  const installations = useGithubInstallations();
+  const installUrl = useGithubInstallUrl();
+
+  if (installations.isPending) return <FullPageSpinner />;
+  if (installations.isError) throw installations.error;
+
+  // Distinct from "no installation yet" (the table below is simply empty) — this is "the instance
+  // itself was never pointed at a GitHub App" (Praxy:Vcs:GitHub:AppId/PrivateKey unset), the default
+  // state for every fresh self-host until the owner runs the setup in docs/self-host.md.
+  const notConfigured = installUrl.error instanceof ApiError && installUrl.error.type === "vcs_github_not_configured";
+
+  const connectButton = (
+    <button
+      type="button"
+      className="btn-primary disabled:opacity-40"
+      disabled={!installUrl.data}
+      onClick={() => {
+        if (installUrl.data) window.location.href = installUrl.data.url;
+      }}
+    >
+      {installUrl.isPending ? <Spinner /> : "Connect GitHub"}
+    </button>
+  );
+
+  return (
+    <div>
+      <PageHeader
+        title="GitHub"
+        description="Install Praxy's GitHub App for this instance once, then any project's sites can connect a repository to push-to-deploy. One installation can cover repositories across every project — it isn't tied to the one you're viewing."
+        actions={connectButton}
+      />
+
+      {notConfigured ? (
+        <div className="mb-4">
+          <ErrorNote message="This instance's GitHub App isn't set up yet — see docs/self-host.md's Git integration section for the exact steps, then set the five Praxy:Vcs:GitHub:* config values and restart." />
+        </div>
+      ) : installUrl.isError ? (
+        <div className="mb-4">
+          <ErrorNote
+            message={installUrl.error instanceof ApiError ? installUrl.error.message : "Couldn't load the GitHub install link."}
+          />
+        </div>
+      ) : null}
+
+      {installations.data.total === 0 ? (
+        <EmptyState
+          headers={HEADERS}
+          title="No GitHub App installation connected yet."
+          action={connectButton}
+        />
+      ) : (
+        <DataTable headers={HEADERS}>
+          {installations.data.installations.map((i) => (
+            <tr key={i.id}>
+              <td className="px-4 py-3 font-medium text-ink-100">{i.accountLogin}</td>
+              <td className="px-4 py-3 text-ink-400">{i.accountType}</td>
+              <td className="px-4 py-3 font-mono text-xs text-ink-400">{i.installationId}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(i.createdAt)}</td>
+            </tr>
+          ))}
+        </DataTable>
+      )}
+    </div>
+  );
+}

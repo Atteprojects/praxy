@@ -45,6 +45,7 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<SiteDeployment> SiteDeployments => Set<SiteDeployment>();
     public DbSet<SiteDeploymentSource> SiteDeploymentSources => Set<SiteDeploymentSource>();
     public DbSet<SiteDomain> SiteDomains => Set<SiteDomain>();
+    public DbSet<VcsInstallation> VcsInstallations => Set<VcsInstallation>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
     public DbSet<MessagingTarget> MessagingTargets => Set<MessagingTarget>();
@@ -345,6 +346,8 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Key).HasMaxLength(64);
             e.Property(x => x.Name).HasMaxLength(128);
             e.Property(x => x.RootDirectory).HasMaxLength(256);
+            e.Property(x => x.RepositoryFullName).HasMaxLength(256);
+            e.Property(x => x.ProductionBranch).HasMaxLength(256);
             e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
         });
@@ -360,8 +363,13 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
 
         b.Entity<SiteDeployment>(e =>
         {
-            e.ToTable("site_deployments");
+            e.ToTable("site_deployments", t => t.HasCheckConstraint(
+                "ck_site_deployments_source", "source in ('upload', 'git')"));
             e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Source).HasMaxLength(16);
+            e.Property(x => x.CommitSha).HasMaxLength(40);
+            e.Property(x => x.CommitMessage).HasMaxLength(4096);
+            e.Property(x => x.Branch).HasMaxLength(256);
             e.Property(x => x.Error).HasMaxLength(4096);
             e.Property(x => x.ImageTag).HasMaxLength(256);
             e.Property(x => x.ContainerId).HasMaxLength(128);
@@ -390,6 +398,14 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             // Globally unique, not per-project — two different sites can't claim the same real-world
             // hostname. Also SiteProxyMiddleware's and _ask-tls's exact-match lookup index.
             e.HasIndex(x => x.Hostname).IsUnique();
+        });
+
+        b.Entity<VcsInstallation>(e =>
+        {
+            e.ToTable("vcs_installations");
+            e.Property(x => x.AccountLogin).HasMaxLength(256);
+            e.Property(x => x.AccountType).HasMaxLength(32);
+            e.HasIndex(x => x.InstallationId).IsUnique();
         });
 
         b.Entity<MessagingProvider>(e =>

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
   ErrorEnvelope, PraxySite, SiteDeployment, SiteDeploymentList, SiteDomain, SiteDomainList, SiteEnvVar,
-  SiteEnvVarList, SiteList,
+  SiteEnvVarList, SiteGitBranches, SiteList,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/sites`;
@@ -121,6 +121,42 @@ export function useDeleteSiteDomain(projectId: string, siteId: string) {
       api<void>(`${base(projectId)}/${siteId}/domains/${domainId}`, { method: "DELETE" }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "domains"] }),
+  });
+}
+
+// ---- git repository (Sites Phase 4) ----
+
+/** A repository's real branches, fetched live through the connected GitHub App installation — used to populate the production-branch picker before connecting. Only fires once the input actually looks like "owner/repo", so it isn't refetched on every keystroke; a short staleTime avoids refetching once it has. */
+export function useSiteGitBranches(projectId: string, siteId: string, repositoryFullName: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "sites", siteId, "git", "branches", repositoryFullName],
+    queryFn: () =>
+      api<SiteGitBranches>(`${base(projectId)}/${siteId}/git/branches?repository=${encodeURIComponent(repositoryFullName)}`),
+    enabled: /^[^/\s]+\/[^/\s]+$/.test(repositoryFullName),
+    staleTime: 30_000,
+  });
+}
+
+export function useConnectSiteGit(projectId: string, siteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { repositoryFullName: string; productionBranch: string }) =>
+      api<PraxySite>(`${base(projectId)}/${siteId}/git`, { method: "POST", body: input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites"] });
+    },
+  });
+}
+
+export function useDisconnectSiteGit(projectId: string, siteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<PraxySite>(`${base(projectId)}/${siteId}/git`, { method: "DELETE" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites"] });
+    },
   });
 }
 

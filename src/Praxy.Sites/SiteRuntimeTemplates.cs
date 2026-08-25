@@ -46,6 +46,47 @@ public static partial class SiteRuntimeTemplates
         return output;
     }
 
+    /// <summary>
+    /// The git-sourced sibling of <see cref="BuildContextAsync"/> (Sites Phase 4): same generated
+    /// Dockerfile, same output shape, but built directly from a checked-out working directory
+    /// (<c>SiteBuildWorker</c>'s fresh <c>IGitRepositoryCloner</c> clone) instead of an uploaded tar's
+    /// <see cref="MemoryStream"/> — no double round trip through a stored tar. <c>.git</c> is skipped;
+    /// everything else in <paramref name="checkoutDirectory"/> is packaged, same as the tar path
+    /// forwards every entry from the user's own upload.
+    /// </summary>
+    public static async Task<MemoryStream> BuildContextFromDirectoryAsync(
+        string rootDirectory, string baseImage, IReadOnlyCollection<string> envVarKeys, string checkoutDirectory,
+        CancellationToken ct)
+    {
+        var output = new MemoryStream();
+        await using (var writer = new TarWriter(output, TarEntryFormat.Pax, leaveOpen: true))
+        {
+            var root = new DirectoryInfo(checkoutDirectory);
+            foreach (var file in root.EnumerateFiles("*", SearchOption.AllDirectories))
+            {
+                ct.ThrowIfCancellationRequested();
+                var relative = System.IO.Path.GetRelativePath(checkoutDirectory, file.FullName).Replace('\\', '/');
+                if (relative == ".git" || relative.StartsWith(".git/", StringComparison.Ordinal))
+                    continue;
+
+                var entry = new PaxTarEntry(TarEntryType.RegularFile, relative);
+                // WriteEntryAsync copies the entry's data during the call, not lazily — safe to close
+                // the file handle the moment it returns rather than leaving hundreds of them open
+                // (unlike the MemoryStream entries elsewhere in this file, an unclosed FileStream is a
+                // real leaked OS handle, not just heap memory the GC will eventually reclaim).
+                await using (var fileStream = File.OpenRead(file.FullName))
+                {
+                    entry.DataStream = fileStream;
+                    await writer.WriteEntryAsync(entry, ct);
+                }
+            }
+
+            await WriteTextEntryAsync(writer, "Dockerfile", Dockerfile(rootDirectory, baseImage, envVarKeys), ct);
+        }
+        output.Position = 0;
+        return output;
+    }
+
     private static async Task WriteTextEntryAsync(TarWriter writer, string name, string content, CancellationToken ct)
     {
         var entry = new PaxTarEntry(TarEntryType.RegularFile, name)

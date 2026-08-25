@@ -1,9 +1,11 @@
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  useAddSiteDomain, useDeleteSite, useDeleteSiteDomain, useDeleteSiteEnvVar, useSite, useSiteDomains,
-  useSiteEnvVars, useSetSiteEnvVar, useUpdateSite,
+  useAddSiteDomain, useConnectSiteGit, useDeleteSite, useDeleteSiteDomain, useDeleteSiteEnvVar,
+  useDisconnectSiteGit, useSite, useSiteDomains, useSiteEnvVars, useSiteGitBranches, useSetSiteEnvVar,
+  useUpdateSite,
 } from "../api/sites";
+import { useGithubInstallations } from "../api/vcs";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { Badge, ErrorNote, Field, FullPageSpinner, Spinner, timeAgo, Toggle } from "../components/ui";
@@ -21,19 +23,27 @@ export function SiteSettingsPage() {
   const deleteSite = useDeleteSite(projectId);
   const addDomain = useAddSiteDomain(projectId, siteId);
   const deleteDomain = useDeleteSiteDomain(projectId, siteId);
+  const installations = useGithubInstallations();
+  const connectGit = useConnectSiteGit(projectId, siteId);
+  const disconnectGit = useDisconnectSiteGit(projectId, siteId);
 
   const [rootDirectory, setRootDirectory] = useState<string | null>(null);
   const [newVarKey, setNewVarKey] = useState("");
   const [newVarValue, setNewVarValue] = useState("");
   const [newHostname, setNewHostname] = useState("");
   const [confirmName, setConfirmName] = useState("");
+  const [repoInput, setRepoInput] = useState("");
+  const [branchInput, setBranchInput] = useState("");
   const error = update.error instanceof ApiError ? update.error : null;
   const domainError = addDomain.error instanceof ApiError ? addDomain.error : null;
+  const gitError = connectGit.error instanceof ApiError ? connectGit.error : null;
+  const branches = useSiteGitBranches(projectId, siteId, repoInput.trim());
 
-  if (site.isPending || envVars.isPending || domains.isPending) return <FullPageSpinner />;
+  if (site.isPending || envVars.isPending || domains.isPending || installations.isPending) return <FullPageSpinner />;
   if (site.isError) throw site.error;
   if (envVars.isError) throw envVars.error;
   if (domains.isError) throw domains.error;
+  if (installations.isError) throw installations.error;
 
   // The CNAME target for a subdomain custom domain — the site's own always-on hostname, stripped of
   // scheme. Apex domains can't use CNAME (a DNS protocol limitation, not ours) and this instance
@@ -219,6 +229,94 @@ export function SiteSettingsPage() {
               {addDomain.isPending ? <Spinner /> : "+ Add"}
             </button>
           </div>
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">Git repository</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Connect a GitHub repository to push-to-deploy: a push to the production branch builds and
+            goes live automatically, just like an upload does today. A push to any other branch builds
+            a deployment too, but only ever reaches its own preview URL — production stays untouched.
+          </p>
+
+          {installations.data.total === 0 ? (
+            <p className="text-xs text-ink-500">
+              No GitHub App is connected to this instance yet.{" "}
+              <Link to="/project/$projectId/github" params={{ projectId }} className="text-ink-300 underline">
+                Connect one in Settings → GitHub
+              </Link>{" "}
+              first.
+            </p>
+          ) : site.data.repositoryFullName ? (
+            <div className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-ink-200">{site.data.repositoryFullName}</span>
+                <Badge>{site.data.productionBranch}</Badge>
+              </div>
+              <ConfirmButton
+                label="Disconnect"
+                title="Disconnect repository?"
+                confirmLabel="Disconnect"
+                successMessage="Repository disconnected."
+                className="text-xs text-ink-500 hover:text-coral-400 cursor-pointer"
+                body={
+                  <>
+                    Pushes to <span className="font-mono text-ink-300">{site.data.repositoryFullName}</span>{" "}
+                    stop deploying this site. Its commits and branches on GitHub are untouched — this only
+                    disconnects Praxy's side.
+                  </>
+                }
+                onConfirm={() => disconnectGit.mutateAsync()}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {gitError ? <ErrorNote message={gitError.message} /> : null}
+              <input
+                className="input-base w-full font-mono text-xs"
+                placeholder="owner/repo"
+                value={repoInput}
+                onChange={(e) => {
+                  setRepoInput(e.target.value);
+                  setBranchInput("");
+                }}
+              />
+              <div className="flex gap-2">
+                <select
+                  className="input-base flex-1 text-xs"
+                  value={branchInput}
+                  onChange={(e) => setBranchInput(e.target.value)}
+                  disabled={!branches.data || branches.data.branches.length === 0}
+                >
+                  <option value="">
+                    {branches.isFetching
+                      ? "Loading branches…"
+                      : branches.data
+                        ? "Select the production branch"
+                        : "Enter a repository above"}
+                  </option>
+                  {branches.data?.branches.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn-ghost shrink-0 border border-ink-700 text-xs"
+                  disabled={!branchInput || connectGit.isPending}
+                  onClick={() =>
+                    void connectGit.mutateAsync({ repositoryFullName: repoInput.trim(), productionBranch: branchInput })
+                  }
+                >
+                  {connectGit.isPending ? <Spinner /> : "Connect"}
+                </button>
+              </div>
+              {branches.isError ? (
+                <p className="text-[11px] text-coral-400">
+                  {branches.error instanceof ApiError ? branches.error.message : "Couldn't load branches."}
+                </p>
+              ) : null}
+            </div>
+          )}
         </section>
 
         <section className="surface border-coral-400/20 p-5">

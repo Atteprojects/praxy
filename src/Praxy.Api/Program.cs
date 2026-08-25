@@ -18,6 +18,7 @@ using Praxy.Realtime;
 using Praxy.Sites;
 using Praxy.Tables;
 using Praxy.Tables.Quotas;
+using Praxy.Vcs;
 using Praxy.Webhooks;
 using Scalar.AspNetCore;
 using Serilog;
@@ -205,6 +206,24 @@ try
     builder.Services.AddSingleton<MessageSendSignal>();
     builder.Services.AddScoped<MessagesService>();
     builder.Services.AddHostedService<MessageSendWorker>();
+
+    // ---- Sites Phase 4: Praxy.Vcs (GitHub App integration — shared infrastructure, Sites is only
+    // its first consumer) ----
+    var vcsOptions = new VcsOptions(
+        GitHub: new GitHubAppOptions(
+            AppId: builder.Configuration["Praxy:Vcs:GitHub:AppId"] ?? "",
+            ClientId: builder.Configuration["Praxy:Vcs:GitHub:ClientId"] ?? "",
+            ClientSecret: builder.Configuration["Praxy:Vcs:GitHub:ClientSecret"] ?? "",
+            PrivateKey: builder.Configuration["Praxy:Vcs:GitHub:PrivateKey"] ?? "",
+            WebhookSecret: builder.Configuration["Praxy:Vcs:GitHub:WebhookSecret"] ?? ""),
+        CloneTimeoutSeconds: builder.Configuration.GetValue("Praxy:Vcs:CloneTimeoutSeconds", 60),
+        MaxWebhookBodyBytes: builder.Configuration.GetValue("Praxy:Vcs:MaxWebhookBodyBytes", 25_000_000L));
+    builder.Services.AddSingleton(vcsOptions);
+    // The instance's own GitHub App — no shared Praxy-provided App, mirroring Appwrite's own
+    // self-host story (docs/research/dotnet-stack.md's Phase 4 section).
+    builder.Services.AddHttpClient<IGitHubClient, GitHubClient>(c => c.BaseAddress = new Uri("https://api.github.com/"));
+    builder.Services.AddSingleton<IGitRepositoryCloner, GitCliRepositoryCloner>();
+    builder.Services.AddScoped<GitHubAppService>();
 
     // ---- Sites (post-v0.1.0 initiative): Next.js hosting ----
     var sitesOptions = new SitesOptions(
@@ -442,6 +461,7 @@ try
     FunctionEndpoints.Map(app);
     MessagingEndpoints.Map(app);
     SiteEndpoints.Map(app);
+    VcsEndpoints.Map(app);
 
     // The console used to live under /console; keep old bookmarks/docs working.
     app.MapGet("/console", () => Results.Redirect("/")).Produces(StatusCodes.Status302Found);

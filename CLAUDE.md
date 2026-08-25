@@ -83,7 +83,15 @@ Filled in as phases land — keep this section current.
   (`Praxy:Sites:PreviewIdleSeconds`/`PreviewSweepIntervalSeconds`, capped by
   `Praxy:Quotas:MaxPreviewContainersPerProject`); redeploys now swap containers gracefully
   (start-new/swap/stop-old, no downtime window) instead of Phase 1's brief stop-old-then-start-new.
-  See `docs/handoff/sites-phase-2-report.md`'s Commands section for the full new-knob list.
+  See `docs/handoff/sites-phase-2-report.md`'s Commands section for the full new-knob list. Since
+  Phase 4 (2026-08-24), a site can also connect a GitHub repository for push-to-deploy — needs the
+  instance's own GitHub App configured via `Praxy:Vcs:GitHub:AppId`/`ClientId`/`ClientSecret`/
+  `PrivateKey`/`WebhookSecret` (owned by the new `Praxy.Vcs` project, sibling to `Praxy.Sites`, shared
+  infrastructure for a future Functions git integration too — see `docs/handoff/sites-phase-4-report.md`)
+  and a reachable `git` CLI at runtime (the deploy image installs it; `dotnet run` needs it on `PATH`
+  yourself). Exact GitHub App setup steps: `docs/self-host.md`'s "Git integration" section. The instance
+  must be internet-reachable for GitHub's webhook (`POST /v1/vcs/github/webhook`) to arrive at all —
+  `localhost` needs a tunnel.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)

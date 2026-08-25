@@ -6,6 +6,7 @@ using Praxy.Core;
 using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Vcs;
 
 namespace Praxy.Sites;
 
@@ -19,7 +20,7 @@ namespace Praxy.Sites;
 /// </summary>
 public sealed partial class SitesService(
     PraxyDb db, InstanceKey key, SiteDockerExecutor docker, SiteContainerRegistry registry,
-    SiteBuildSignal buildSignal, SitesOptions options)
+    SiteBuildSignal buildSignal, SitesOptions options, GitHubAppService github)
 {
     // ---- sites ------------------------------------------------------------------------------------
 
@@ -293,5 +294,85 @@ public sealed partial class SitesService(
         var deleted = await db.SiteDomains.Where(d => d.Id == domainId && d.SiteId == siteId).ExecuteDeleteAsync(ct);
         if (deleted == 0)
             throw PraxyException.NotFound(ErrorTypes.SiteDomainNotFound, "Custom domain not found.");
+    }
+
+    // ---- git repository (Sites Phase 4) --------------------------------------------------------
+
+    // GitHub's own username/repo-name rules, permissively — the real gate is EnsureRepositoryAccessibleAsync
+    // actually asking GitHub, this just keeps obviously-malformed input from reaching that call.
+    [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$")]
+    private static partial Regex RepositoryPattern();
+
+    /// <summary>Current connection state — both null until a repository is connected.</summary>
+    public (string? RepositoryFullName, string? ProductionBranch) GitConnection(Site site) =>
+        (site.RepositoryFullName, site.ProductionBranch);
+
+    /// <summary>
+    /// Connects <paramref name="site"/> to a GitHub repository: validates the <c>owner/repo</c> shape,
+    /// confirms the instance's GitHub App installation actually covers it, and confirms
+    /// <paramref name="productionBranch"/> is a real branch of that repository — all three checks fail
+    /// loudly rather than silently accepting a repository the app can never actually clone later.
+    /// </summary>
+    public async Task<Site> ConnectRepositoryAsync(Site site, string repositoryFullName, string productionBranch, CancellationToken ct)
+    {
+        if (!RepositoryPattern().IsMatch(repositoryFullName) || string.IsNullOrWhiteSpace(productionBranch) || productionBranch.Length > 256)
+            throw new PraxyException(400, ErrorTypes.SiteGitRepositoryInvalid,
+                "Invalid repository or branch.");
+
+        await github.EnsureRepositoryAccessibleAsync(repositoryFullName, ct);
+        var branches = await github.ListBranchesForRepositoryAsync(repositoryFullName, ct);
+        if (!branches.Contains(productionBranch))
+            throw new PraxyException(400, ErrorTypes.SiteGitRepositoryInvalid,
+                $"'{productionBranch}' is not a branch of '{repositoryFullName}'.");
+
+        site.RepositoryFullName = repositoryFullName;
+        site.ProductionBranch = productionBranch;
+        site.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return site;
+    }
+
+    public async Task<Site> DisconnectRepositoryAsync(Site site, CancellationToken ct)
+    {
+        site.RepositoryFullName = null;
+        site.ProductionBranch = null;
+        site.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return site;
+    }
+
+    /// <summary>Queues a git-sourced build — no <see cref="SiteDeploymentSource"/> row (there are no uploaded bytes); <see cref="SiteBuildWorker"/> clones the commit fresh at build time.</summary>
+    public async Task<SiteDeployment> CreateGitDeploymentAsync(
+        Site site, string commitSha, string commitMessage, string branch, CancellationToken ct)
+    {
+        var deployment = new SiteDeployment
+        {
+            Id = Ids.NewUuid(),
+            SiteId = site.Id,
+            ProjectId = site.ProjectId,
+            Source = "git",
+            CommitSha = commitSha,
+            CommitMessage = commitMessage,
+            Branch = branch,
+        };
+        db.SiteDeployments.Add(deployment);
+        await db.SaveChangesAsync(ct);
+        buildSignal.Notify();
+        return deployment;
+    }
+
+    /// <summary>
+    /// The webhook's dispatch target — matches a parsed push event against connected sites and queues
+    /// a deployment for each. Deliberately just a direct query, not an abstract "connected resource"
+    /// lookup: today only Sites consumes <c>Praxy.Vcs</c>, and a future Functions git integration adds
+    /// its own parallel query here rather than a shared interface invented on spec. A push for a
+    /// repository no site references is a no-op, not an error.
+    /// </summary>
+    public async Task<int> HandleGitPushAsync(GitHubPushEvent evt, CancellationToken ct)
+    {
+        var matches = await db.Sites.Where(s => s.RepositoryFullName == evt.RepositoryFullName).ToListAsync(ct);
+        foreach (var site in matches)
+            await CreateGitDeploymentAsync(site, evt.CommitSha, evt.CommitMessage, evt.Branch, ct);
+        return matches.Count;
     }
 }
