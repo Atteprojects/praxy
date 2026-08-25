@@ -23,9 +23,25 @@
 # (Praxy.Sites.SiteProxyMiddleware) — so this is one static block regardless of how many sites exist.
 # Each distinct hostname gets its own certificate issued lazily on first request, not one real
 # wildcard cert (on-demand TLS's whole point: no DNS-01, no DNS-provider credentials).
+#
+# `issuer acme` is required, not optional — found live 2026-08-25, after the Sites Phase 3 catch-all
+# block below started sharing this policy: Caddy's own default issuer selection is "internal if all
+# subjects do not qualify for public certificates; otherwise acme and zerossl" (its own source,
+# modules/caddytls/automation.go). A policy with no explicit `subjects` — which is what every
+# `tls { on_demand }` block below collapses into once they're merged — can't be confirmed "public" by
+# that heuristic, so Caddy silently issued self-signed *internal* certs for real site hostnames
+# instead of real Let's Encrypt ones, with no error and no ask-endpoint call skipped (the ask call
+# still happened; only the *issuer* silently downgraded). An explicit `issuer acme` bypasses that
+# heuristic entirely. Verified live: without it, `caddy adapt`'s automation policy shows
+# `"issuers":null` and a real on-demand request completes in <100ms with `"issuer":"local"` in the
+# logs (far too fast for a real ACME round trip); with it, the policy shows an explicit acme issuer
+# and a real request genuinely reaches `acme-v02.api.letsencrypt.org` (confirmed via a throwaway
+# instance — a fake `.test` hostname correctly got ACME's own "not a valid public suffix" rejection,
+# proving a real attempt happened, not an instant internal fallback).
 *.*.{$PRAXY_SITES_DOMAIN} {
 	tls {
 		on_demand
+		issuer acme
 	}
 	reverse_proxy api:8080
 }
@@ -38,9 +54,13 @@
 # called — reproducing Phase 1's exact bug shape one wildcard label short. Adding this dedicated block
 # (an extra `*.`) made the same hostname correctly reach the ask endpoint. See
 # docs/research/dotnet-stack.md's Caddy section for the full transcript.
+#
+# `issuer acme` here too — see the block above's comment for why; this block shares the same merged
+# automation policy, so it needs the same explicit issuer to avoid the same silent internal-CA fallback.
 *.*.*.{$PRAXY_SITES_DOMAIN} {
 	tls {
 		on_demand
+		issuer acme
 	}
 	reverse_proxy api:8080
 }
@@ -61,9 +81,14 @@
 # shadowing of the console/API's own automatic-HTTPS block (`{$PRAXY_DOMAIN} {$PRAXY_CONSOLE_DOMAIN}`
 # above) was observed either — its explicit hostnames form their own more-specific automation policy.
 # See docs/research/dotnet-stack.md's Caddy section for the full transcript.
+#
+# `issuer acme` here too, for the same reason as the two blocks above — this bare, host-less address is
+# in fact the block that *caused* the merged policy's `subjects` to end up empty in the first place, so
+# it's the most important of the three to get right.
 https:// {
 	tls {
 		on_demand
+		issuer acme
 	}
 	reverse_proxy api:8080
 }
