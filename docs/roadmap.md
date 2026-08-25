@@ -245,14 +245,19 @@ successfully proxied request through it, not inside `_ask-tls` (which only permi
 proof it succeeded). Full design: `research/praxy-sites.md`'s "Phase 3" section.
 
 **Sites Phase 4 — git integration** (kickoff: `docs/handoff/sites-phase-4-prompt.md`, written
-2026-08-24) — not yet implemented. Push to a site's production branch builds and auto-activates; push to
-any other branch builds a deployment and leaves it on its existing Phase 2 preview URL — no new serving
-infrastructure needed for that half. Real design in `research/praxy-sites.md`'s "Phase 4" section,
-including two scope-*cutting* findings from re-checking Appwrite's actual deploy-from-git docs (no commit
-statuses/PR comments, no build-command auto-detection) that make this phase smaller than the original
-sketch assumed. Self-hosted owner configures their own GitHub App, same as Appwrite requires — and the
-instance must be internet-reachable for GitHub's webhooks to arrive, so real verification targets
-`praxycore.dev`, not local dev.
+2026-08-24, revised same day to make the GitHub integration shared infrastructure) — not yet implemented.
+Push to a site's production branch builds and auto-activates; push to any other branch builds a
+deployment and leaves it on its existing Phase 2 preview URL — no new serving infrastructure needed for
+that half. Real design in `research/praxy-sites.md`'s "Phase 4" section, including two scope-*cutting*
+findings from re-checking Appwrite's actual deploy-from-git docs (no commit statuses/PR comments, no
+build-command auto-detection) that make this phase smaller than the original sketch assumed. **The GitHub
+App/webhook/installation layer is a new shared project, `Praxy.Vcs`, not Sites-specific** — raised by the
+owner before this phase started: `FunctionsService.CreateDeploymentAsync` is nearly identical in shape to
+`SitesService`'s own, so a future Functions git-integration phase should be a small addition to
+`Praxy.Vcs`'s consumers, not a rebuild of the GitHub App/token/signature layer from scratch. That future
+phase is explicitly not started here — only designed for. Self-hosted owner configures their own GitHub
+App, same as Appwrite requires — and the instance must be internet-reachable for GitHub's webhooks to
+arrive, so real verification targets `praxycore.dev`, not local dev.
 
 **Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
 (2026-08-22).

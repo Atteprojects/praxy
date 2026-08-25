@@ -17,9 +17,18 @@ you start: Appwrite doesn't post commit statuses or PR comments back to GitHub (
 design too), and Sites Phase 2's existing preview-URL mechanism already does everything a non-production
 push needs — this phase adds a new deployment *source*, not new serving infrastructure.
 
-This is the last of the four phases the owner committed to in sequence. Framework presets beyond Next.js
-remain deferred indefinitely (owner's explicit call, 2026-08-22). Work on a new branch off `main`. Read
-`CLAUDE.md` first.
+**The owner asked, before this phase started, whether the GitHub integration could serve Functions too —
+not just Sites.** Yes, and the design below is built around that: `FunctionsService.CreateDeploymentAsync`
+is nearly identical in shape to `SitesService`'s own, so the GitHub App/webhook/token layer is a **new
+shared project, `Praxy.Vcs`**, not something built inside `Praxy.Sites`. This phase still only wires up
+Sites — actually connecting Functions to any of this is explicitly future work (see Non-goals) — but the
+shared layer needs to be genuinely resource-agnostic from the start, since retrofitting a
+Sites-hardcoded webhook handler later would be far more painful than building it generically now, before a
+second consumer exists to accidentally couple against.
+
+This is the last of the four Sites phases the owner committed to in sequence, plus this one new
+`Praxy.Vcs` project that outlives all of them. Framework presets beyond Next.js remain deferred
+indefinitely (owner's explicit call, 2026-08-22). Work on a new branch off `main`. Read `CLAUDE.md` first.
 
 ## Non-goals — do not build these
 
@@ -41,38 +50,53 @@ remain deferred indefinitely (owner's explicit call, 2026-08-22). Work on a new 
   today and this phase shouldn't invent one just for git-triggered previews specifically.
 - **No multi-repository-per-site or multi-site-per-repository complexity.** One site connects to at most
   one repository at a time.
+- **No actual Functions consumption of `Praxy.Vcs`.** Build the shared layer to be resource-agnostic (see
+  Why this exists), but don't add Functions-side tables, endpoints, or console UI in this phase — that's
+  its own future phase. The test here is "would a future Functions-git-integration session find a clean
+  layer to build on," not "does Functions git integration exist yet."
 
 ## Scope
 
-1. **`Praxy:Sites:GitHub:*` config**: `AppId`, `ClientId`, `ClientSecret`, `PrivateKey` (PEM, likely wants
-   the same encrypted-at-rest treatment `InstanceKey` already gives other secrets — your call on whether
-   it's a startup config value or something rotatable via the console; a startup-only value matches how
-   every other instance-wide secret in this codebase is handled, so default to that unless you find a
-   concrete reason not to), `WebhookSecret`. Instance-wide, not per-project — the GitHub App itself is
-   configured once per Praxy instance, same as Appwrite's own `_APP_VCS_GITHUB_*` env vars.
-2. **`vcs_installations` table** (new EF migration): `id, installation_id, account_login, account_type,
-   created_at`. Instance-wide (no `project_id` — one GitHub App installation can cover repositories used
-   by any project). `GET /v1/sites/vcs/github/callback` is GitHub's installation-flow redirect target;
-   exchange whatever GitHub hands back for a stored installation record. Console needs a place to trigger
-   "Install/connect GitHub" and see the current installation status — a new instance-level settings
-   surface (not per-site), the closest existing precedent being platform/API-key management screens, not
-   anything site-specific.
+1. **New `Praxy.Vcs` project** — sibling to `Praxy.Sites`/`Praxy.Functions`, referencing only
+   `Praxy.Core`/`Praxy.Persistence`/`Praxy.Auth`. **Must not reference `Praxy.Sites` or `Praxy.Functions`**
+   — dependencies point inward here, same direction every other sibling project already follows, and the
+   whole point of this project existing is that Sites (and later Functions) depend on it, not the reverse.
+   Owns: `Praxy:Vcs:GitHub:*` config (`AppId`, `ClientId`, `ClientSecret`, `PrivateKey` PEM — likely wants
+   the same encrypted-at-rest treatment `InstanceKey` already gives other secrets, your call on startup-only
+   vs. console-rotatable, default to startup-only unless you find a concrete reason not to —
+   `WebhookSecret`), the `vcs_installations` table (new EF migration: `id, installation_id, account_login,
+   account_type, created_at`, instance-wide, no `project_id`), GitHub App JWT signing + installation-token
+   exchange, and GitHub webhook signature verification as a pure, testable function. It should hand back a
+   typed, parsed push-event payload (repository full name, ref, commit sha/message) — it does **not** know
+   what a `Site` is, and does **not** decide what to do with a parsed event; that's the caller's job (see
+   #4).
+2. **`GET /v1/vcs/github/callback`** — GitHub's installation-flow redirect target; exchanges whatever
+   GitHub hands back for a stored `VcsInstallation` record via `Praxy.Vcs`. Console needs a place to
+   trigger "Install/connect GitHub" and see the current installation status — a new instance-level settings
+   surface (not per-site, not per-project), the closest existing precedent being platform/API-key
+   management screens, not anything site-specific. Exactly where it lives in the console's navigation is
+   your call.
 3. **`sites` gains `repository_full_name`, `production_branch`** (both nullable). **`site_deployments`
    gains `source` (`upload`|`git`), `commit_sha`, `commit_message`, `branch`** — for console display and
    so the build worker and console both know which deployments came from a push versus a manual upload.
-4. **`POST /v1/sites/vcs/github/webhook`**: verifies GitHub's own webhook signature (see Landmines — this
-   is a different wire format from `Praxy.Webhooks.WebhookSignature`, do not reuse that class as-is),
-   parses `push` events, matches `repository.full_name` against connected `sites` rows. For each matching
-   site: if the pushed ref is that site's `production_branch`, create a `SiteDeployment` with
-   `source="git"` and let the existing auto-activate-on-success path in `SiteBuildWorker` handle the rest
-   unchanged; otherwise create the deployment without activating it — it becomes `ready` and reachable at
-   its Phase 2 preview URL exactly like any other non-active deployment already is, no new code needed for
-   that part.
-5. **Git-sourced build context**: a short-lived GitHub App installation access token (see Landmines for the
-   two-step JWT → installation-token exchange) clones the pushed commit, and a new sibling to
-   `SiteRuntimeTemplates.BuildContextAsync` builds the same generated-Dockerfile Docker context directly
-   from the checked-out directory instead of from an uploaded tar's `MemoryStream`. The Dockerfile
-   generation itself (`Dockerfile(rootDirectory, baseImage, envVarKeys)`) doesn't need to change at all.
+4. **`POST /v1/vcs/github/webhook`**: verifies GitHub's own webhook signature via `Praxy.Vcs` (see
+   Landmines — this is a different wire format from `Praxy.Webhooks.WebhookSignature`, do not reuse that
+   class as-is), gets back a parsed `push` event. **This endpoint itself** (in `Praxy.Api`, or a thin
+   dispatcher `Praxy.Sites` owns — your call, but it must live outside `Praxy.Vcs`) then matches
+   `repository.full_name` against connected `sites` rows. For each matching site: if the pushed ref is
+   that site's `production_branch`, create a `SiteDeployment` with `source="git"` and let the existing
+   auto-activate-on-success path in `SiteBuildWorker` handle the rest unchanged; otherwise create the
+   deployment without activating it — it becomes `ready` and reachable at its Phase 2 preview URL exactly
+   like any other non-active deployment already is, no new code needed for that part. Don't build an
+   abstract "connected resource" interface for this dispatch — a direct `sites` query is correct today;
+   when Functions git integration ships later, that phase adds a second, parallel query against
+   `functions` here, not a shared interface invented now on spec.
+5. **Git-sourced build context**: a short-lived GitHub App installation access token (minted via
+   `Praxy.Vcs` — see Landmines for the two-step JWT → installation-token exchange) clones the pushed
+   commit, and a new sibling to `SiteRuntimeTemplates.BuildContextAsync` builds the same
+   generated-Dockerfile Docker context directly from the checked-out directory instead of from an uploaded
+   tar's `MemoryStream`. The Dockerfile generation itself (`Dockerfile(rootDirectory, baseImage,
+   envVarKeys)`) doesn't need to change at all.
 6. **Console**: a "Git repository" card on `SiteSettingsPage.tsx`, mirroring the "Custom domains" card
    Phase 3 just shipped structurally (add/connect flow, current-state display, disconnect action) —
    connect (only available once an instance-level GitHub installation exists), pick production branch from
@@ -82,6 +106,13 @@ remain deferred indefinitely (owner's explicit call, 2026-08-22). Work on a new 
 
 ## Landmines — read before writing code
 
+- **`Praxy.Vcs` must not know `Site` or `SiteDeployment` exist, even though Sites is its only consumer
+  today.** It's tempting, with only one consumer, to let the webhook-verification code also do the
+  `sites` lookup "since it's right there" — resist it. The moment `Praxy.Vcs` references `Praxy.Sites`
+  types, a future Functions-consuming phase either has to break that reference or add its own parallel,
+  slightly-different verification path, which is exactly the retrofit this phase exists to avoid. Keep
+  `Praxy.Vcs`'s public surface entirely in terms of GitHub's own concepts (installations, repositories,
+  refs, commits) — zero Praxy domain types.
 - **GitHub's webhook signature format is not the same scheme `Praxy.Webhooks.WebhookSignature` uses.**
   That class implements Stripe-style signing (`v1=<hex HMAC-SHA256(timestamp + "." + body)>`, timestamp in
   a separate header) — a deliberate Phase 6 choice, not GitHub's format. GitHub sends
@@ -134,8 +165,8 @@ plainly in the report which parts were proven against fixtures versus a real Git
   production, confirms an unrelated repository's push webhook is correctly ignored.
 - `git status` clean, conventional commits, on a new branch off `main`.
 - `docs/self-host.md` gets a "Git integration" section: exact GitHub App creation steps (permissions,
-  callback/webhook URLs, the six config values), mirroring the level of detail Appwrite's own
-  `version-control` self-host doc has.
+  callback/webhook URLs, the five `Praxy:Vcs:GitHub:*` config values), mirroring the level of detail
+  Appwrite's own `version-control` self-host doc has.
 - Write `docs/handoff/sites-phase-4-report.md`. This closes the four-phase sequence the owner committed to
   — no further `sites-phase-N-prompt.md` is expected unless the owner opens a new one (framework presets
   beyond Next.js remain deferred, per the owner's own 2026-08-22 call).
