@@ -48,6 +48,17 @@ public class FunctionDef
     /// <summary>The deployment currently serving invocations. Null until a build first succeeds.</summary>
     public Guid? ActiveDeploymentId { get; set; }
 
+    /// <summary>
+    /// The connected GitHub repository, <c>"owner/repo"</c> (Functions git integration) — null until a
+    /// git repository is connected via the console. Both this and <see cref="ProductionBranch"/> are
+    /// set together (<c>FunctionsService.ConnectRepositoryAsync</c>) and cleared together
+    /// (<c>DisconnectRepositoryAsync</c>); a function connects to at most one repository at a time.
+    /// </summary>
+    public string? RepositoryFullName { get; set; }
+
+    /// <summary>A push to this branch builds and auto-activates; a push to any other branch of the connected repository builds a deployment that finishes `ready` without activating, reachable only via the console's explicit Activate action.</summary>
+    public string? ProductionBranch { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -82,6 +93,13 @@ public class FunctionDeployment
 
     /// <summary>queued | building | ready | failed</summary>
     public string Status { get; set; } = "queued";
+
+    /// <summary>upload | git — an "upload" deployment has a <see cref="FunctionDeploymentSource"/> row; a "git" one instead has <see cref="CommitSha"/>/<see cref="CommitMessage"/>/<see cref="Branch"/> set and is cloned fresh by <c>FunctionBuildWorker</c> at build time.</summary>
+    public string Source { get; set; } = "upload";
+
+    public string? CommitSha { get; set; }
+    public string? CommitMessage { get; set; }
+    public string? Branch { get; set; }
 
     public string BuildLog { get; set; } = "";
     public string? Error { get; set; }

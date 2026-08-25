@@ -45,15 +45,60 @@ public static class RuntimeTemplates
                 }
             }
 
-            await WriteTextEntryAsync(writer, "Dockerfile", Dockerfile(runtime, entrypoint, baseImage), ct);
-            await WriteTextEntryAsync(
-                writer,
-                runtime == FunctionRuntimes.Dart ? "_praxy_server.dart" : "_praxy_server.js",
-                runtime == FunctionRuntimes.Dart ? DartWrapper(entrypoint) : NodeWrapper(),
-                ct);
+            await WriteGeneratedFilesAsync(writer, runtime, entrypoint, baseImage, ct);
         }
         output.Position = 0;
         return output;
+    }
+
+    /// <summary>
+    /// The git-sourced sibling of <see cref="BuildContextAsync"/> (Functions git integration): same
+    /// generated Dockerfile and wrapper, but built directly from a checked-out working directory
+    /// (<c>FunctionBuildWorker</c>'s fresh <c>IGitRepositoryCloner</c> clone) instead of an uploaded
+    /// tar's <see cref="MemoryStream"/> — no double round trip through a stored tar. <c>.git</c> is
+    /// skipped; everything else in <paramref name="checkoutDirectory"/> is packaged, same as the tar
+    /// path forwards every entry from the user's own upload. Mirrors
+    /// <c>SiteRuntimeTemplates.BuildContextFromDirectoryAsync</c> exactly.
+    /// </summary>
+    public static async Task<MemoryStream> BuildContextFromDirectoryAsync(
+        string runtime, string entrypoint, string baseImage, string checkoutDirectory, CancellationToken ct)
+    {
+        var output = new MemoryStream();
+        await using (var writer = new TarWriter(output, TarEntryFormat.Pax, leaveOpen: true))
+        {
+            var root = new DirectoryInfo(checkoutDirectory);
+            foreach (var file in root.EnumerateFiles("*", SearchOption.AllDirectories))
+            {
+                ct.ThrowIfCancellationRequested();
+                var relative = System.IO.Path.GetRelativePath(checkoutDirectory, file.FullName).Replace('\\', '/');
+                if (relative == ".git" || relative.StartsWith(".git/", StringComparison.Ordinal))
+                    continue;
+
+                var entry = new PaxTarEntry(TarEntryType.RegularFile, relative);
+                // WriteEntryAsync copies the entry's data during the call, not lazily — safe to close
+                // the file handle the moment it returns rather than leaving hundreds of them open.
+                await using (var fileStream = File.OpenRead(file.FullName))
+                {
+                    entry.DataStream = fileStream;
+                    await writer.WriteEntryAsync(entry, ct);
+                }
+            }
+
+            await WriteGeneratedFilesAsync(writer, runtime, entrypoint, baseImage, ct);
+        }
+        output.Position = 0;
+        return output;
+    }
+
+    private static async Task WriteGeneratedFilesAsync(
+        TarWriter writer, string runtime, string entrypoint, string baseImage, CancellationToken ct)
+    {
+        await WriteTextEntryAsync(writer, "Dockerfile", Dockerfile(runtime, entrypoint, baseImage), ct);
+        await WriteTextEntryAsync(
+            writer,
+            runtime == FunctionRuntimes.Dart ? "_praxy_server.dart" : "_praxy_server.js",
+            runtime == FunctionRuntimes.Dart ? DartWrapper(entrypoint) : NodeWrapper(),
+            ct);
     }
 
     private static async Task WriteTextEntryAsync(TarWriter writer, string name, string content, CancellationToken ct)

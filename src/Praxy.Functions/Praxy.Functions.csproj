@@ -10,5 +10,6 @@
     <ProjectReference Include="..\Praxy.Events\Praxy.Events.csproj" />
     <ProjectReference Include="..\Praxy.Realtime\Praxy.Realtime.csproj" />
     <ProjectReference Include="..\Praxy.Auth\Praxy.Auth.csproj" />
+    <ProjectReference Include="..\Praxy.Vcs\Praxy.Vcs.csproj" />
   </ItemGroup>
 </Project>

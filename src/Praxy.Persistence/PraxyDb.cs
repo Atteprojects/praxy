@@ -286,6 +286,8 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Runtime).HasMaxLength(16);
             e.Property(x => x.Entrypoint).HasMaxLength(256);
             e.Property(x => x.Schedule).HasMaxLength(64);
+            e.Property(x => x.RepositoryFullName).HasMaxLength(256);
+            e.Property(x => x.ProductionBranch).HasMaxLength(256);
             e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
             // FunctionScheduler's claim query: due, enabled, scheduled functions.
@@ -303,8 +305,13 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
 
         b.Entity<FunctionDeployment>(e =>
         {
-            e.ToTable("function_deployments");
+            e.ToTable("function_deployments", t => t.HasCheckConstraint(
+                "ck_function_deployments_source", "source in ('upload', 'git')"));
             e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Source).HasMaxLength(16);
+            e.Property(x => x.CommitSha).HasMaxLength(40);
+            e.Property(x => x.CommitMessage).HasMaxLength(4096);
+            e.Property(x => x.Branch).HasMaxLength(256);
             e.Property(x => x.Error).HasMaxLength(4096);
             e.Property(x => x.ImageTag).HasMaxLength(256);
             e.HasOne<FunctionDef>().WithMany().HasForeignKey(x => x.FunctionId).OnDelete(DeleteBehavior.Cascade);

@@ -398,6 +398,10 @@ export interface PraxyFunction {
   nextScheduledRunAt: string | null;
   activeDeploymentId: string | null;
   isWarm: boolean;
+  /** The connected GitHub repository, "owner/repo" (Functions git integration) — null until one is connected. Set together with productionBranch. */
+  repositoryFullName: string | null;
+  /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a deployment that finishes ready without activating. Null until a repository is connected. */
+  productionBranch: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -419,11 +423,18 @@ export interface FunctionEnvVarList {
 }
 
 export type FunctionDeploymentStatus = "queued" | "building" | "ready" | "failed";
+export type FunctionDeploymentSource = "upload" | "git";
 
 export interface FunctionDeployment {
   id: string;
   status: FunctionDeploymentStatus;
   sourceSizeBytes: number;
+  source: FunctionDeploymentSource;
+  /** Set only for a "git" deployment — the pushed commit's full SHA. */
+  commitSha: string | null;
+  commitMessage: string | null;
+  /** Set only for a "git" deployment — the branch that was pushed to (may or may not be the function's production branch). */
+  branch: string | null;
   buildLog: string;
   error: string | null;
   imageTag: string | null;
@@ -543,6 +554,10 @@ export interface SiteDomainList {
 }
 
 export interface SiteGitBranches {
+  branches: string[];
+}
+
+export interface FunctionGitBranches {
   branches: string[];
 }
 

@@ -5,10 +5,11 @@ import { DataTable, EmptyState, ErrorNote, FullPageSpinner, PageHeader, Spinner,
 const HEADERS = ["Account", "Type", "Installation ID", "Connected"];
 
 /**
- * Sites Phase 4: instance-wide GitHub App status — not project- or site-scoped, even though it lives
+ * Instance-wide GitHub App status — not project-, site-, or function-scoped, even though it lives
  * under a project's nav for shell consistency (the console has no top-level, outside-project route
- * today). A site connects to a specific repository from its own Settings page once an installation
- * shows up here.
+ * today). Introduced in Sites Phase 4 and reused as-is by Functions git integration — a site or a
+ * function connects to a specific repository from its own Settings page once an installation shows up
+ * here, and the same repository can be connected to both at once.
  */
 export function GitHubSettingsPage() {
   const installations = useGithubInstallations();
@@ -39,7 +40,7 @@ export function GitHubSettingsPage() {
     <div>
       <PageHeader
         title="GitHub"
-        description="Install Praxy's GitHub App for this instance once, then any project's sites can connect a repository to push-to-deploy. One installation can cover repositories across every project — it isn't tied to the one you're viewing."
+        description="Install Praxy's GitHub App for this instance once, then any project's sites and functions can connect a repository to push-to-deploy. One installation can cover repositories across every project — it isn't tied to the one you're viewing."
         actions={connectButton}
       />
 

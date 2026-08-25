@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
   ErrorEnvelope, FunctionDeployment, FunctionDeploymentList, FunctionEnvVar, FunctionEnvVarList,
-  FunctionExecution, FunctionExecutionList, FunctionList, FunctionRuntimeList, PraxyFunction,
+  FunctionExecution, FunctionExecutionList, FunctionGitBranches, FunctionList, FunctionRuntimeList,
+  PraxyFunction,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/functions`;
@@ -108,6 +109,42 @@ export function useDeleteEnvVar(projectId: string, functionId: string) {
       api<void>(`${base(projectId)}/${functionId}/env/${encodeURIComponent(key)}`, { method: "DELETE" }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions", functionId, "env"] }),
+  });
+}
+
+// ---- git repository (Functions git integration) ----
+
+/** A repository's real branches, fetched live through the connected GitHub App installation — used to populate the production-branch picker before connecting. Only fires once the input actually looks like "owner/repo", so it isn't refetched on every keystroke; a short staleTime avoids refetching once it has. */
+export function useFunctionGitBranches(projectId: string, functionId: string, repositoryFullName: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "functions", functionId, "git", "branches", repositoryFullName],
+    queryFn: () =>
+      api<FunctionGitBranches>(`${base(projectId)}/${functionId}/git/branches?repository=${encodeURIComponent(repositoryFullName)}`),
+    enabled: /^[^/\s]+\/[^/\s]+$/.test(repositoryFullName),
+    staleTime: 30_000,
+  });
+}
+
+export function useConnectFunctionGit(projectId: string, functionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { repositoryFullName: string; productionBranch: string }) =>
+      api<PraxyFunction>(`${base(projectId)}/${functionId}/git`, { method: "POST", body: input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions", functionId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions"] });
+    },
+  });
+}
+
+export function useDisconnectFunctionGit(projectId: string, functionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<PraxyFunction>(`${base(projectId)}/${functionId}/git`, { method: "DELETE" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions", functionId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions"] });
+    },
   });
 }
 

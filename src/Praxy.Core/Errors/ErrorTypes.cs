@@ -81,6 +81,7 @@ public static class ErrorTypes
     public const string FunctionExecutionNotFound = "function_execution_not_found";
     public const string FunctionExecutionTimeout = "function_execution_timeout";
     public const string FunctionExecutionFailed = "function_execution_failed";
+    public const string FunctionGitRepositoryInvalid = "function_git_repository_invalid";
 
     public const string SiteNotFound = "site_not_found";
     public const string SiteAlreadyExists = "site_already_exists";
@@ -178,6 +179,7 @@ public static class ErrorTypes
         FunctionExecutionNotFound,
         FunctionExecutionTimeout,
         FunctionExecutionFailed,
+        FunctionGitRepositoryInvalid,
         SiteNotFound,
         SiteAlreadyExists,
         SiteInvalid,

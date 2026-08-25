@@ -5,6 +5,7 @@ using Praxy.Core.Errors;
 using Praxy.Functions;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Vcs;
 
 namespace Praxy.Api.Endpoints;
 
@@ -20,17 +21,20 @@ public sealed record SetEnvVarRequest(string Value);
 
 public sealed record InvokeFunctionRequest(string? Method, string? Path, string? Body);
 
+public sealed record ConnectFunctionGitRequest(string RepositoryFullName, string ProductionBranch);
+
 public sealed record FunctionRuntimeResponse(string Id, string BaseImage);
 
 public sealed record FunctionResponse(
     string Id, string Key, string Name, string Runtime, string Entrypoint, int TimeoutSeconds, bool Enabled,
     string[] Events, string[] Execute, string? Schedule, DateTimeOffset? NextScheduledRunAt,
-    string? ActiveDeploymentId, bool IsWarm, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    string? ActiveDeploymentId, bool IsWarm, string? RepositoryFullName, string? ProductionBranch,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static FunctionResponse From(FunctionDef f, bool isWarm) => new(
         Ids.Wire(f.Id), f.Key, f.Name, f.Runtime, f.Entrypoint, f.TimeoutSeconds, f.Enabled, f.Events, f.Execute,
         f.Schedule, f.NextScheduledRunAt, f.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isWarm,
-        f.CreatedAt, f.UpdatedAt);
+        f.RepositoryFullName, f.ProductionBranch, f.CreatedAt, f.UpdatedAt);
 }
 
 public sealed record FunctionEnvVarResponse(string Key, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
@@ -39,11 +43,13 @@ public sealed record FunctionEnvVarResponse(string Key, DateTimeOffset CreatedAt
 }
 
 public sealed record FunctionDeploymentResponse(
-    string Id, string Status, long SourceSizeBytes, string BuildLog, string? Error, string? ImageTag,
+    string Id, string Status, long SourceSizeBytes, string Source, string? CommitSha, string? CommitMessage,
+    string? Branch, string BuildLog, string? Error, string? ImageTag,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, DateTimeOffset? ActivatedAt)
 {
     public static FunctionDeploymentResponse From(FunctionDeployment d) => new(
-        Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.BuildLog, d.Error, d.ImageTag, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
+        Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.Source, d.CommitSha, d.CommitMessage, d.Branch,
+        d.BuildLog, d.Error, d.ImageTag, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
 }
 
 public sealed record FunctionExecutionResponse(
@@ -55,6 +61,8 @@ public sealed record FunctionExecutionResponse(
         Ids.Wire(e.Id), e.Trigger, e.Async, e.Status, e.Method, e.Path, e.StatusCode, e.ResponseBody, e.Logs,
         e.Errors, e.DurationMs, e.ColdStart, e.TriggeredBy, e.CreatedAt, e.CompletedAt);
 }
+
+public sealed record FunctionGitBranchesResponse(IReadOnlyList<string> Branches);
 
 public sealed record FunctionListResponse(int Total, IReadOnlyList<FunctionResponse> Functions);
 
@@ -113,6 +121,10 @@ public static class FunctionEndpoints
             .Produces<FunctionEnvVarResponse>();
         admin.MapDelete("/{functionId}/env/{envKey}", DeleteEnvVar)
             .Produces(StatusCodes.Status204NoContent);
+
+        admin.MapGet("/{functionId}/git/branches", ListGitBranches).Produces<FunctionGitBranchesResponse>();
+        admin.MapPost("/{functionId}/git", ConnectGit).Produces<FunctionResponse>();
+        admin.MapDelete("/{functionId}/git", DisconnectGit).Produces<FunctionResponse>();
 
         admin.MapGet("/{functionId}/deployments", ListDeployments)
             .Produces<FunctionDeploymentListResponse>();
@@ -280,6 +292,37 @@ public static class FunctionEndpoints
         await functions.DeleteEnvVarAsync(fn.Id, envKey, ct);
         await AuditAsync(db, http, project.Id, "functions.env.delete", $"function/{functionId}/env/{envKey}", ct);
         return Results.NoContent();
+    }
+
+    // ---- git repository (Functions git integration) ---------------------------------------------
+
+    private static async Task<IResult> ListGitBranches(
+        string functionId, string repository, HttpContext http, FunctionsService functions, GitHubAppService github, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        await FindAsync(functions, project.Id, functionId, ct);
+        var branches = await github.ListBranchesForRepositoryAsync(repository, ct);
+        return Results.Ok(new FunctionGitBranchesResponse(branches));
+    }
+
+    private static async Task<IResult> ConnectGit(
+        string functionId, ConnectFunctionGitRequest req, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var connected = await functions.ConnectRepositoryAsync(fn, req.RepositoryFullName, req.ProductionBranch, ct);
+        await AuditAsync(db, http, project.Id, "functions.git.connect", $"function/{functionId}", ct);
+        return Results.Ok(FunctionResponse.From(connected, functions.IsWarm(connected)));
+    }
+
+    private static async Task<IResult> DisconnectGit(
+        string functionId, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var fn = await FindAsync(functions, project.Id, functionId, ct);
+        var disconnected = await functions.DisconnectRepositoryAsync(fn, ct);
+        await AuditAsync(db, http, project.Id, "functions.git.disconnect", $"function/{functionId}", ct);
+        return Results.Ok(FunctionResponse.From(disconnected, functions.IsWarm(disconnected)));
     }
 
     // ---- deployments ----------------------------------------------------------------------------

@@ -264,6 +264,21 @@ internet-reachable for GitHub's webhooks to arrive, so the real owner-test targe
 local dev. This closes the four-phase Sites sequence the owner committed to; framework presets beyond
 Next.js remain deferred (below).
 
+**Functions git integration — shipped 2026-08-25** (kickoff:
+`docs/handoff/functions-git-integration-prompt.md`; report:
+`docs/handoff/functions-git-integration-report.md`). The small addition to `Praxy.Vcs`'s consumers Sites
+Phase 4 predicted: push-to-deploy for Functions, reusing the GitHub App/webhook/token layer entirely
+as-is (zero changes to `Praxy.Vcs` itself). Push to a function's production branch builds and
+auto-activates; push to any other branch builds a deployment that finishes `ready` without activating —
+Functions has no preview-URL infrastructure to land on the way Sites' deployments do, so an unactivated
+git build just sits reachable via the console's existing explicit Activate action, the same state an
+unactivated upload could already reach. `VcsEndpoints.Webhook` now dispatches one parsed push event to
+both `SitesService.HandleGitPushAsync` and `FunctionsService.HandleGitPushAsync` unconditionally, so the
+same repository can be connected to a site and a function at once and a single push deploys both
+independently. Self-hosted owner reuses the GitHub App Sites Phase 4 already walked them through
+creating — no second App, same five `Praxy:Vcs:GitHub:*` config values (`docs/self-host.md`'s "Git
+integration" section now documents both resource types).
+
 **Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
 (2026-08-22).
 
