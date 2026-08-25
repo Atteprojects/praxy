@@ -567,6 +567,72 @@ own pre-deploy session verified before its later live-deploy correction. Confirm
 URL gets an actual Let's Encrypt cert the same way Phase 1's live fix was confirmed, the first time this
 ships to a real domain.
 
+## Caddy on-demand TLS — catch-all site address for custom domains (Sites Phase 3)
+
+Custom domains have no fixed suffix or wildcard depth to match against — the whole point is arbitrary,
+unpredictable hostnames (`myapp.com`, `www.myapp.com`, ...). Verified Caddy's own documented answer for
+exactly this shape against real Caddy docs first, not memory: `caddyserver.com/docs/caddyfile/concepts`
+says "to catch all hosts, omit the host portion of the address, for example, simply `https://`," and
+`caddyserver.com/on-demand-tls`'s own worked example for "many dynamically-created subdomains" uses
+precisely that — a bare `https://` site block with `tls { on_demand }` inside, no address restriction:
+
+```caddyfile
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy api:8080
+}
+```
+
+`:443` (a port with no host) is the equivalent alternative some other examples use; `https://` was
+chosen to match Caddy's own canonical on-demand-TLS documentation page as closely as possible.
+
+**The real risk with a catch-all block isn't syntax, it's shadowing** — does a host-unrestricted
+`tls { on_demand }` block accidentally take over automation/routing for hostnames that already match a
+more specific block (the two existing sites-wildcard blocks, or the console/API's own explicit-hostname
+block)? Real prior art shows this class of bug is genuine: [Caddy issue
+#5933](https://github.com/caddyserver/caddy/issues/5933) reports a catch-all site's certificate being
+served for requests to other sites under certain configs. Caddy's docs also state the general rule that
+should prevent it: "If a request matches multiple site blocks, the site block with the most specific
+matching address is chosen" — but per this file's own standing discipline, a documented rule isn't
+enough on its own; it needs a real request against a real deployed Caddy instance actually loading all
+four site blocks together, the same bar Phase 1 and Phase 2's own fixes were held to.
+
+**Verified live**, in two passes: first with a throwaway Caddy instance running a synthetic Caddyfile
+(all four block shapes, `debug` logging on, `on_demand_tls { ask http://host.docker.internal:9999/ask }`
+pointed at a local Python stub that logs every call and always denies), then again loading the *actual*
+`deploy/Caddyfile` verbatim (env vars supplied, only the ask URL swapped to the local stub, byte-identical
+site blocks otherwise) with real TLS requests (`curl -k --resolve <host>:<port>:127.0.0.1`) against both:
+
+- A genuine 2-label site hostname (`blog.myproj.sites.praxycore.test`) triggered the ask endpoint with
+  exactly that domain — the two-label wildcard block's own automation policy matched, not the catch-all's.
+- A genuine 3-label preview hostname (`dep123.blog.myproj.sites.praxycore.test`) likewise matched its
+  own three-label wildcard block.
+- A legitimate-shaped but unregistered custom domain (`mycustomdomain.example.test`) and a made-up
+  attacker-controlled hostname (`totallyrandom.attacker.test`) both correctly fell through to the
+  catch-all block's ask call — proving it does activate for arbitrary hostnames, with `_ask-tls` (not
+  Caddy) responsible for actually denying the attacker one.
+- The console/API's own domain (`console.praxycore.test`, regular automatic HTTPS, no `tls { on_demand
+  }`) **never triggered an ask call at all** in either pass — its explicit-hostname automation policy
+  took precedence over the catch-all with no shadowing observed, confirming issue #5933's failure mode
+  does not reproduce here (that report involved a catch-all with an explicit static certificate, not a
+  pure on-demand policy with no subjects, and no other block in this Caddyfile carries an explicit cert
+  either).
+- The synthetic-Caddyfile pass's debug log directly confirms how Caddy compiles this into automation
+  policies — `apps.tls.automation.policies` at runtime (not `caddy adapt`'s static, pre-provision JSON,
+  which does not yet reflect this) showed exactly three entries: the console's explicit-subjects policy,
+  one `on_demand:true` policy scoped to `["*.*.*.{domain}","*.*.{domain}"]` (Caddy merged the two
+  wildcard blocks' identical `tls { on_demand }` config into one policy, harmlessly), and a bare
+  `{"on_demand":true}` fallback policy with no subjects — exactly the "most specific wins, catch-all
+  falls back" structure the docs describe.
+
+No real Let's Encrypt round trip was attempted (same reasoning as Phase 2's own note above — no
+internet-reachable test domain in this environment); this verification proves the automation-policy
+matching/shadowing risk, which is the piece that fails silently and was the actual root cause both
+prior times this Caddyfile broke in production. Confirm a real custom domain gets an actual cert the
+same way Phase 1's and Phase 2's live fixes were eventually confirmed, the first time this ships.
+
 ## Other notes
 
 - **OpenAPI UI only in Development.** It discloses the full API surface.

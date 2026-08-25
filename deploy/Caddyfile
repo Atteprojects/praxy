@@ -44,3 +44,26 @@
 	}
 	reverse_proxy api:8080
 }
+
+# Custom domains a site owner points at this box (Sites Phase 3) — unlike the two blocks above, there
+# is no fixed suffix or wildcard depth to match against; the whole point is arbitrary hostnames
+# (`myapp.com`, `www.myapp.com`, ...) nobody configured in advance. `https://` with the host portion
+# omitted is Caddy's own documented catch-all address (verbatim from caddyserver.com/on-demand-tls's
+# own worked example for exactly this "many dynamically-created customer domains" shape) — it matches
+# any hostname not claimed by a more specific site block. Placement in this file doesn't matter for
+# routing: Caddy always picks the most specific matching address regardless of block order (its own
+# docs, "If a request matches multiple site blocks, the site block with the most specific matching
+# address is chosen") — confirmed live against real Caddy with all four blocks loaded together and
+# `debug` logging on: a genuine 2-label site hostname and a genuine 3-label preview hostname each still
+# triggered their own dedicated block's ask call, not this catch-all's, while both a legitimate
+# unregistered custom domain and a made-up attacker-controlled hostname correctly fell through to this
+# block's ask call instead (`api`'s _ask-tls, not Caddy, is what actually denies the attacker one). No
+# shadowing of the console/API's own automatic-HTTPS block (`{$PRAXY_DOMAIN} {$PRAXY_CONSOLE_DOMAIN}`
+# above) was observed either — its explicit hostnames form their own more-specific automation policy.
+# See docs/research/dotnet-stack.md's Caddy section for the full transcript.
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy api:8080
+}

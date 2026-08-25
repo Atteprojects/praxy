@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Praxy.Auth;
@@ -16,7 +17,7 @@ namespace Praxy.Sites;
 /// rather than purely in the build worker — both the worker's auto-activate-on-success path and the
 /// console's explicit rollback endpoint call the same method.
 /// </summary>
-public sealed class SitesService(
+public sealed partial class SitesService(
     PraxyDb db, InstanceKey key, SiteDockerExecutor docker, SiteContainerRegistry registry,
     SiteBuildSignal buildSignal, SitesOptions options)
 {
@@ -235,5 +236,62 @@ public sealed class SitesService(
         }
 
         return deployment;
+    }
+
+    // ---- custom domains (Sites Phase 3) --------------------------------------------------------
+
+    // A hostname with at least two labels (so a bare "localhost"-style single label can't be
+    // registered), each 1-63 chars, letters/digits/hyphen, no leading/trailing hyphen per RFC 1035 —
+    // '*' is already excluded by the character class, so a wildcard custom domain is rejected by
+    // construction, not a separate check (Phase 3's own non-goal).
+    [GeneratedRegex(@"^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$")]
+    private static partial Regex HostnamePattern();
+
+    public Task<List<SiteDomain>> ListDomainsAsync(Guid siteId, CancellationToken ct) =>
+        db.SiteDomains.Where(d => d.SiteId == siteId).OrderBy(d => d.CreatedAt).ToListAsync(ct);
+
+    /// <summary>
+    /// Registers a custom domain as <c>pending</c> — nothing here talks to Caddy or DNS; the row just
+    /// makes the hostname a legitimate target for <see cref="SiteHostPattern"/>'s sibling lookup
+    /// (<see cref="SiteCustomDomainLookup"/>) going forward. It flips to <c>verified</c> on its own,
+    /// the first time a real request actually reaches <see cref="SiteProxyMiddleware"/> through it.
+    /// </summary>
+    public async Task<SiteDomain> AddDomainAsync(Site site, string hostname, CancellationToken ct)
+    {
+        var normalized = SiteCustomDomainLookup.Normalize(hostname);
+        var reservedSuffix = "." + options.Domain;
+        var invalid = normalized.Length > 253 || !HostnamePattern().IsMatch(normalized)
+            || normalized == options.Domain || normalized.EndsWith(reservedSuffix, StringComparison.Ordinal);
+        if (invalid)
+            throw PraxyException.ArgumentInvalid("Invalid custom domain.", new Dictionary<string, string[]>
+            {
+                ["hostname"] = [$"Must be a valid DNS hostname (e.g. app.example.com) and not {options.Domain} or a subdomain of it."],
+            });
+
+        var domain = new SiteDomain
+        {
+            Id = Ids.NewUuid(),
+            SiteId = site.Id,
+            ProjectId = site.ProjectId,
+            Hostname = normalized,
+        };
+        db.SiteDomains.Add(domain);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505" })
+        {
+            throw new PraxyException(409, ErrorTypes.SiteDomainAlreadyExists,
+                $"'{normalized}' is already claimed by another site.");
+        }
+        return domain;
+    }
+
+    public async Task DeleteDomainAsync(Guid siteId, Guid domainId, CancellationToken ct)
+    {
+        var deleted = await db.SiteDomains.Where(d => d.Id == domainId && d.SiteId == siteId).ExecuteDeleteAsync(ct);
+        if (deleted == 0)
+            throw PraxyException.NotFound(ErrorTypes.SiteDomainNotFound, "Custom domain not found.");
     }
 }

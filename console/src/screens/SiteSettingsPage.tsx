@@ -1,11 +1,12 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import {
-  useDeleteSite, useDeleteSiteEnvVar, useSite, useSiteEnvVars, useSetSiteEnvVar, useUpdateSite,
+  useAddSiteDomain, useDeleteSite, useDeleteSiteDomain, useDeleteSiteEnvVar, useSite, useSiteDomains,
+  useSiteEnvVars, useSetSiteEnvVar, useUpdateSite,
 } from "../api/sites";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
-import { ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
+import { Badge, ErrorNote, Field, FullPageSpinner, Spinner, timeAgo, Toggle } from "../components/ui";
 import { SiteDetailHeader } from "./SiteDetailHeader";
 
 export function SiteSettingsPage() {
@@ -13,20 +14,37 @@ export function SiteSettingsPage() {
   const navigate = useNavigate();
   const site = useSite(projectId, siteId);
   const envVars = useSiteEnvVars(projectId, siteId);
+  const domains = useSiteDomains(projectId, siteId);
   const update = useUpdateSite(projectId, siteId);
   const setVar = useSetSiteEnvVar(projectId, siteId);
   const deleteVar = useDeleteSiteEnvVar(projectId, siteId);
   const deleteSite = useDeleteSite(projectId);
+  const addDomain = useAddSiteDomain(projectId, siteId);
+  const deleteDomain = useDeleteSiteDomain(projectId, siteId);
 
   const [rootDirectory, setRootDirectory] = useState<string | null>(null);
   const [newVarKey, setNewVarKey] = useState("");
   const [newVarValue, setNewVarValue] = useState("");
+  const [newHostname, setNewHostname] = useState("");
   const [confirmName, setConfirmName] = useState("");
   const error = update.error instanceof ApiError ? update.error : null;
+  const domainError = addDomain.error instanceof ApiError ? addDomain.error : null;
 
-  if (site.isPending || envVars.isPending) return <FullPageSpinner />;
+  if (site.isPending || envVars.isPending || domains.isPending) return <FullPageSpinner />;
   if (site.isError) throw site.error;
   if (envVars.isError) throw envVars.error;
+  if (domains.isError) throw domains.error;
+
+  // The CNAME target for a subdomain custom domain — the site's own always-on hostname, stripped of
+  // scheme. Apex domains can't use CNAME (a DNS protocol limitation, not ours) and this instance
+  // doesn't know its own public IP, so an A/AAAA record is left as self-serve/manual, documented
+  // below rather than auto-filled.
+  const cnameTarget = new URL(site.data.publicUrl).host;
+
+  async function onAddDomain() {
+    await addDomain.mutateAsync(newHostname.trim());
+    setNewHostname("");
+  }
 
   async function onDeleteSite() {
     await deleteSite.mutateAsync(siteId);
@@ -130,6 +148,75 @@ export function SiteSettingsPage() {
               }}
             >
               {setVar.isPending ? <Spinner /> : "+ Add"}
+            </button>
+          </div>
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">Custom domains</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Point your own domain at this site's <span className="font-mono text-ink-300">active</span> deployment
+            — no preview URLs, one hostname per domain. For a subdomain of your own domain (e.g.{" "}
+            <code className="text-ink-300">app.example.com</code>), add a{" "}
+            <code className="text-ink-300">CNAME</code> record pointing at{" "}
+            <code className="text-ink-300">{cnameTarget}</code>. An apex domain (e.g.{" "}
+            <code className="text-ink-300">example.com</code>) can't use CNAME — point an{" "}
+            <code className="text-ink-300">A</code>/<code className="text-ink-300">AAAA</code> record at this
+            instance's own public IP instead. A domain shows <Badge tone="amber">pending</Badge> until the
+            DNS record resolves and its first real visit succeeds, then flips to{" "}
+            <Badge tone="mint">verified</Badge> on its own — no separate step.
+          </p>
+          <div className="mb-3 space-y-2">
+            {domains.data.total === 0 ? (
+              <p className="text-xs text-ink-500">No custom domains configured.</p>
+            ) : (
+              domains.data.domains.map((d) => (
+                <div key={d.id} className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs text-ink-200">{d.hostname}</span>
+                    {d.status === "verified" ? (
+                      <Badge tone="mint">verified</Badge>
+                    ) : (
+                      <Badge tone="amber">pending</Badge>
+                    )}
+                    <span className="text-[11px] text-ink-500">
+                      {d.status === "verified" && d.verifiedAt ? `verified ${timeAgo(d.verifiedAt)}` : `added ${timeAgo(d.createdAt)}`}
+                    </span>
+                  </div>
+                  <ConfirmButton
+                    label="Remove"
+                    title="Remove custom domain?"
+                    confirmLabel="Remove domain"
+                    successMessage={`Removed ${d.hostname}.`}
+                    className="text-xs text-ink-500 hover:text-coral-400 cursor-pointer"
+                    body={
+                      <>
+                        <span className="font-mono text-ink-300">{d.hostname}</span> stops resolving to this
+                        site immediately. Its DNS record isn't ours to remove — take that down separately if
+                        you're retiring the domain entirely.
+                      </>
+                    }
+                    onConfirm={() => deleteDomain.mutateAsync(d.id)}
+                  />
+                </div>
+              ))
+            )}
+          </div>
+          {domainError ? <div className="mb-3"><ErrorNote message={domainError.message} /></div> : null}
+          <div className="flex gap-2">
+            <input
+              className="input-base flex-1 font-mono text-xs"
+              placeholder="app.example.com"
+              value={newHostname}
+              onChange={(e) => setNewHostname(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-ghost shrink-0 border border-ink-700 text-xs"
+              disabled={!newHostname.trim() || addDomain.isPending}
+              onClick={() => void onAddDomain()}
+            >
+              {addDomain.isPending ? <Spinner /> : "+ Add"}
             </button>
           </div>
         </section>

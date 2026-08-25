@@ -44,6 +44,7 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<SiteEnvVar> SiteEnvVars => Set<SiteEnvVar>();
     public DbSet<SiteDeployment> SiteDeployments => Set<SiteDeployment>();
     public DbSet<SiteDeploymentSource> SiteDeploymentSources => Set<SiteDeploymentSource>();
+    public DbSet<SiteDomain> SiteDomains => Set<SiteDomain>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
     public DbSet<MessagingTarget> MessagingTargets => Set<MessagingTarget>();
@@ -377,6 +378,18 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Tar).HasColumnType("bytea");
             e.HasOne<SiteDeployment>().WithOne().HasForeignKey<SiteDeploymentSource>(x => x.DeploymentId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<SiteDomain>(e =>
+        {
+            e.ToTable("site_domains");
+            e.Property(x => x.Hostname).HasMaxLength(253);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.SiteId);
+            // Globally unique, not per-project — two different sites can't claim the same real-world
+            // hostname. Also SiteProxyMiddleware's and _ask-tls's exact-match lookup index.
+            e.HasIndex(x => x.Hostname).IsUnique();
         });
 
         b.Entity<MessagingProvider>(e =>

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
-  ErrorEnvelope, PraxySite, SiteDeployment, SiteDeploymentList, SiteEnvVar, SiteEnvVarList, SiteList,
+  ErrorEnvelope, PraxySite, SiteDeployment, SiteDeploymentList, SiteDomain, SiteDomainList, SiteEnvVar,
+  SiteEnvVarList, SiteList,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/sites`;
@@ -88,6 +89,38 @@ export function useDeleteSiteEnvVar(projectId: string, siteId: string) {
       api<void>(`${base(projectId)}/${siteId}/env/${encodeURIComponent(key)}`, { method: "DELETE" }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "env"] }),
+  });
+}
+
+// ---- custom domains (Sites Phase 3) ----
+
+export function useSiteDomains(projectId: string, siteId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "sites", siteId, "domains"],
+    queryFn: () => api<SiteDomainList>(`${base(projectId)}/${siteId}/domains`),
+    // Polls so a domain's pending -> verified flip (which happens server-side on the first proxied
+    // request through it, not a console action) shows up without a manual refresh.
+    refetchInterval: 5_000,
+  });
+}
+
+export function useAddSiteDomain(projectId: string, siteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (hostname: string) =>
+      api<SiteDomain>(`${base(projectId)}/${siteId}/domains`, { method: "POST", body: { hostname } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "domains"] }),
+  });
+}
+
+export function useDeleteSiteDomain(projectId: string, siteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (domainId: string) =>
+      api<void>(`${base(projectId)}/${siteId}/domains/${domainId}`, { method: "DELETE" }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "domains"] }),
   });
 }
 

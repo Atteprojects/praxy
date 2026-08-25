@@ -515,6 +515,22 @@ export interface SiteDeploymentList {
   deployments: SiteDeployment[];
 }
 
+export type SiteDomainStatus = "pending" | "verified";
+
+export interface SiteDomain {
+  id: string;
+  hostname: string;
+  status: SiteDomainStatus;
+  createdAt: string;
+  /** Set the moment the first request through this hostname is successfully proxied — proof Caddy's on-demand TLS actually issued a cert, not just that issuance was allowed. Null while still `pending`. */
+  verifiedAt: string | null;
+}
+
+export interface SiteDomainList {
+  total: number;
+  domains: SiteDomain[];
+}
+
 // ---- Phase 8: messaging ----
 
 export interface MessagingProvider {

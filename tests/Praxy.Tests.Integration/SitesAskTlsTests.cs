@@ -122,6 +122,84 @@ public class SitesAskTlsTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         await AssertAskTls(previewHostname, expectAllowed: false);
     }
 
+    [Fact]
+    public async Task An_unregistered_custom_domain_is_rejected_even_though_it_parses_as_a_real_hostname()
+    {
+        var (_, _) = await SetupProjectAsync();
+        // Shaped exactly like a real public domain (unlike the "not-even-shaped-like-a-site.example.com"
+        // case above, which is really testing SiteHostPattern's own rejection) — nothing in
+        // site_domains claims it, so the custom-domain fallback must reject it too.
+        await AssertAskTls("nobody-registered-this.example.test", expectAllowed: false);
+    }
+
+    [Fact]
+    public async Task A_custom_domain_is_allowed_once_pending_then_rejected_once_its_site_is_disabled()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "blog");
+        var deploymentId = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildFakeServerTar());
+        await WaitForSiteRunningAsync(operatorToken, projectId, siteId, deploymentId);
+
+        var hostname = "myapp.example.test";
+        var domain = await AddDomainAsync(operatorToken, projectId, siteId, hostname);
+        Assert.Equal("pending", domain.GetProperty("status").GetString());
+        // _ask-tls allowing a still-pending domain is the whole point — Caddy calls this *before*
+        // issuance, so "pending" must not block the very first attempt.
+        await AssertAskTls(hostname, expectAllowed: true);
+
+        var disable = await Client.SendAsync(Authed(HttpMethod.Patch,
+            $"/v1/console/projects/{projectId}/sites/{siteId}", operatorToken, new { enabled = false }));
+        Assert.Equal(200, (int)disable.StatusCode);
+        await AssertAskTls(hostname, expectAllowed: false);
+    }
+
+    [Fact]
+    public async Task A_custom_domain_belonging_to_another_site_does_not_leak_through_that_sites_state()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var ownerSiteId = await CreateSiteAsync(operatorToken, projectId, "owner");
+        var otherSiteId = await CreateSiteAsync(operatorToken, projectId, "other");
+
+        var ownerDeployment = await UploadDeploymentAsync(operatorToken, projectId, ownerSiteId, BuildFakeServerTar());
+        await WaitForSiteRunningAsync(operatorToken, projectId, ownerSiteId, ownerDeployment);
+        var otherDeployment = await UploadDeploymentAsync(operatorToken, projectId, otherSiteId, BuildFakeServerTar());
+        await WaitForSiteRunningAsync(operatorToken, projectId, otherSiteId, otherDeployment);
+
+        var hostname = "leaktest.example.test";
+        await AddDomainAsync(operatorToken, projectId, ownerSiteId, hostname);
+        // "other" is a real, enabled, fully-deployed sibling site in the same project — the lookup
+        // must resolve strictly through the domain's own site_id, not "any enabled site nearby."
+        await AssertAskTls(hostname, expectAllowed: true);
+
+        var disableOwner = await Client.SendAsync(Authed(HttpMethod.Patch,
+            $"/v1/console/projects/{projectId}/sites/{ownerSiteId}", operatorToken, new { enabled = false }));
+        Assert.Equal(200, (int)disableOwner.StatusCode);
+        // Disabling the domain's real owner rejects it, even though "other" stays enabled right next
+        // to it — proves the check didn't accidentally key off some other site in the project.
+        await AssertAskTls(hostname, expectAllowed: false);
+    }
+
+    [Fact]
+    public async Task Custom_domain_matching_is_case_insensitive()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "blog");
+        var deploymentId = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildFakeServerTar());
+        await WaitForSiteRunningAsync(operatorToken, projectId, siteId, deploymentId);
+
+        await AddDomainAsync(operatorToken, projectId, siteId, "MixedCase.Example.Test");
+        await AssertAskTls("mixedcase.example.test", expectAllowed: true);
+        await AssertAskTls("MIXEDCASE.EXAMPLE.TEST", expectAllowed: true);
+    }
+
+    private async Task<JsonElement> AddDomainAsync(string operatorToken, string projectId, string siteId, string hostname)
+    {
+        var response = await Client.SendAsync(Authed(HttpMethod.Post,
+            $"/v1/console/projects/{projectId}/sites/{siteId}/domains", operatorToken, new { hostname }));
+        Assert.Equal(201, (int)response.StatusCode);
+        return await ReadJson(response);
+    }
+
     // ---- helpers ------------------------------------------------------------------------------
 
     private async Task AssertAskTls(string domain, bool expectAllowed)
