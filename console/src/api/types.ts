@@ -474,6 +474,10 @@ export interface PraxySite {
   /** Whether the active deployment's container is actually running right now — distinct from the deployment's own "ready" status, which only means "buildable." */
   isRunning: boolean;
   publicUrl: string;
+  /** The connected GitHub repository, "owner/repo" (Sites Phase 4) — null until one is connected. Set together with productionBranch. */
+  repositoryFullName: string | null;
+  /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a preview-only deployment. Null until a repository is connected. */
+  productionBranch: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -495,11 +499,18 @@ export interface SiteEnvVarList {
 }
 
 export type SiteDeploymentStatus = "queued" | "building" | "ready" | "failed";
+export type SiteDeploymentSource = "upload" | "git";
 
 export interface SiteDeployment {
   id: string;
   status: SiteDeploymentStatus;
   sourceSizeBytes: number;
+  source: SiteDeploymentSource;
+  /** Set only for a "git" deployment — the pushed commit's full SHA. */
+  commitSha: string | null;
+  commitMessage: string | null;
+  /** Set only for a "git" deployment — the branch that was pushed to (may or may not be the site's production branch). */
+  branch: string | null;
   buildLog: string;
   error: string | null;
   imageTag: string | null;
@@ -529,6 +540,29 @@ export interface SiteDomain {
 export interface SiteDomainList {
   total: number;
   domains: SiteDomain[];
+}
+
+export interface SiteGitBranches {
+  branches: string[];
+}
+
+// ---- Sites Phase 4: Praxy.Vcs (instance-wide GitHub App integration) ----
+
+export interface GithubInstallation {
+  id: string;
+  installationId: number;
+  accountLogin: string;
+  accountType: string;
+  createdAt: string;
+}
+
+export interface GithubInstallationList {
+  total: number;
+  installations: GithubInstallation[];
+}
+
+export interface GithubInstallUrl {
+  url: string;
 }
 
 // ---- Phase 8: messaging ----

@@ -107,6 +107,18 @@ export function PlatformsIcon(props: IconProps) {
   );
 }
 
+export function GithubIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="4" cy="3" r="1.6" stroke="currentColor" />
+      <circle cx="4" cy="13" r="1.6" stroke="currentColor" />
+      <circle cx="12" cy="9" r="1.6" stroke="currentColor" />
+      <path d="M4 4.6v6.8" stroke="currentColor" />
+      <path d="M4 7c0 3 3.5 3.4 6.6 1.4" stroke="currentColor" />
+    </Icon>
+  );
+}
+
 export function AuditIcon(props: IconProps) {
   return (
     <Icon {...props}>

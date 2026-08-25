@@ -13,7 +13,7 @@ import {
 import type { SiteDeployment, SiteDeploymentStatus } from "../api/types";
 import { SiteDetailHeader } from "./SiteDetailHeader";
 
-const HEADERS = ["Created", "Status", "Size", "Image", "", ""];
+const HEADERS = ["Created", "Status", "Source", "Size", "Image", "", ""];
 
 export function SiteDeploymentsPage() {
   const { projectId, siteId } = useParams({ strict: false }) as { projectId: string; siteId: string };
@@ -39,6 +39,20 @@ export function SiteDeploymentsPage() {
       id: "status",
       header: "Status",
       cell: ({ row }) => <DeploymentStatusBadge status={row.original.status} />,
+    },
+    {
+      id: "source",
+      header: "Source",
+      cell: ({ row }) => {
+        const d = row.original;
+        if (d.source !== "git") return <span className="text-xs text-ink-600">upload</span>;
+        return (
+          <span className="font-mono text-xs text-ink-400" title={d.commitMessage ?? undefined}>
+            {d.branch}
+            {d.commitSha ? ` @ ${d.commitSha.slice(0, 7)}` : ""}
+          </span>
+        );
+      },
     },
     {
       id: "size",
@@ -282,6 +296,18 @@ function DeploymentSheet({
           <span className="text-xs text-ink-500">{elapsedLabel}</span>
           {d.imageTag ? <span className="font-mono text-xs text-ink-400">{d.imageTag}</span> : null}
         </div>
+        {d.source === "git" ? (
+          <div className="text-xs text-ink-500">
+            pushed to <span className="font-mono text-ink-300">{d.branch}</span>
+            {d.commitSha ? (
+              <>
+                {" "}
+                @ <span className="font-mono text-ink-300">{d.commitSha.slice(0, 7)}</span>
+              </>
+            ) : null}
+            {d.commitMessage ? <span> — {d.commitMessage}</span> : null}
+          </div>
+        ) : null}
         {d.error ? <ErrorNote message={d.error} /> : null}
         {!showSuccess && d.previewUrl ? (
           <div className="rounded-lg border border-ink-800 bg-ink-900 px-3.5 py-2.5 text-xs text-ink-400">
