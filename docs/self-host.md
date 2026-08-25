@@ -18,6 +18,9 @@ document.
   **wildcard DNS record** (`*.sites.your.domain.com` → this host's IP) in addition to the plain
   `your.domain.com` record `up.sh` already asks for. See
   [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain) below.
+- If you plan to connect a Site to a GitHub repository (push-to-deploy): your own GitHub App (there's
+  no shared Praxy-provided one) and a public, internet-reachable instance — GitHub delivers webhooks
+  to a real URL, so `localhost` needs a tunnel. See [Git integration](#git-integration) below.
 
 ## Quick start
 
@@ -148,6 +151,8 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Sites:*` | see `docs/handoff/sites-phase-1-report.md` | Docker endpoint, base image, build/startup timeouts, reconciliation cadence, resource limits. |
 | `Praxy:Sites:DockerNetwork` | `""` | Same shape as `Praxy:Functions:DockerNetwork`, but a separate network (this repo's own compose file sets it to `praxy-sites`) — a site's container and a function's container can't reach each other by default. See [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
 | `Praxy:Sites:PreviewIdleSeconds` / `PreviewSweepIntervalSeconds` | `600` / `60` | How long an on-demand preview deployment's container may sit with no proxied request before it's stopped, and how often that sweep runs — see [Preview URLs and idle sweep](#preview-urls-and-idle-sweep). Never applies to a site's active/production container. |
+| `Praxy:Vcs:GitHub:AppId` / `ClientId` / `ClientSecret` / `PrivateKey` / `WebhookSecret` | unset | This instance's own GitHub App — see [Git integration](#git-integration). Unset means the feature is off (a clean, typed error, not a crash) until you create and configure one. |
+| `Praxy:Vcs:CloneTimeoutSeconds` | 60 | Hard ceiling on a single `git` subprocess call while cloning a pushed commit for a build. |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
 | `Praxy:Retention:SweepIntervalSeconds` | 3600 | How often the retention sweep runs. |
 | `Praxy:Retention:EventsMaxAgeDays` | 90 | Age past which a `praxy.events` row is deleted — only once **both** `WebhooksDispatchedAt` and `FunctionsDispatchedAt` are set; an unclaimed row past this age is left for the next sweep rather than force-deleted. |
@@ -311,6 +316,83 @@ Same Caddyfile landmine as the section above applies here too: this feature adds
 `https://` site block to `deploy/Caddyfile`. **After deploying it, restart Caddy** (`docker compose -f
 deploy/docker-compose.yml restart caddy`) — bind-mounting the new file alone isn't enough, Caddy only
 reads it at its own startup. See the Upgrading section below.
+
+## Git integration
+
+Connect a site to a GitHub repository so a push to its production branch builds and goes live
+automatically, and a push to any other branch builds a preview (its own Phase 2 preview URL, above)
+without ever touching production. This needs **your own GitHub App** — there is no shared
+Praxy-provided one, the same self-host story Appwrite's own git integration follows. Nothing here
+works until you create one and set the five `Praxy:Vcs:GitHub:*` config values above; until then the
+console's GitHub settings page shows a clean "not configured" message rather than an error.
+
+**Your instance must be internet-reachable for this to work at all** — GitHub delivers the webhook
+that drives the whole feature to a real public URL, so a bare `dotnet run` on `localhost` needs a
+tunnel (ngrok or equivalent) to receive it. If you're running the `up.sh`/`docker-compose.yml` stack
+with a real `PRAXY_DOMAIN`, you already have what you need.
+
+### Create the GitHub App
+
+From your GitHub account or organization: **Settings → Developer settings → GitHub Apps → New GitHub
+App**.
+
+1. **GitHub App name** — anything; it only shows up in GitHub's own UI and in the install URL
+   (`github.com/apps/<your-app-name-slug>`).
+2. **Homepage URL** — anything reachable; GitHub requires a value but Praxy never calls it.
+3. **Callback URL** — `https://<your domain>/v1/vcs/github/callback`. This is GitHub's own
+   installation-flow "Setup URL" field, not an OAuth login callback — check **"Redirect on update"**
+   so re-configuring an existing installation also lands back here.
+4. **Webhook** — check **Active**. **Webhook URL**: `https://<your domain>/v1/vcs/github/webhook`.
+   **Webhook secret**: generate a random value yourself (e.g. `openssl rand -hex 32`) and remember it
+   — this becomes `Praxy:Vcs:GitHub:WebhookSecret`, never entered anywhere on GitHub's side beyond this
+   one field.
+5. **Repository permissions** — **Contents: Read-only** (needed to receive push events and clone).
+   **Metadata: Read-only** is on by default and can't be turned off.
+6. **Subscribe to events** — check **Push**. Nothing else is needed; Praxy ignores every other event
+   type it might receive (see the Landmines note in `docs/handoff/sites-phase-4-report.md` for why
+   commit statuses/PR comments were deliberately left out of this phase).
+7. **Where can this GitHub App be installed?** — your call; "Only on this account" is the tighter
+   default if you're the only one who'll ever connect a repository.
+
+Create the App, then on its settings page: note the **App ID** (`Praxy:Vcs:GitHub:AppId`), the
+**Client ID** (`Praxy:Vcs:GitHub:ClientId`), and **Generate a new client secret**
+(`Praxy:Vcs:GitHub:ClientSecret`). Under **Private keys**, **Generate a private key** — this downloads
+a `.pem` file.
+
+### The private key value
+
+A `.pem` file's real newlines don't survive a single-line `.env` value or `docker-compose.yml`
+`environment:` entry cleanly. `Praxy:Vcs:GitHub:PrivateKey` accepts the key either way, but base64 is
+the recommended path:
+
+```bash
+base64 -i your-app-private-key.pem | tr -d '\n'
+```
+
+Set the result as `Praxy:Vcs:GitHub:PrivateKey` (or `PRAXY_VCS_GITHUB_PRIVATEKEY` as an env var). If
+you'd rather paste the raw PEM text, that works too — Praxy tries a base64 decode first and falls back
+to using the value as-is when that fails (PEM's own `-----BEGIN...` framing isn't valid base64, so the
+fallback is automatic, not something you need to configure).
+
+Set all five values, restart `api`, then in the console go to **Settings → GitHub** and click
+**Connect GitHub** — this redirects to GitHub's own installation flow; approve it for the account/org
+and repositories you want reachable, and GitHub redirects back to the Callback URL above, which
+records the installation. From there, connect a specific site to a specific repository and pick its
+production branch from the site's own Settings page, the same place custom domains live.
+
+**Repository access is always checked live against GitHub**, never cached — Praxy doesn't store which
+installation covers which repository, only that *some* installation exists (a cheap "has GitHub been
+connected to this instance at all" gate). Revoking the App's access to a repository on GitHub's side
+takes effect on the very next push or console action that touches it, with no separate step on the
+Praxy side.
+
+### Cloning
+
+A git-sourced build clones the exact pushed commit by shelling out to the system `git` CLI (not a
+library) — the `api` container image installs it for this reason; if you're running `api` bare
+(`dotnet run`, not the Docker image), make sure `git` is on `PATH` yourself. The clone happens inside
+the build worker, in a fresh temporary directory deleted once the build finishes — success or
+failure — the same discipline an uploaded tar's bytes already follow.
 
 ## Backup and restore
 

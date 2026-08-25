@@ -244,20 +244,25 @@ Phase 1 and 2's own Caddy fixes were held to. A domain flips `pending → verifi
 successfully proxied request through it, not inside `_ask-tls` (which only permits an ACME attempt, not
 proof it succeeded). Full design: `research/praxy-sites.md`'s "Phase 3" section.
 
-**Sites Phase 4 — git integration** (kickoff: `docs/handoff/sites-phase-4-prompt.md`, written
-2026-08-24, revised same day to make the GitHub integration shared infrastructure) — not yet implemented.
-Push to a site's production branch builds and auto-activates; push to any other branch builds a
-deployment and leaves it on its existing Phase 2 preview URL — no new serving infrastructure needed for
-that half. Real design in `research/praxy-sites.md`'s "Phase 4" section, including two scope-*cutting*
-findings from re-checking Appwrite's actual deploy-from-git docs (no commit statuses/PR comments, no
-build-command auto-detection) that make this phase smaller than the original sketch assumed. **The GitHub
-App/webhook/installation layer is a new shared project, `Praxy.Vcs`, not Sites-specific** — raised by the
-owner before this phase started: `FunctionsService.CreateDeploymentAsync` is nearly identical in shape to
-`SitesService`'s own, so a future Functions git-integration phase should be a small addition to
-`Praxy.Vcs`'s consumers, not a rebuild of the GitHub App/token/signature layer from scratch. That future
-phase is explicitly not started here — only designed for. Self-hosted owner configures their own GitHub
-App, same as Appwrite requires — and the instance must be internet-reachable for GitHub's webhooks to
-arrive, so real verification targets `praxycore.dev`, not local dev.
+**Sites Phase 4 — git integration — shipped 2026-08-24** (kickoff: `docs/handoff/sites-phase-4-prompt.md`;
+report: `docs/handoff/sites-phase-4-report.md`). Push to a site's production branch builds and
+auto-activates; push to any other branch builds a deployment and leaves it on its existing Phase 2 preview
+URL — no new serving infrastructure needed for that half, exactly as designed. Real design in
+`research/praxy-sites.md`'s "Phase 4" section, including two scope-*cutting* findings from re-checking
+Appwrite's actual deploy-from-git docs (no commit statuses/PR comments, no build-command auto-detection)
+that made this phase smaller than the original sketch assumed. **The GitHub App/webhook/installation layer
+is a new shared project, `Praxy.Vcs`** (`Praxy.Core`/`Praxy.Persistence` only, no reference to
+`Praxy.Sites`) **— not Sites-specific**, raised by the owner before this phase started:
+`FunctionsService.CreateDeploymentAsync` is nearly identical in shape to `SitesService`'s own, so a future
+Functions git-integration phase can be a small addition to `Praxy.Vcs`'s consumers, not a rebuild of the
+GitHub App/token/signature layer — that future phase is explicitly not started here, only designed for.
+GitHub App JWT signing, webhook HMAC verification, and the commit clone all needed zero new NuGet
+packages (hand-rolled on the BCL / shelled out to the system `git` CLI) — see
+`research/dotnet-stack.md`'s own section. Self-hosted owner configures their own GitHub App, same as
+Appwrite requires (exact steps: `docs/self-host.md`'s "Git integration" section) — the instance must be
+internet-reachable for GitHub's webhooks to arrive, so the real owner-test targets `praxycore.dev`, not
+local dev. This closes the four-phase Sites sequence the owner committed to; framework presets beyond
+Next.js remain deferred (below).
 
 **Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
 (2026-08-22).

@@ -633,6 +633,36 @@ matching/shadowing risk, which is the piece that fails silently and was the actu
 prior times this Caddyfile broke in production. Confirm a real custom domain gets an actual cert the
 same way Phase 1's and Phase 2's live fixes were eventually confirmed, the first time this ships.
 
+## Git integration: zero new packages (Sites Phase 4)
+
+Three capabilities the GitHub App integration needs, each evaluated against "is a package actually
+warranted" and each landing on "no":
+
+- **RS256 JWT signing** (GitHub App identity JWTs — `iss`=App id, ~10 minute expiry, RS256). Hand-rolled
+  on `System.Security.Cryptography.RSA` (`ImportFromPem` + `SignData` with `RSASignaturePadding.Pkcs1`)
+  and `System.Text.Json`, ~20 lines (`Praxy.Vcs.GitHubAppJwt`). No `System.IdentityModel.Tokens.Jwt` or
+  similar: this code only ever *signs* a JWT with a fixed, tiny claim set — it never parses or verifies
+  someone else's, which is where a JWT library earns its keep (claim validation, multiple algorithms,
+  `kid`-based key rotation, none of which apply here).
+- **GitHub webhook HMAC verification** (`X-Hub-Signature-256: sha256=<hex HMACSHA256(secret, rawBody)>`).
+  `System.Security.Cryptography.HMACSHA256` + `CryptographicOperations.FixedTimeEquals` — the same BCL
+  primitives `Praxy.Webhooks.WebhookSignature` already uses for its own (differently-shaped, Stripe-style)
+  outbound scheme. A second ~15-line static method (`Praxy.Vcs.GitHubWebhookSignature`), not a shared
+  class — the wire formats genuinely differ (GitHub has no timestamp component), so sharing code here
+  would mean a branchy abstraction over two unrelated formats for no real reuse benefit.
+- **Git clone** (shallow, exact pushed commit). Shells out to the system `git` CLI via
+  `System.Diagnostics.Process` rather than `LibGit2Sharp` — no managed dependency, no native-library
+  packaging/platform-matrix concerns (LibGit2Sharp ships `.so`/`.dylib`/`.dll` per-RID, a real
+  cross-platform-build headache this project hasn't needed to solve for anything else), and the actual
+  operation needed (`init` + `remote add` + `fetch --depth 1 origin <sha>` + `checkout FETCH_HEAD`) is
+  four ordinary git subcommands, not something that benefits from a full binding library. Trade-off:
+  the container image now needs `git` on `PATH` (`deploy/Dockerfile`'s runtime stage installs it via
+  `apt-get`) — a real but small and one-time addition, versus a native-dependency package on every
+  build.
+
+None of this needed a new entry in the pinned-versions table above — every dependency used is either
+already a transitive reference (`Microsoft.EntityFrameworkCore` via `Praxy.Persistence`) or pure BCL.
+
 ## Other notes
 
 - **OpenAPI UI only in Development.** It discloses the full API surface.
