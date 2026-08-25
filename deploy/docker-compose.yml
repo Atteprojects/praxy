@@ -87,15 +87,6 @@ services:
       # plain `docker compose up` (no --profile) for everyone, not just https users. up.sh
       # validates this is set before it ever passes --profile https instead.
       PRAXY_DOMAIN: ${PRAXY_DOMAIN:-}
-      # Unlike PRAXY_DOMAIN above, this defaults to a real (if inert) value rather than blank —
-      # deploy/Caddyfile's sites wildcard block concatenates a literal "*." onto it, and an empty
-      # placeholder there would produce the malformed address "*." instead of vanishing the way a
-      # whole blank whitespace-delimited token does (PRAXY_CONSOLE_DOMAIN's own pattern). The
-      # "sites.localhost" default is never routable in a public https-profile deployment, so an
-      # operator who set PRAXY_DOMAIN by hand without also setting this (see docs/self-host.md's
-      # manual path) gets a harmless unmatched site block, not a Caddyfile parse failure that takes
-      # the whole https profile down.
-      PRAXY_SITES_DOMAIN: ${PRAXY_SITES_DOMAIN:-sites.localhost}
     ports:
       - "80:80"
       - "443:443"
