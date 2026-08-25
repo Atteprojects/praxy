@@ -244,10 +244,15 @@ Phase 1 and 2's own Caddy fixes were held to. A domain flips `pending → verifi
 successfully proxied request through it, not inside `_ask-tls` (which only permits an ACME attempt, not
 proof it succeeded). Full design: `research/praxy-sites.md`'s "Phase 3" section.
 
-**Sites Phase 4 — git integration** (push-to-deploy, PR previews). Sketch only in `research/praxy-sites.md`
-— the largest and most structurally different phase (a self-hosted owner-configured GitHub App, nothing
-else in Praxy looks like this integration shape), needs its own dedicated scoping session when its turn
-comes.
+**Sites Phase 4 — git integration** (kickoff: `docs/handoff/sites-phase-4-prompt.md`, written
+2026-08-24) — not yet implemented. Push to a site's production branch builds and auto-activates; push to
+any other branch builds a deployment and leaves it on its existing Phase 2 preview URL — no new serving
+infrastructure needed for that half. Real design in `research/praxy-sites.md`'s "Phase 4" section,
+including two scope-*cutting* findings from re-checking Appwrite's actual deploy-from-git docs (no commit
+statuses/PR comments, no build-command auto-detection) that make this phase smaller than the original
+sketch assumed. Self-hosted owner configures their own GitHub App, same as Appwrite requires — and the
+instance must be internet-reachable for GitHub's webhooks to arrive, so real verification targets
+`praxycore.dev`, not local dev.
 
 **Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
 (2026-08-22).
