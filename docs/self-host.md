@@ -247,19 +247,23 @@ Local/plain-HTTP use (no `PRAXY_DOMAIN` configured) needs no DNS setup at all: t
 `PRAXY_SITES_DOMAIN=sites.localhost` relies on every modern browser and OS resolver sending
 `*.sites.localhost` straight to `127.0.0.1`.
 
-**TLS is on-demand, not one static wildcard certificate.** `deploy/Caddyfile`'s sites block
-(`*.*.{$PRAXY_SITES_DOMAIN} { tls { on_demand } }`) issues a separate Let's Encrypt certificate per
-exact hostname, lazily, the first time each one is actually requested — this needs no DNS-provider
-API credentials (unlike a real wildcard cert, which requires DNS-01), but it does need the global
+**TLS is on-demand, not one static wildcard certificate.** `deploy/Caddyfile`'s single host-less
+`https:// { tls { on_demand } }` block issues a separate Let's Encrypt certificate per exact hostname,
+lazily, the first time each one is actually requested — this needs no DNS-provider API credentials
+(unlike a real wildcard cert, which requires DNS-01), but it does need the global
 `on_demand_tls { ask ... }` option Caddy calls before minting each one
 (`GET /v1/sites/_ask-tls?domain=<host>`, unauthenticated because Caddy calls it, but a strict
-allow-list against real enabled+deployed sites only — anything else is `404`, refusing the cert). The
-site block needs **two** wildcard labels, not one — a site's hostname has two variable labels in
-front of the sites domain (`<key>.<projectId>.…`), and Caddy's on-demand automation policy matches
-wildcard depth as strictly as a real TLS wildcard certificate does, so a single `*.` silently refuses
-every site with no error anywhere (found and fixed post-Phase-1; see the correction in
-`docs/research/dotnet-stack.md`'s Caddy section for the full failure signature if you ever see this
-again after hand-editing the Caddyfile). `docs/research/dotnet-stack.md`'s Caddy section has the full
+allow-list against real enabled+deployed sites only — anything else is `404`, refusing the cert) and
+the global `cert_issuer acme` option, which is **not optional**: without it, Caddy's own Automatic
+HTTPS logic silently downgrades this block's certificates to its self-signed internal CA instead of
+real Let's Encrypt ones, with no error anywhere (found and fixed 2026-08-25, after an earlier fix that
+used per-site `issuer acme` directives instead of this global one looked correct but wasn't — see
+`docs/research/dotnet-stack.md`'s Caddy section for the full failure signature and root cause if you
+ever see self-signed certs after hand-editing the Caddyfile). This one block correctly serves every
+hostname depth — site subdomains, preview URLs, and custom domains alike — precisely because it has no
+wildcard-depth pattern of its own to violate; an earlier Caddyfile revision used separate
+wildcard-depth-specific blocks per hostname shape, which turned out to be the root cause of the
+issuer bug above and were removed. `docs/research/dotnet-stack.md`'s Caddy section has the full
 verified directive syntax if you're adapting this by hand.
 
 ### Preview URLs and idle sweep
@@ -268,11 +272,10 @@ Every `ready` deployment — not just the one currently live on the site's produ
 reachable preview URL: `<deploymentId>.<site key>.<project id>.<PRAXY_SITES_DOMAIN>`, a third label in
 front of the production pattern above. **No extra DNS record is needed** — the same
 `*.sites.your.domain.com` wildcard already covers it, since a DNS wildcard matches any number of
-labels below its owner name, not just one (unlike TLS wildcard matching, which is exactly one label —
-see the correction above). `deploy/Caddyfile` does need its own extra block for this
-(`*.*.*.{$PRAXY_SITES_DOMAIN}`, three wildcard labels), already present if you're running the shipped
-Caddyfile unmodified; re-add it if you've hand-edited yours, verified the same way the two-label block
-was (`docs/research/dotnet-stack.md`'s Caddy section has the transcript).
+labels below its owner name, not just one. `deploy/Caddyfile` needs no extra block for this either —
+the single host-less `https://` block described above matches any hostname depth uniformly, so the
+three-label preview pattern is already covered by the same block the two-label production pattern
+uses.
 
 A preview's container is **not** started until the first request actually hits its URL (bounded by
 `Praxy:Sites:StartupTimeoutSeconds`, same as any other cold start), and is stopped automatically once

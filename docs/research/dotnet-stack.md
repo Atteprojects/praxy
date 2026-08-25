@@ -633,6 +633,61 @@ matching/shadowing risk, which is the piece that fails silently and was the actu
 prior times this Caddyfile broke in production. Confirm a real custom domain gets an actual cert the
 same way Phase 1's and Phase 2's live fixes were eventually confirmed, the first time this ships.
 
+**Postscript, found live 2026-08-25 (after Phase 4 shipped, root-caused all the way back to this
+section)**: the no-real-ACME caveat above turned out to hide a genuine issuer-selection bug, not just
+an untested code path. Once this Caddyfile went live, every on-demand cert for a real site hostname was
+silently self-signed by Caddy's internal CA instead of Let's Encrypt — no error, ask endpoint called
+correctly, `caddy adapt`'s static output looking completely normal. Root cause, found by reading Caddy
+v2.11.4's actual source (`modules/caddytls/automation.go`, `tls.go`) rather than trusting docs or the
+static adapted config:
+
+- Caddy's **Automatic HTTPS** logic rebuilds automation policies at *runtime* (not at `caddy adapt`
+  time — compare the static adapted JSON against the running config's own debug "adjusted config" log
+  or `autosave.json`; they differ). For a site block with a host matcher, the rebuilt policy's
+  `subjects` becomes that block's own *address pattern* — so the two-label wildcard block's policy ends
+  up with `subjects: ["*.*.{domain}"]`, not the actual hostnames being requested.
+- certmagic's own `SubjectQualifiesForPublicCert` (`certificates.go`) explicitly rejects any subject
+  with **more than one wildcard label** (CA/Browser Forum requires exactly one, left-most) — so a
+  policy whose derived subject is a two-or-three-label wildcard pattern never qualifies, and Caddy's
+  `DefaultIssuersProvisioned()` heuristic ("internal unless every subject qualifies for a public cert")
+  falls back to the internal CA for it. This is true **regardless of an explicit per-site `issuer`
+  directive** — Automatic HTTPS's rebuild does not carry a per-site `tls { on_demand; issuer acme }`
+  forward into the policy it reconstructs, confirmed by trying both the bare `issuer acme` shorthand and
+  the fully-spelled-out `issuer acme { dir https://acme-v02.api.letsencrypt.org/directory }` form —
+  neither survived the rebuild, verified via the running config, not the static one.
+- The bare `https://` catch-all block (the one described above, with genuinely *no* subjects) does not
+  hit this — an empty subject list doesn't fail `SubjectQualifiesForPublicCert` the way a multi-wildcard
+  one does, and (separately, still needing verification) an empty-subjects on-demand policy picking
+  `DefaultIssuersProvisioned()`'s "internal" branch by default is exactly why an explicit issuer is still
+  needed for it specifically — just not via a per-site directive, since that gets dropped by the same
+  rebuild either way.
+
+**The fix**: delete the two wildcard-depth-specific site blocks (`*.*.{$PRAXY_SITES_DOMAIN}`,
+`*.*.*.{$PRAXY_SITES_DOMAIN}`) entirely and rely solely on the bare `https://` catch-all for every
+Sites hostname shape (subdomains, previews, and custom domains alike) — it has no wildcard-depth
+pattern of its own to trip the rejection above, and correctly catches any hostname regardless of label
+count (this also makes the Phase 1/Phase 2 wildcard-depth-matching concern moot: a host-less block has
+no depth to violate). Pair this with a **global** `cert_issuer acme` in the Caddyfile's top-level
+options block — global options are not subject to Automatic HTTPS's per-site policy rebuild, so this
+survives where a per-site `issuer` directive didn't.
+
+Verified two ways against a live throwaway Caddy instance running the exact production Caddyfile shape
+(env vars substituted, only the ask URL pointed at a local stub):
+1. **Before the fix** (three site blocks, `issuer acme` on each): a genuinely fresh, never-cached
+   hostname's on-demand obtain completed in ~12–25ms with `"issuer":"local"` in Caddy's own logs — far
+   too fast for a real ACME round trip, confirming an instant internal-CA substitution, not an attempted
+   and failed ACME order.
+2. **After the fix** (single catch-all, global `cert_issuer`): the same test, plus a 2-label site
+   hostname and a 3-label preview hostname, all produced genuine ACME order-creation log lines
+   (`"logger":"http.acme_client","msg":"creating order"`, `"ca":"https://acme-v02.api.letsencrypt.org/directory"`)
+   and were rejected by the **real** Let's Encrypt API with `"Domain name does not end with a valid
+   public suffix (TLD)"` — proof of a genuine attempt, since that specific error can only come from
+   Let's Encrypt itself, not from Caddy's own internal issuer.
+
+Anyone who has hand-edited a deployed Caddyfile to add back per-site wildcard blocks or a per-site
+`issuer` directive should revert to the single-catch-all-plus-global-`cert_issuer` shape above — it is
+not a style preference, it's the only shape confirmed to survive Automatic HTTPS's runtime rebuild.
+
 ## Git integration: zero new packages (Sites Phase 4)
 
 Three capabilities the GitHub App integration needs, each evaluated against "is a package actually

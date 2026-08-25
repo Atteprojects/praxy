@@ -1,94 +1,77 @@
 {
 	# Sites' on-demand TLS ask endpoint — must be the file's first block (Caddyfile global options).
-	# The "ask" directive alone is not sufficient; each sites site block below still needs its own
+	# The "ask" directive alone is not sufficient; the sites site block below still needs its own
 	# tls { on_demand } to opt in (docs/research/dotnet-stack.md's Caddy section has the verified
 	# syntax and why both pieces are required together).
 	on_demand_tls {
 		ask http://api:8080/v1/sites/_ask-tls
 	}
+
+	# Global default issuer — required, not optional, and the *only* place this can correctly live.
+	# Found live 2026-08-25: a previous fix tried a per-site `tls { on_demand; issuer acme }` on each
+	# of three site blocks (a `*.*.{$PRAXY_SITES_DOMAIN}` block, a `*.*.*.{$PRAXY_SITES_DOMAIN}` block,
+	# and this file's bare `https://` catch-all). That looked correct in `caddy adapt`'s static output
+	# (each block's automation policy showed an explicit acme issuer) but was STILL silently issuing
+	# self-signed internal certs for real site hostnames at runtime. Root cause, confirmed by reading
+	# Caddy v2.11.4's actual source (not docs) plus a live throwaway reproduction: Caddy's Automatic
+	# HTTPS logic rebuilds automation policies at startup from each site block's own address, assigning
+	# the address itself as that policy's `subjects` — and does NOT carry forward a per-site `issuer`
+	# directive into that rebuilt policy (confirmed via the running config, not just the adapted static
+	# file — Caddy's own `autosave.json`/debug "adjusted config" log showed the issuer silently absent
+	# after this rebuild, for every per-site `issuer acme`, including the fully-spelled-out
+	# `issuer acme { dir https://acme-v02.api.letsencrypt.org/directory }` form). With no issuer left on
+	# the policy, Caddy falls back to `DefaultIssuersProvisioned()`, whose own heuristic is "internal
+	# unless every subject qualifies for a public cert" (modules/caddytls/automation.go) — and
+	# certmagic's `SubjectQualifiesForPublicCert` (certificates.go) explicitly rejects any subject with
+	# more than one wildcard label, which is exactly what a two-or-three-label wildcard site *address*
+	# like `*.*.{$PRAXY_SITES_DOMAIN}` looks like once it becomes the policy's own subject. So the more
+	# wildcard-specific a site block's address was, the more certain it was to fail this check and fall
+	# back to the internal CA — regardless of any issuer written on that same block.
+	#
+	# The fix has two parts, verified together against a live throwaway Caddy instance with the exact
+	# production Caddyfile shape: (1) delete the per-site wildcard blocks entirely — see the comment on
+	# the single site block below for why they're not needed, since Praxy's own hostname dispatch
+	# doesn't depend on Caddy having per-depth site blocks; (2) set the issuer here, globally, via
+	# `cert_issuer` — a policy assembled by Caddy's own Automatic HTTPS with genuinely EMPTY `subjects`
+	# (which is what a single host-less `https://` block collapses to) does NOT hit the multi-wildcard
+	# rejection above, and correctly reaches this global default. Verified live: with this shape,
+	# `docker compose logs caddy` shows a genuine ACME order against `acme-v02.api.letsencrypt.org` for
+	# every hostname depth tested (a two-label site hostname, a three-label preview hostname, and a
+	# bare custom domain) — proven via Let's Encrypt's own rejection of throwaway `.invalid` test
+	# domains ("not a valid public suffix"), which only happens after a real order attempt, not an
+	# instant internal-CA substitution. See docs/research/dotnet-stack.md's Caddy section for the full
+	# transcript, including why the earlier per-site `issuer acme` fix looked right and wasn't.
+	cert_issuer acme
 }
 
 {$PRAXY_DOMAIN} {$PRAXY_CONSOLE_DOMAIN} {
 	reverse_proxy api:8080
 }
 
-# Every hosted site's public subdomain (<key>.<projectId>.{PRAXY_SITES_DOMAIN}). Two wildcard labels,
-# not one — a site's hostname has *two* variable labels in front of the sites domain (key, then
-# projectId), and Caddy's automation-policy subject matching is as strict about wildcard depth as a
-# real TLS wildcard cert: `*.{$PRAXY_SITES_DOMAIN}` only matches a single label and silently refuses
-# on-demand issuance (no ask call, no ACME attempt, an immediate TLS "internal_error" alert) for
-# anything with an extra label in front — confirmed live against real Caddy with `debug` logging on,
-# not theorized; see docs/research/dotnet-stack.md's Caddy section. Caddy does not need per-site
-# awareness beyond this pattern — api dispatches Host -> container internally
-# (Praxy.Sites.SiteProxyMiddleware) — so this is one static block regardless of how many sites exist.
-# Each distinct hostname gets its own certificate issued lazily on first request, not one real
-# wildcard cert (on-demand TLS's whole point: no DNS-01, no DNS-provider credentials).
-#
-# `issuer acme` is required, not optional — found live 2026-08-25, after the Sites Phase 3 catch-all
-# block below started sharing this policy: Caddy's own default issuer selection is "internal if all
-# subjects do not qualify for public certificates; otherwise acme and zerossl" (its own source,
-# modules/caddytls/automation.go). A policy with no explicit `subjects` — which is what every
-# `tls { on_demand }` block below collapses into once they're merged — can't be confirmed "public" by
-# that heuristic, so Caddy silently issued self-signed *internal* certs for real site hostnames
-# instead of real Let's Encrypt ones, with no error and no ask-endpoint call skipped (the ask call
-# still happened; only the *issuer* silently downgraded). An explicit `issuer acme` bypasses that
-# heuristic entirely. Verified live: without it, `caddy adapt`'s automation policy shows
-# `"issuers":null` and a real on-demand request completes in <100ms with `"issuer":"local"` in the
-# logs (far too fast for a real ACME round trip); with it, the policy shows an explicit acme issuer
-# and a real request genuinely reaches `acme-v02.api.letsencrypt.org` (confirmed via a throwaway
-# instance — a fake `.test` hostname correctly got ACME's own "not a valid public suffix" rejection,
-# proving a real attempt happened, not an instant internal fallback).
-*.*.{$PRAXY_SITES_DOMAIN} {
-	tls {
-		on_demand
-		issuer acme
-	}
-	reverse_proxy api:8080
-}
-
-# A single deployment's preview URL (Sites Phase 2): <deploymentId>.<key>.<projectId>.{PRAXY_SITES_DOMAIN}.
-# Three wildcard labels, not two — same wildcard-depth strictness as the block above, confirmed by the
-# same "against real Caddy, not pattern-matched" discipline the Phase 1 postmortem demanded: a
-# throwaway Caddy instance with only the two-label block above got `"no certificate matching TLS
-# ClientHello"` / `"on_demand":false` for a real three-label hostname, with the ask endpoint never
-# called — reproducing Phase 1's exact bug shape one wildcard label short. Adding this dedicated block
-# (an extra `*.`) made the same hostname correctly reach the ask endpoint. See
-# docs/research/dotnet-stack.md's Caddy section for the full transcript.
-#
-# `issuer acme` here too — see the block above's comment for why; this block shares the same merged
-# automation policy, so it needs the same explicit issuer to avoid the same silent internal-CA fallback.
-*.*.*.{$PRAXY_SITES_DOMAIN} {
-	tls {
-		on_demand
-		issuer acme
-	}
-	reverse_proxy api:8080
-}
-
-# Custom domains a site owner points at this box (Sites Phase 3) — unlike the two blocks above, there
-# is no fixed suffix or wildcard depth to match against; the whole point is arbitrary hostnames
-# (`myapp.com`, `www.myapp.com`, ...) nobody configured in advance. `https://` with the host portion
-# omitted is Caddy's own documented catch-all address (verbatim from caddyserver.com/on-demand-tls's
-# own worked example for exactly this "many dynamically-created customer domains" shape) — it matches
-# any hostname not claimed by a more specific site block. Placement in this file doesn't matter for
-# routing: Caddy always picks the most specific matching address regardless of block order (its own
-# docs, "If a request matches multiple site blocks, the site block with the most specific matching
-# address is chosen") — confirmed live against real Caddy with all four blocks loaded together and
-# `debug` logging on: a genuine 2-label site hostname and a genuine 3-label preview hostname each still
-# triggered their own dedicated block's ask call, not this catch-all's, while both a legitimate
-# unregistered custom domain and a made-up attacker-controlled hostname correctly fell through to this
-# block's ask call instead (`api`'s _ask-tls, not Caddy, is what actually denies the attacker one). No
-# shadowing of the console/API's own automatic-HTTPS block (`{$PRAXY_DOMAIN} {$PRAXY_CONSOLE_DOMAIN}`
-# above) was observed either — its explicit hostnames form their own more-specific automation policy.
-# See docs/research/dotnet-stack.md's Caddy section for the full transcript.
-#
-# `issuer acme` here too, for the same reason as the two blocks above — this bare, host-less address is
-# in fact the block that *caused* the merged policy's `subjects` to end up empty in the first place, so
-# it's the most important of the three to get right.
+# Every hosted site's public hostname: subdomains (`<key>.<projectId>.{PRAXY_SITES_DOMAIN}`), preview
+# URLs (`<deploymentId>.<key>.<projectId>.{PRAXY_SITES_DOMAIN}`), and custom domains a site owner points
+# at this box (Sites Phase 3) all land on this one block. Earlier revisions of this file had three
+# separate blocks here — two wildcard-depth-specific ones (`*.*.{$PRAXY_SITES_DOMAIN}`,
+# `*.*.*.{$PRAXY_SITES_DOMAIN}`) plus this catch-all — because Caddy's on-demand automation-policy
+# matching was found (Sites Phase 1/2) to be as strict about wildcard depth as a real TLS wildcard cert:
+# a single `*.{$PRAXY_SITES_DOMAIN}` block only matched one label and silently refused on-demand
+# issuance for anything deeper. That's still true of depth-*specific* wildcard blocks — but is a
+# non-issue for a single host-less block like this one, which has no depth restriction to violate in
+# the first place and so correctly catches every hostname shape uniformly, confirmed live (see the
+# `cert_issuer` comment above for the fuller story of why the three-block version actually had to go:
+# each per-site wildcard block's own address became its automation policy's `subjects`, and Caddy
+# rejects multi-label-wildcard subjects as ineligible for a public cert, silently downgrading those
+# specific blocks to the internal CA no matter what issuer was written on them). Caddy does not need
+# per-site awareness beyond this one block regardless of how many sites exist — api dispatches
+# Host -> container internally (Praxy.Sites.SiteProxyMiddleware). Each distinct hostname still gets its
+# own certificate issued lazily on first request, not one real wildcard cert (on-demand TLS's whole
+# point: no DNS-01, no DNS-provider credentials). `https://` with the host portion omitted is Caddy's
+# own documented catch-all address (verbatim from caddyserver.com/on-demand-tls's own worked example for
+# this exact "many dynamically-created domains" shape, and the pattern a Caddy maintainer recommends in
+# caddyserver/caddy#6518 for the same "on-demand + multiple wildcards" failure mode this file hit).
 https:// {
 	tls {
 		on_demand
-		issuer acme
 	}
 	reverse_proxy api:8080
 }
