@@ -37,17 +37,26 @@ public class SiteCustomDomainTests(PostgresContainerFixture pg) : AuthTestBase(p
 
     private async Task CleanUpSiteContainersAsync()
     {
-        List<string> containerIds;
+        var containerIds = new HashSet<string>();
         await using (var conn = new Npgsql.NpgsqlConnection(ConnectionString))
         {
             await conn.OpenAsync();
             await using var cmd = new Npgsql.NpgsqlCommand(
                 "SELECT container_id FROM praxy.site_deployments WHERE container_id IS NOT NULL", conn);
             await using var reader = await cmd.ExecuteReaderAsync();
-            containerIds = [];
             while (await reader.ReadAsync())
                 containerIds.Add(reader.GetString(0));
         }
+
+        // The DB column above only ever holds an *activated* deployment's container — preview
+        // containers (SiteContainerRegistry.StartOrJoinAsync) never get written there, so a test
+        // that only ever previews a deployment (never activates it) would otherwise leak its
+        // container past this cleanup.
+        var registry = Factory.Services.GetRequiredService<Praxy.Sites.SiteContainerRegistry>();
+        foreach (var deploymentId in registry.TrackedDeploymentIds())
+            if (registry.TryGet(deploymentId, out var container))
+                containerIds.Add(container.ContainerId);
+
         if (containerIds.Count == 0)
             return;
 

@@ -41,6 +41,15 @@
 	# domains ("not a valid public suffix"), which only happens after a real order attempt, not an
 	# instant internal-CA substitution. See docs/research/dotnet-stack.md's Caddy section for the full
 	# transcript, including why the earlier per-site `issuer acme` fix looked right and wasn't.
+	#
+	# `cert_issuer` applies globally, not just to the on-demand catch-all below — it's also now what
+	# issues the console/API's own static certificate (the `{$PRAXY_DOMAIN} {$PRAXY_CONSOLE_DOMAIN}`
+	# block). Checked whether this narrows that block's issuer choice, since Caddy's zero-config
+	# default (`DefaultIssuersProvisioned()`) can include ZeroSSL as an automatic Let's-Encrypt
+	# fallback: it can't here, and never could — that fallback is only appended when a global `email`
+	# option is set (`DefaultIssuers`'s own source, `strings.TrimSpace(userEmail) != ""`), and this
+	# Caddyfile has never set one. So the static block was already Let's-Encrypt-only before this
+	# line existed; adding `cert_issuer acme` here is explicit, not a narrowing.
 	cert_issuer acme
 }
 

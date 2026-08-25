@@ -46,17 +46,25 @@ public class SiteGitDeploymentTests(PostgresContainerFixture pg) : AuthTestBase(
     /// <summary>Same reasoning as SiteTests'/SiteCustomDomainTests' own overrides — a site's container is deliberately left running when api shuts down.</summary>
     public override async Task DisposeAsync()
     {
-        List<string> containerIds;
+        var containerIds = new HashSet<string>();
         await using (var conn = new Npgsql.NpgsqlConnection(ConnectionString))
         {
             await conn.OpenAsync();
             await using var cmd = new Npgsql.NpgsqlCommand(
                 "SELECT container_id FROM praxy.site_deployments WHERE container_id IS NOT NULL", conn);
             await using var reader = await cmd.ExecuteReaderAsync();
-            containerIds = [];
             while (await reader.ReadAsync())
                 containerIds.Add(reader.GetString(0));
         }
+
+        // The DB column above only ever holds an *activated* deployment's container — preview
+        // containers (e.g. a non-production-branch push, which this suite deliberately builds but
+        // never activates) never get written there, so they'd otherwise leak past this cleanup.
+        var registry = Factory.Services.GetRequiredService<Praxy.Sites.SiteContainerRegistry>();
+        foreach (var deploymentId in registry.TrackedDeploymentIds())
+            if (registry.TryGet(deploymentId, out var container))
+                containerIds.Add(container.ContainerId);
+
         if (containerIds.Count > 0)
         {
             var docker = Factory.Services.GetRequiredService<Praxy.Sites.SiteDockerExecutor>();
