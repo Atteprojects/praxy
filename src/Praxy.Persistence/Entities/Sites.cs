@@ -86,3 +86,28 @@ public class SiteDeploymentSource
     public required Guid DeploymentId { get; set; }
     public required byte[] Tar { get; set; }
 }
+
+/// <summary>
+/// A custom hostname pointed at a site's <em>active</em> deployment (Sites Phase 3) — no preview-URL
+/// equivalent, unlike the built-in <c>*.sites.{Domain}</c> pattern. <see cref="Hostname"/> is globally
+/// unique (not just per-project): two different sites can't claim the same real-world domain. Starts
+/// "pending" and flips to "verified" the moment the first request through it is successfully proxied
+/// (see <see cref="Praxy.Sites.SiteProxyMiddleware"/>'s remarks) — that's as strong a proof of DNS
+/// control as a dedicated verification record would be, since a proxied request only ever arrives once
+/// Caddy's on-demand TLS has already completed a real ACME HTTP-01 challenge against this exact
+/// hostname. "Verified" never reverts on its own — a domain that stops resolving just goes quiet, it
+/// isn't detected or pruned (a monitoring concern, not this feature's).
+/// </summary>
+public class SiteDomain
+{
+    public required Guid Id { get; set; }
+    public required Guid SiteId { get; set; }
+    public required string ProjectId { get; set; }
+    public required string Hostname { get; set; }
+
+    /// <summary>pending | verified</summary>
+    public string Status { get; set; } = "pending";
+
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? VerifiedAt { get; set; }
+}

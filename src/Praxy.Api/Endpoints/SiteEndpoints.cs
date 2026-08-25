@@ -15,6 +15,8 @@ public sealed record UpdateSiteRequest(string? Name, string? RootDirectory, bool
 
 public sealed record SetSiteEnvVarRequest(string Value);
 
+public sealed record CreateSiteDomainRequest(string Hostname);
+
 public sealed record SiteResponse(
     string Id, string Key, string Name, string RootDirectory, bool Enabled, string? ActiveDeploymentId,
     bool IsRunning, string PublicUrl, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
@@ -37,9 +39,15 @@ public sealed record SiteDeploymentResponse(
         Ids.Wire(d.Id), d.Status, d.SourceSizeBytes, d.BuildLog, d.Error, d.ImageTag, previewUrl, d.CreatedAt, d.UpdatedAt, d.ActivatedAt);
 }
 
+public sealed record SiteDomainResponse(string Id, string Hostname, string Status, DateTimeOffset CreatedAt, DateTimeOffset? VerifiedAt)
+{
+    public static SiteDomainResponse From(SiteDomain d) => new(Ids.Wire(d.Id), d.Hostname, d.Status, d.CreatedAt, d.VerifiedAt);
+}
+
 public sealed record SiteListResponse(int Total, IReadOnlyList<SiteResponse> Sites);
 public sealed record SiteEnvVarListResponse(int Total, IReadOnlyList<SiteEnvVarResponse> Vars);
 public sealed record SiteDeploymentListResponse(int Total, IReadOnlyList<SiteDeploymentResponse> Deployments);
+public sealed record SiteDomainListResponse(int Total, IReadOnlyList<SiteDomainResponse> Domains);
 
 /// <summary>
 /// Sites Phase 1: console admin surface for deploying/configuring hosted Next.js sites, plus the
@@ -65,6 +73,10 @@ public static class SiteEndpoints
         admin.MapGet("/{siteId}/env", ListEnvVars).Produces<SiteEnvVarListResponse>();
         admin.MapPut("/{siteId}/env/{envKey}", SetEnvVar).Produces<SiteEnvVarResponse>();
         admin.MapDelete("/{siteId}/env/{envKey}", DeleteEnvVar).Produces(StatusCodes.Status204NoContent);
+
+        admin.MapGet("/{siteId}/domains", ListDomains).Produces<SiteDomainListResponse>();
+        admin.MapPost("/{siteId}/domains", AddDomain).Produces<SiteDomainResponse>(StatusCodes.Status201Created);
+        admin.MapDelete("/{siteId}/domains/{domainId}", DeleteDomain).Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/{siteId}/deployments", ListDeployments).Produces<SiteDeploymentListResponse>();
         admin.MapPost("/{siteId}/deployments", CreateDeployment).Produces<SiteDeploymentResponse>(StatusCodes.Status201Created);
@@ -158,6 +170,40 @@ public static class SiteEndpoints
         return Results.NoContent();
     }
 
+    // ---- custom domains (Sites Phase 3) ----------------------------------------------------------
+
+    private static async Task<IResult> ListDomains(string siteId, HttpContext http, SitesService sites, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        var list = await sites.ListDomainsAsync(site.Id, ct);
+        return Results.Ok(new SiteDomainListResponse(list.Count, [.. list.Select(SiteDomainResponse.From)]));
+    }
+
+    private static async Task<IResult> AddDomain(
+        string siteId, CreateSiteDomainRequest req, HttpContext http, PraxyDb db, SitesService sites, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        var domain = await sites.AddDomainAsync(site, req.Hostname, ct);
+        await AuditAsync(db, http, project.Id, "sites.domains.create", $"site/{siteId}/domain/{Ids.Wire(domain.Id)}", ct);
+        return Results.Created(
+            $"/v1/console/projects/{project.Id}/sites/{siteId}/domains/{Ids.Wire(domain.Id)}",
+            SiteDomainResponse.From(domain));
+    }
+
+    private static async Task<IResult> DeleteDomain(
+        string siteId, string domainId, HttpContext http, PraxyDb db, SitesService sites, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        if (!Ids.TryParseWire(domainId, out var parsed))
+            throw PraxyException.NotFound(ErrorTypes.SiteDomainNotFound, "Custom domain not found.");
+        await sites.DeleteDomainAsync(site.Id, parsed, ct);
+        await AuditAsync(db, http, project.Id, "sites.domains.delete", $"site/{siteId}/domain/{domainId}", ct);
+        return Results.NoContent();
+    }
+
     // ---- deployments ----------------------------------------------------------------------------
 
     private static async Task<IResult> ListDeployments(
@@ -238,14 +284,28 @@ public static class SiteEndpoints
     /// the DB lookup entirely (accepting any hostname merely shaped like either pattern) turns this
     /// into an open oracle for anyone who points DNS at the box, which can also burn through Let's
     /// Encrypt's rate limits. Deliberately does not distinguish its failure reasons in the response —
-    /// a 404 here must not become a way to enumerate which site keys or deployment ids exist.
+    /// a 404 here must not become a way to enumerate which site keys, deployment ids, or registered
+    /// custom domains exist.
+    ///
+    /// A hostname that doesn't parse against <see cref="SiteHostPattern"/> at all falls through to a
+    /// <see cref="SiteCustomDomainLookup"/> exact match (Sites Phase 3) before giving up — this is
+    /// the more security-sensitive half of that phase: it's the only thing standing between the box
+    /// and answering an on-demand-TLS "ask" for <em>any</em> hostname an attacker points DNS at, not
+    /// just within the built-in wildcard suffix, so it gets exactly the same enabled + ready-active-
+    /// deployment strictness as the built-in production path, no preview-URL equivalent.
     /// </summary>
     private static async Task<IResult> AskTls(HttpContext http, PraxyDb db, SitesOptions options, CancellationToken ct)
     {
         var domain = http.Request.Query["domain"].FirstOrDefault();
-        if (string.IsNullOrEmpty(domain)
-            || !SiteHostPattern.TryParse(domain, options.Domain, out var key, out var projectId, out var deploymentRef))
+        if (string.IsNullOrEmpty(domain))
             return Results.NotFound();
+
+        if (!SiteHostPattern.TryParse(domain, options.Domain, out var key, out var projectId, out var deploymentRef))
+        {
+            var customSite = await SiteCustomDomainLookup.ResolveEnabledSiteAsync(db, domain, ct);
+            return customSite is not null && await HasReadyActiveDeploymentAsync(db, customSite, ct)
+                ? Results.NoContent() : Results.NotFound();
+        }
 
         var site = await db.Sites.AsNoTracking()
             .FirstOrDefaultAsync(s => s.ProjectId == projectId && s.Key == key && s.Enabled, ct);
@@ -255,8 +315,7 @@ public static class SiteEndpoints
         bool deployable;
         if (deploymentRef is null)
         {
-            deployable = site.ActiveDeploymentId is { } activeId
-                && await db.SiteDeployments.AsNoTracking().AnyAsync(d => d.Id == activeId && d.Status == "ready", ct);
+            deployable = await HasReadyActiveDeploymentAsync(db, site, ct);
         }
         else
         {
@@ -267,6 +326,11 @@ public static class SiteEndpoints
 
         return deployable ? Results.NoContent() : Results.NotFound();
     }
+
+    private static Task<bool> HasReadyActiveDeploymentAsync(PraxyDb db, Site site, CancellationToken ct) =>
+        site.ActiveDeploymentId is { } activeId
+            ? db.SiteDeployments.AsNoTracking().AnyAsync(d => d.Id == activeId && d.Status == "ready", ct)
+            : Task.FromResult(false);
 
     // ---- helpers --------------------------------------------------------------------------------
 
