@@ -51,6 +51,18 @@ services:
       # sites.localhost default needs no configuration for local/plain-HTTP use — every modern
       # browser/OS resolver sends *.localhost straight to 127.0.0.1.
       Praxy__Sites__Domain: ${PRAXY_SITES_DOMAIN:-sites.localhost}
+      # This instance's own GitHub App (Sites/Functions git integration) — unset by default, which
+      # VcsOptions/GitHubAppJwt treat as "feature off" with a clean 422, not a crash. docs/self-host.md's
+      # "Git integration" section walks through creating the App and getting these five values; set them
+      # in deploy/.env (PRAXY_VCS_GITHUB_* — single underscores, a plain .env-file convention) and this
+      # mapping carries them through to the double-underscore ASP.NET Core config path Praxy.Vcs binds
+      # from. Found missing live 2026-08-25 — self-host.md documented setting these and restarting api as
+      # sufficient, but nothing in this file actually passed them into the container until this line.
+      Praxy__Vcs__GitHub__AppId: ${PRAXY_VCS_GITHUB_APPID:-}
+      Praxy__Vcs__GitHub__ClientId: ${PRAXY_VCS_GITHUB_CLIENTID:-}
+      Praxy__Vcs__GitHub__ClientSecret: ${PRAXY_VCS_GITHUB_CLIENTSECRET:-}
+      Praxy__Vcs__GitHub__PrivateKey: ${PRAXY_VCS_GITHUB_PRIVATEKEY:-}
+      Praxy__Vcs__GitHub__WebhookSecret: ${PRAXY_VCS_GITHUB_WEBHOOKSECRET:-}
     networks:
       - default
       - praxy-sites
