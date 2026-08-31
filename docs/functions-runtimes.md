@@ -49,6 +49,13 @@ failure indicator — the execution is marked `failed`, not silently swallowed.
   specific app user (a JWT or an authenticated app-user session on the data-plane endpoint) — use
   the JWT to call back into Praxy's own data plane as that user. Absent for console/event/schedule
   triggers.
+- `PRAXY_FUNCTION_API_KEY` — set on a schedule- or event-triggered invocation (the two shapes with
+  no calling user, so no `PRAXY_FUNCTION_JWT` to mint) *only if* an operator has granted the function
+  one or more scopes on its Settings tab's "Platform access" section. Use it as `X-Praxy-Key` to call
+  back into Praxy's own API with exactly those scopes — the same server-key mechanism a project's own
+  API keys use, just owned by the function instead of typed in by hand. Absent when no scope is
+  granted (the default) or on a console/HTTP-triggered invocation, which already has its own caller
+  identity to authenticate as instead.
 - Anything you set yourself on the function's Settings tab (stored encrypted at rest, decrypted
   into the container's environment at invoke time).
 

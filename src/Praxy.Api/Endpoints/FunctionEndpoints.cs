@@ -17,7 +17,7 @@ public sealed record CreateFunctionFromTemplateRequest(string TemplateKey, strin
 
 public sealed record UpdateFunctionRequest(
     string? Name, string? Entrypoint, int? TimeoutSeconds, string[]? Events, string[]? Execute, string? Schedule,
-    bool? Enabled);
+    bool? Enabled, string[]? PlatformScopes);
 
 public sealed record SetEnvVarRequest(string Value);
 
@@ -31,12 +31,12 @@ public sealed record FunctionResponse(
     string Id, string Key, string Name, string Runtime, string Entrypoint, int TimeoutSeconds, bool Enabled,
     string[] Events, string[] Execute, string? Schedule, DateTimeOffset? NextScheduledRunAt,
     string? ActiveDeploymentId, bool IsWarm, string? RepositoryFullName, string? ProductionBranch,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    string[] PlatformScopes, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static FunctionResponse From(FunctionDef f, bool isWarm) => new(
         Ids.Wire(f.Id), f.Key, f.Name, f.Runtime, f.Entrypoint, f.TimeoutSeconds, f.Enabled, f.Events, f.Execute,
         f.Schedule, f.NextScheduledRunAt, f.ActiveDeploymentId is { } d ? Ids.Wire(d) : null, isWarm,
-        f.RepositoryFullName, f.ProductionBranch, f.CreatedAt, f.UpdatedAt);
+        f.RepositoryFullName, f.ProductionBranch, f.PlatformScopes, f.CreatedAt, f.UpdatedAt);
 }
 
 public sealed record FunctionEnvVarResponse(string Key, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
@@ -287,16 +287,21 @@ public static class FunctionEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var updated = await functions.UpdateAsync(
-            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled, ct);
+            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled,
+            req.PlatformScopes, ct);
         // A permission change gets its own action string. The audit log records what was touched but
         // not what it became, so folding "who may run this" into the same `functions.update` as a
         // timeout tweak would make the one security-relevant edit here invisible to anyone reading
-        // the log later.
-        await AuditAsync(db, http, project.Id,
-            req.Execute is null ? "functions.update" : "functions.execute.update",
+        // the log later. Platform scopes take priority over execute when a single request touches both.
+        await AuditAsync(db, http, project.Id, PermissionAuditAction(req.Execute, req.PlatformScopes),
             $"function/{functionId}", ct);
         return Results.Ok(FunctionResponse.From(updated, functions.IsWarm(updated)));
     }
+
+    private static string PermissionAuditAction(string[]? execute, string[]? platformScopes) =>
+        platformScopes is not null ? "functions.platform_scopes.update"
+        : execute is not null ? "functions.execute.update"
+        : "functions.update";
 
     private static async Task<IResult> DeleteFunction(
         string functionId, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
@@ -613,9 +618,10 @@ public static class FunctionEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         var fn = await FindAsync(functions, project.Id, functionId, ct);
         var updated = await functions.UpdateAsync(
-            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled, ct);
+            fn, req.Name, req.Entrypoint, req.TimeoutSeconds, req.Events, req.Execute, req.Schedule, req.Enabled,
+            req.PlatformScopes, ct);
         await AuditKeyAsync(db, http, project.Id,
-            req.Execute is null ? "functions.update" : "functions.execute.update", $"function/{functionId}", ct);
+            PermissionAuditAction(req.Execute, req.PlatformScopes), $"function/{functionId}", ct);
         return Results.Ok(FunctionResponse.From(updated, functions.IsWarm(updated)));
     }
 

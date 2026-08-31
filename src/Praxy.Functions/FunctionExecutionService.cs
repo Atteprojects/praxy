@@ -93,12 +93,24 @@ public sealed class FunctionExecutionService(
         // "Scoped user JWT injected into invocations that need to act as a specific user" —
         // research/appwrite-api.md's Phase-7-required JWT flow. Only present when the caller that
         // triggered this execution was a specific app user, never for event/schedule/console triggers.
-        if (execution.TriggeredBy is { } triggeredBy &&
-            triggeredBy.StartsWith("user:", StringComparison.Ordinal) &&
+        var triggeredBy = execution.TriggeredBy;
+        if (triggeredBy is not null && triggeredBy.StartsWith("user:", StringComparison.Ordinal) &&
             Ids.TryParseWire(triggeredBy["user:".Length..], out var userId))
         {
             env["PRAXY_FUNCTION_JWT"] = jwts.Mint(execution.ProjectId, userId, AccountJwtService.DefaultLifetime);
             env["PRAXY_FUNCTION_USER_ID"] = triggeredBy["user:".Length..];
+        }
+        // The gap this fills (see docs/handoff/functions-scheduled-credentials-report.md): a
+        // schedule- or event-triggered execution has no calling user to inherit a JWT from above, so
+        // it gets nothing at all unless an operator explicitly granted this function platform
+        // scopes. Deliberately as narrow as the two trigger shapes that actually lack a caller
+        // identity — "console" and "key:<id>" triggers already have one (the operator's own session,
+        // or the key itself) and stay exactly as they are today.
+        else if ((triggeredBy == "schedule" || (triggeredBy?.StartsWith("event:", StringComparison.Ordinal) ?? false)) &&
+            fn.PlatformScopes.Length > 0 && fn.PlatformApiKeySecretProtected is { } protectedSecret &&
+            key.Decrypt(protectedSecret) is { } secret)
+        {
+            env["PRAXY_FUNCTION_API_KEY"] = secret;
         }
 
         env["PRAXY_FUNCTION_ID"] = Ids.Wire(fn.Id);

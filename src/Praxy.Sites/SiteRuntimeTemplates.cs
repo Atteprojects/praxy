@@ -105,10 +105,15 @@ public static partial class SiteRuntimeTemplates
     /// full npm/yarn/pnpm workspace monorepo, where Next's standalone output nests based on
     /// workspace-root detection in a way this template doesn't attempt to follow (see the Phase 1
     /// report's deviations section).
+    /// <c>package.json</c>/<c>package-lock.json</c> are copied and installed *before* the full
+    /// <c>COPY . .</c> so Docker's local layer cache (already enabled — see
+    /// <c>SiteDockerExecutor.BuildImageAsync</c>) can skip <c>npm install</c> on a redeploy that only
+    /// changes app code, not dependencies.
     /// </summary>
     private static string Dockerfile(string rootDirectory, string baseImage, IReadOnlyCollection<string> envVarKeys)
     {
         var appDir = string.IsNullOrEmpty(rootDirectory) ? "/app" : $"/app/{rootDirectory}";
+        var pkgPrefix = string.IsNullOrEmpty(rootDirectory) ? "" : $"{rootDirectory}/";
         var buildArgs = new StringBuilder();
         foreach (var key in envVarKeys)
         {
@@ -121,11 +126,13 @@ public static partial class SiteRuntimeTemplates
 
         return $"""
             FROM {baseImage} AS builder
+            WORKDIR {appDir}
+            COPY {pkgPrefix}package.json {pkgPrefix}package-lock.json* ./
+            RUN npm install
             WORKDIR /app
             COPY . .
             WORKDIR {appDir}
-            {buildArgs}RUN npm install
-            RUN npm run build
+            {buildArgs}RUN npm run build
             RUN mkdir -p public .next/static
             RUN test -d .next/standalone || (echo "ERROR: .next/standalone was not produced by 'npm run build'. Add output: 'standalone' to next.config.js (or .mjs/.ts) and redeploy." 1>&2 && exit 1)
 

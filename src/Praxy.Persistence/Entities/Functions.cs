@@ -59,6 +59,37 @@ public class FunctionDef
     /// <summary>A push to this branch builds and auto-activates; a push to any other branch of the connected repository builds a deployment that finishes `ready` without activating, reachable only via the console's explicit Activate action.</summary>
     public string? ProductionBranch { get; set; }
 
+    /// <summary>
+    /// The <see cref="Praxy.Auth.ApiKeyScopes"/> subset an operator has granted this function for
+    /// its schedule- and event-triggered executions — the ones with no calling app user to mint a
+    /// <c>PRAXY_FUNCTION_JWT</c> for (<c>FunctionExecutionService.BuildEnvAsync</c>). Empty means
+    /// no platform credential is injected for those triggers, exactly like before this existed —
+    /// deny by default, same posture as <see cref="Execute"/>. Backs <see cref="PlatformApiKeyId"/>.
+    /// </summary>
+    public string[] PlatformScopes { get; set; } = [];
+
+    /// <summary>
+    /// The function-owned <see cref="ApiKey"/> backing <see cref="PlatformScopes"/>, created lazily
+    /// the first time an operator grants a scope and updated in place as scopes change — reuses
+    /// <c>ApiKeyService</c>/<c>AppPrincipalFilter</c>'s existing <c>X-Praxy-Key</c> authorization
+    /// path verbatim rather than inventing a parallel one. No DB-level FK on purpose (same
+    /// app-managed-reference style as <see cref="ActiveDeploymentId"/>): if an operator revokes this
+    /// key directly from the project's API keys page, <c>FunctionsService.ApplyPlatformScopesAsync</c>
+    /// notices on the next scope edit (the targeted update affects zero rows) and transparently
+    /// issues a replacement rather than silently keeping a dead reference. Null until a scope is
+    /// first granted, and cleared (with the key revoked) the moment scopes go back to empty or the
+    /// function itself is deleted — the secret must never outlive the function that owns it.
+    /// </summary>
+    public Guid? PlatformApiKeyId { get; set; }
+
+    /// <summary>
+    /// The above key's secret, encrypted at rest with <see cref="Praxy.Auth.InstanceKey"/> — the
+    /// same AES-256-GCM mechanism <see cref="FunctionEnvVar.ProtectedValue"/> already uses. Unlike a
+    /// normal <c>ApiKey</c> (hash-only, shown once), this secret has to be recoverable so it can be
+    /// re-injected into every matching execution's environment, not just handed out once.
+    /// </summary>
+    public string? PlatformApiKeySecretProtected { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

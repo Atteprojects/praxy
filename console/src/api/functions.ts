@@ -79,7 +79,7 @@ export function useUpdateFunction(projectId: string, functionId: string) {
   return useMutation({
     mutationFn: (input: {
       name?: string; entrypoint?: string; timeoutSeconds?: number; events?: string[];
-      execute?: string[]; schedule?: string; enabled?: boolean;
+      execute?: string[]; schedule?: string; enabled?: boolean; platformScopes?: string[];
     }) => api<PraxyFunction>(`${base(projectId)}/${functionId}`, { method: "PATCH", body: input }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions"] });

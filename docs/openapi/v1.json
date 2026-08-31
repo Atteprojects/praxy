@@ -12729,6 +12729,7 @@
           "isWarm",
           "repositoryFullName",
           "productionBranch",
+          "platformScopes",
           "createdAt",
           "updatedAt"
         ],
@@ -12805,6 +12806,12 @@
               "null",
               "string"
             ]
+          },
+          "platformScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "createdAt": {
             "type": "string",
@@ -14751,7 +14758,8 @@
           "events",
           "execute",
           "schedule",
-          "enabled"
+          "enabled",
+          "platformScopes"
         ],
         "type": "object",
         "properties": {
@@ -14805,6 +14813,15 @@
               "null",
               "boolean"
             ]
+          },
+          "platformScopes": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
