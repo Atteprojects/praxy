@@ -19,7 +19,7 @@ namespace Praxy.Functions;
 /// </summary>
 public sealed partial class FunctionsService(
     PraxyDb db, InstanceKey key, WarmPool pool, FunctionBuildSignal buildSignal, FunctionsOptions options,
-    GitHubAppService github)
+    GitHubAppService github, ApiKeyService apiKeys)
 {
     /// <summary>Cap on a function's execute list — a bound like every other limit, not a silent free-for-all.</summary>
     public const int MaxExecuteRoles = 100;
@@ -40,7 +40,9 @@ public sealed partial class FunctionsService(
         string projectId, string key_, string name, string runtime, string entrypoint, int timeoutSeconds,
         string[] events, string[] execute, string? schedule, CancellationToken ct)
     {
-        var fields = Validate(key_, name, runtime, entrypoint, timeoutSeconds, events, execute, schedule, out var nextRun);
+        // Platform access is a Settings-tab-only concern (see docs/handoff/functions-scheduled-credentials-report.md)
+        // — a freshly created function always starts with none granted, same deny-by-default posture as Execute.
+        var fields = Validate(key_, name, runtime, entrypoint, timeoutSeconds, events, execute, schedule, [], out var nextRun);
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid function payload.", fields);
 
@@ -78,12 +80,13 @@ public sealed partial class FunctionsService(
     /// </summary>
     public async Task<FunctionDef> UpdateAsync(
         FunctionDef fn, string? name, string? entrypoint, int? timeoutSeconds, string[]? events, string[]? execute,
-        string? schedule, bool? enabled, CancellationToken ct)
+        string? schedule, bool? enabled, string[]? platformScopes, CancellationToken ct)
     {
         var effectiveSchedule = schedule switch { null => fn.Schedule, "" => null, var s => s };
         var fields = Validate(
             fn.Key, name ?? fn.Name, fn.Runtime, entrypoint ?? fn.Entrypoint, timeoutSeconds ?? fn.TimeoutSeconds,
-            events ?? fn.Events, execute ?? fn.Execute, effectiveSchedule, out var nextRun);
+            events ?? fn.Events, execute ?? fn.Execute, effectiveSchedule, platformScopes ?? fn.PlatformScopes,
+            out var nextRun);
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid function payload.", fields);
 
@@ -104,6 +107,8 @@ public sealed partial class FunctionsService(
         }
         if (enabled is { } e2)
             fn.Enabled = e2;
+        if (platformScopes is not null)
+            await ApplyPlatformScopesAsync(fn, NormalizePlatformScopes(platformScopes), ct);
         fn.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return fn;
@@ -113,13 +118,54 @@ public sealed partial class FunctionsService(
     {
         if (fn.ActiveDeploymentId is { } active)
             await pool.EvictAsync(active, CancellationToken.None);
+        // The platform key must never outlive the function that owns it — nobody else references it.
+        if (fn.PlatformApiKeyId is { } platformKeyId)
+            await db.ApiKeys.Where(k => k.Id == platformKeyId).ExecuteDeleteAsync(CancellationToken.None);
         db.Functions.Remove(fn);
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Reconciles <paramref name="fn"/>'s <see cref="FunctionDef.PlatformApiKeyId"/>/
+    /// <see cref="FunctionDef.PlatformApiKeySecretProtected"/> with the newly granted
+    /// <paramref name="scopes"/>: revokes the key entirely when scopes go back to empty, updates the
+    /// existing key's scopes in place when one already exists, or mints a fresh one (via the same
+    /// <see cref="ApiKeyService.CreateAsync"/> the project's own API keys page uses) the first time a
+    /// scope is granted. Also self-heals: if the targeted update affects zero rows — an operator
+    /// revoked this function-owned key directly from the API keys page — this treats it exactly like
+    /// "no key yet" and issues a replacement rather than leaving a dead reference in place.
+    /// </summary>
+    private async Task ApplyPlatformScopesAsync(FunctionDef fn, string[] scopes, CancellationToken ct)
+    {
+        if (scopes.Length == 0)
+        {
+            if (fn.PlatformApiKeyId is { } existing)
+                await db.ApiKeys.Where(k => k.Id == existing).ExecuteDeleteAsync(ct);
+            fn.PlatformApiKeyId = null;
+            fn.PlatformApiKeySecretProtected = null;
+            fn.PlatformScopes = [];
+            return;
+        }
+
+        var updatedInPlace = fn.PlatformApiKeyId is { } id &&
+            await db.ApiKeys.Where(k => k.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(k => k.Scopes, scopes), ct) > 0;
+        if (!updatedInPlace)
+        {
+            var (created, secret) = await apiKeys.CreateAsync(
+                fn.ProjectId, $"function:{fn.Key}", scopes, expiresAt: null, bypassRowPermissions: false, ct);
+            fn.PlatformApiKeyId = created.Id;
+            fn.PlatformApiKeySecretProtected = key.Encrypt(secret);
+        }
+        fn.PlatformScopes = scopes;
+    }
+
+    private static string[] NormalizePlatformScopes(string[] scopes) =>
+        [.. scopes.Select(s => s.Trim()).Distinct()];
+
     private static Dictionary<string, string[]> Validate(
         string key_, string name, string runtime, string entrypoint, int timeoutSeconds, string[] events,
-        string[] execute, string? schedule, out DateTimeOffset? nextScheduledRunAt)
+        string[] execute, string? schedule, string[] platformScopes, out DateTimeOffset? nextScheduledRunAt)
     {
         nextScheduledRunAt = null;
         var fields = new Dictionary<string, string[]>();
@@ -141,6 +187,10 @@ public sealed partial class FunctionsService(
             fields["execute"] = [$"At most {MaxExecuteRoles} roles."];
         else if (execute.Any(r => r is null || !Roles.IsValid(r.Trim())))
             fields["execute"] = ["Each entry must be a role: any, guests, users, users/verified, user:<id>[/verified], team:<id>[/<role>], member:<id> or label:<name>."];
+
+        var unknownScopes = platformScopes.Where(s => !ApiKeyScopes.All.Contains(s)).ToArray();
+        if (unknownScopes.Length > 0)
+            fields["platformScopes"] = [$"Unknown scopes: {string.Join(", ", unknownScopes)}. Must be from: {string.Join(", ", ApiKeyScopes.All)}."];
 
         if (!string.IsNullOrWhiteSpace(schedule))
         {

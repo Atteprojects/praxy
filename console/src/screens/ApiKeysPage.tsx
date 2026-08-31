@@ -3,14 +3,10 @@ import { useState, type FormEvent } from "react";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "../api/auth";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { ScopeGrid } from "../components/ScopePicker";
 import {
   Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, Toggle, timeAgo,
 } from "../components/ui";
-
-const ALL_SCOPES = [
-  "users.read", "users.write", "teams.read", "teams.write", "databases.read", "databases.write",
-  "functions.read", "functions.write", "execution.read", "execution.write",
-] as const;
 
 const HEADERS = ["Name", "ID", "Scopes", "Last used", "Created", ""];
 
@@ -153,30 +149,7 @@ function CreateKeyModal({ projectId, onClose }: { projectId: string; onClose: ()
         </Field>
         <div>
           <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">Scopes</span>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {ALL_SCOPES.map((scope) => (
-              <label
-                key={scope}
-                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                  scopes.includes(scope)
-                    ? "border-iris-500/60 bg-iris-500/10 text-ink-100"
-                    : "border-ink-700 text-ink-400 hover:border-ink-500"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="hidden"
-                  checked={scopes.includes(scope)}
-                  onChange={(e) =>
-                    setScopes((current) =>
-                      e.target.checked ? [...current, scope] : current.filter((s) => s !== scope),
-                    )
-                  }
-                />
-                <span className="font-mono text-xs">{scope}</span>
-              </label>
-            ))}
-          </div>
+          <ScopeGrid value={scopes} onChange={setScopes} />
           {error?.fieldErrors("scopes")[0] ? (
             <span className="mt-1 block text-xs text-coral-400">{error.fieldErrors("scopes")[0]}</span>
           ) : null}
