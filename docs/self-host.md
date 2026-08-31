@@ -152,6 +152,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Sites:*` | see `docs/handoff/sites-phase-1-report.md` | Docker endpoint, base image, build/startup timeouts, reconciliation cadence, resource limits. |
 | `Praxy:Sites:DockerNetwork` | `""` | Same shape as `Praxy:Functions:DockerNetwork`, but a separate network (this repo's own compose file sets it to `praxy-sites`) — a site's container and a function's container can't reach each other by default. See [Sites and the wildcard subdomain](#sites-and-the-wildcard-subdomain). |
 | `Praxy:Sites:PreviewIdleSeconds` / `PreviewSweepIntervalSeconds` | `600` / `60` | How long an on-demand preview deployment's container may sit with no proxied request before it's stopped, and how often that sweep runs — see [Preview URLs and idle sweep](#preview-urls-and-idle-sweep). Never applies to a site's active/production container. |
+| `Praxy:Sites:RequestLogChannelCapacity` | `10000` | Bound on the in-memory channel `SiteProxyMiddleware` feeds per-request log entries into — an entry past this depth is dropped, not queued, so real site traffic is never slowed down or failed by logging pressure. See [Sites request logs](#sites-request-logs). |
 | `Praxy:Vcs:GitHub:AppId` / `ClientId` / `ClientSecret` / `PrivateKey` / `WebhookSecret` | unset | This instance's own GitHub App — see [Git integration](#git-integration). Unset means the feature is off (a clean, typed error, not a crash) until you create and configure one. |
 | `Praxy:Vcs:CloneTimeoutSeconds` | 60 | Hard ceiling on a single `git` subprocess call while cloning a pushed commit for a build. |
 | `Praxy:Messaging:*` | see `docs/handoff/phase-8-report.md` | Send-loop cadence, subject/body/target caps. |
@@ -159,6 +160,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Retention:EventsMaxAgeDays` | 90 | Age past which a `praxy.events` row is deleted — only once **both** `WebhooksDispatchedAt` and `FunctionsDispatchedAt` are set; an unclaimed row past this age is left for the next sweep rather than force-deleted. |
 | `Praxy:Retention:WebhookDeliveriesMaxAgeDays` | 90 | Age past which a `praxy.webhook_deliveries` row is deleted — only in a terminal `succeeded`/`failed` status; cascades to its `webhook_delivery_attempts` at the FK level. Never touches `queued`/`delivering` rows regardless of age. |
 | `Praxy:Retention:AuditLogMaxAgeDays` | 90 | Age past which a `praxy.audit_log` row is deleted. |
+| `Praxy:Retention:SiteRequestsMaxAgeDays` | 7 | Age past which a `praxy.site_requests` row is deleted — every request to every deployed site is logged unconditionally, so this table grows far faster than the others above and defaults to a much shorter window. See [Sites request logs](#sites-request-logs). |
 
 Every rate-limit bucket is partitioned on **project + caller identity**, falling back to the source
 address only for callers that present neither an API key nor a session. That matters behind a NAT,
@@ -320,6 +322,27 @@ Same Caddyfile landmine as the section above applies here too: this feature adds
 `https://` site block to `deploy/Caddyfile`. **After deploying it, restart Caddy** (`docker compose -f
 deploy/docker-compose.yml restart caddy`) — bind-mounting the new file alone isn't enough, Caddy only
 reads it at its own startup. See the Upgrading section below.
+
+### Sites request logs
+
+Every request a site's own container actually serves — production, preview, or a verified custom
+domain — shows up in that site's Logs tab in the console: method, path, status code, duration,
+timestamp. Nothing to configure to turn this on; it's always recording. A request rejected before ever
+reaching a container (the site isn't deployed, a preview failed to cold-start, a quota was hit) is
+**not** logged — there's nothing served for a log line to describe.
+
+Logging never blocks or slows down real traffic: an entry is written to a bounded in-memory channel
+(`Praxy:Sites:RequestLogChannelCapacity`) and drained by a background worker, not inserted
+synchronously on the request path. Under genuinely extreme sustained load, an entry past that channel's
+capacity is silently dropped rather than applying backpressure to your site's traffic — this is
+best-effort observability, not a durability guarantee, the same posture Praxy takes with metrics or
+access logs anywhere else.
+
+Because every request to every deployed site is logged unconditionally, this table (`praxy.site_requests`)
+grows much faster than anything else in the retention table above — `Praxy:Retention:SiteRequestsMaxAgeDays`
+defaults to a week, not the 90 days everything else gets. Raise it if you want a longer window and your
+instance's traffic volume can carry it; the retention sweep (`Praxy:Retention:SweepIntervalSeconds`)
+prunes it the same way it prunes everything else.
 
 ## Git integration
 

@@ -94,7 +94,12 @@ Filled in as phases land — keep this section current.
   webhook endpoint cover both resource types, and the same repository can be connected to a site and a
   function at once. Exact GitHub App setup steps: `docs/self-host.md`'s "Git integration" section. The
   instance must be internet-reachable for GitHub's webhook (`POST /v1/vcs/github/webhook`) to arrive at
-  all — `localhost` needs a tunnel.
+  all — `localhost` needs a tunnel. Since 2026-08-31, every request a site's container actually serves
+  is logged (method/path/status/duration, no bodies) to a new `site_requests` table, shown on the
+  site's Logs tab — written asynchronously off a bounded channel (`Praxy:Sites:RequestLogChannelCapacity`)
+  so logging never adds request-path latency, and retention-eligible from day one
+  (`Praxy:Retention:SiteRequestsMaxAgeDays`, default 7 — much shorter than the other retention windows
+  given this table's expected volume) — see `docs/handoff/sites-request-logs-report.md`.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)
