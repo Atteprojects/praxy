@@ -8,6 +8,7 @@ import { useGithubInstallations } from "../api/vcs";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { AddRoleButton, RoleLabel } from "../components/RolePicker";
+import { ScopeGrid } from "../components/ScopePicker";
 import { Badge, ErrorNote, Field, FullPageSpinner, Spinner, Toggle } from "../components/ui";
 import { FunctionDetailHeader } from "./FunctionDetailHeader";
 
@@ -186,6 +187,22 @@ export function FunctionSettingsPage() {
               </label>
             ))}
           </div>
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">Platform access</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Scopes granted here are injected as <span className="font-mono text-ink-300">PRAXY_FUNCTION_API_KEY</span> into
+            every schedule- and event-triggered execution — the same X-Praxy-Key scopes a project API
+            key can hold, held by a key this function owns. A run triggered by a specific app user
+            keeps using that user's own <span className="font-mono text-ink-300">PRAXY_FUNCTION_JWT</span> instead;
+            this only covers runs with no calling user. No scopes selected means no credential is
+            injected, same as before this existed.
+          </p>
+          <ScopeGrid
+            value={fn.data.platformScopes}
+            onChange={(scopes) => update.mutate({ platformScopes: scopes })}
+          />
         </section>
 
         <section className="surface p-5">

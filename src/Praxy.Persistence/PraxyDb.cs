@@ -288,6 +288,7 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Schedule).HasMaxLength(64);
             e.Property(x => x.RepositoryFullName).HasMaxLength(256);
             e.Property(x => x.ProductionBranch).HasMaxLength(256);
+            e.Property(x => x.PlatformApiKeySecretProtected).HasMaxLength(8192);
             e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
             // FunctionScheduler's claim query: due, enabled, scheduled functions.

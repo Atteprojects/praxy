@@ -384,7 +384,10 @@ row permissions — that bypass defaults off.
 **Functions' scoped JWTs:** an invocation triggered by a specific app user (a JWT or authenticated session on
 the data-plane invoke endpoint) gets `PRAXY_FUNCTION_JWT` injected into its container — lets function code
 call back into the data plane *as that user*, not with elevated access. Absent for console/event/schedule
-triggers. See `docs/functions-runtimes.md`.
+triggers. A schedule- or event-triggered invocation instead gets `PRAXY_FUNCTION_API_KEY` — a function-owned
+API key, reusing `ApiKeyService`/`AppPrincipalFilter`'s existing key auth path verbatim — but only once an
+operator has granted the function `ApiKeyScopes` on its Settings tab; zero scopes granted (the default) means
+no credential at all, same as before this existed. See `docs/functions-runtimes.md`.
 
 **Rate limiting:** ASP.NET Core's built-in rate limiter. Buckets partition on **project + caller identity** (the
 presented API key or session, hashed), falling back to the source address only for callers that present neither —

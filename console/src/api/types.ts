@@ -402,6 +402,8 @@ export interface PraxyFunction {
   repositoryFullName: string | null;
   /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a deployment that finishes ready without activating. Null until a repository is connected. */
   productionBranch: string | null;
+  /** ApiKeyScopes granted for schedule-/event-triggered executions, injected as PRAXY_FUNCTION_API_KEY. Empty = no platform credential (deny by default). */
+  platformScopes: string[];
   createdAt: string;
   updatedAt: string;
 }
