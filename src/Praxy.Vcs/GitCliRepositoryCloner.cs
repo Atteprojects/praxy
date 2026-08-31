@@ -39,13 +39,19 @@ public sealed class GitCliRepositoryCloner(VcsOptions options) : IGitRepositoryC
     {
         using var process = new Process
         {
-            StartInfo = new ProcessStartInfo("git", subcommand)
+            StartInfo = new ProcessStartInfo("git")
             {
                 WorkingDirectory = workingDirectory,
                 RedirectStandardError = true,
                 UseShellExecute = false,
             },
         };
+        // ProcessStartInfo("git", subcommand) would set the single-string Arguments property, which
+        // .NET refuses to combine with ArgumentList below ("Only one of Arguments or ArgumentList may
+        // be used.", thrown at Process.Start) — found live 2026-08-30, the first time this ever ran
+        // against a real git clone (SiteGitDeploymentTests/FunctionGitDeploymentTests both use a fake
+        // cloner). subcommand goes through ArgumentList like every other argument, not the constructor.
+        process.StartInfo.ArgumentList.Add(subcommand);
         foreach (var arg in args)
             process.StartInfo.ArgumentList.Add(arg);
 
