@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
   ErrorEnvelope, PraxySite, SiteDeployment, SiteDeploymentList, SiteDomain, SiteDomainList, SiteEnvVar,
-  SiteEnvVarList, SiteGitBranches, SiteList,
+  SiteEnvVarList, SiteGitBranches, SiteList, SiteRequestLogList,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/sites`;
@@ -244,6 +244,16 @@ export function useDeploySiteStarterTemplate(projectId: string) {
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId, "deployments"] });
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "sites", siteId] });
     },
+  });
+}
+
+// ---- request logs ----
+
+export function useSiteRequests(projectId: string, siteId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "sites", siteId, "requests"],
+    queryFn: () => api<SiteRequestLogList>(`${base(projectId)}/${siteId}/requests`),
+    refetchInterval: 5_000,
   });
 }
 

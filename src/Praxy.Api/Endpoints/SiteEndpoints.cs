@@ -53,10 +53,18 @@ public sealed record SiteDomainResponse(string Id, string Hostname, string Statu
 
 public sealed record SiteGitBranchesResponse(IReadOnlyList<string> Branches);
 
+public sealed record SiteRequestResponse(
+    string Id, string Method, string Path, int StatusCode, int DurationMs, DateTimeOffset CreatedAt)
+{
+    public static SiteRequestResponse From(SiteRequestLog r) =>
+        new(Ids.Wire(r.Id), r.Method, r.Path, r.StatusCode, r.DurationMs, r.CreatedAt);
+}
+
 public sealed record SiteListResponse(int Total, IReadOnlyList<SiteResponse> Sites);
 public sealed record SiteEnvVarListResponse(int Total, IReadOnlyList<SiteEnvVarResponse> Vars);
 public sealed record SiteDeploymentListResponse(int Total, IReadOnlyList<SiteDeploymentResponse> Deployments);
 public sealed record SiteDomainListResponse(int Total, IReadOnlyList<SiteDomainResponse> Domains);
+public sealed record SiteRequestListResponse(int Total, IReadOnlyList<SiteRequestResponse> Requests);
 
 /// <summary>
 /// Sites Phase 1: console admin surface for deploying/configuring hosted Next.js sites, plus the
@@ -97,6 +105,8 @@ public static class SiteEndpoints
             .Produces<SiteDeploymentResponse>(StatusCodes.Status201Created);
         admin.MapGet("/{siteId}/deployments/{deploymentId}", GetDeployment).Produces<SiteDeploymentResponse>();
         admin.MapPost("/{siteId}/deployments/{deploymentId}/activate", ActivateDeployment).Produces<SiteDeploymentResponse>();
+
+        admin.MapGet("/{siteId}/requests", ListRequests).Produces<SiteRequestListResponse>();
 
         // Unauthenticated: Caddy's on_demand_tls "ask" directive calls this before every cert
         // issuance. A permissive implementation here turns the box into an open cert-minting oracle
@@ -313,6 +323,18 @@ public static class SiteEndpoints
         return Results.Ok(SiteDeploymentResponse.From(activated, PreviewUrl(site, activated, options)));
     }
 
+    // ---- request logs (docs/handoff/sites-request-logs-prompt.md) -------------------------------
+
+    private static async Task<IResult> ListRequests(
+        string siteId, HttpContext http, SitesService sites, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var site = await FindAsync(sites, project.Id, siteId, ct);
+        var (limit, offset) = ListParams(http);
+        var (total, page) = await sites.ListRequestsAsync(site.Id, limit, offset, ct);
+        return Results.Ok(new SiteRequestListResponse(total, [.. page.Select(SiteRequestResponse.From)]));
+    }
+
     // ---- ask-tls --------------------------------------------------------------------------------
 
     /// <summary>
@@ -396,6 +418,14 @@ public static class SiteEndpoints
         if (!Ids.TryParseWire(siteId, out var parsed))
             throw PraxyException.NotFound(ErrorTypes.SiteNotFound, "Site not found.");
         return await sites.GetAsync(projectId, parsed, ct);
+    }
+
+    /// <summary>Same shape as FunctionEndpoints' own private helper — kept local rather than shared, matching how small this logic is.</summary>
+    private static (int Limit, int Offset) ListParams(HttpContext http)
+    {
+        var limit = int.TryParse(http.Request.Query["limit"], out var l) ? Math.Clamp(l, 1, 100) : 25;
+        var offset = int.TryParse(http.Request.Query["offset"], out var o) ? Math.Max(0, o) : 0;
+        return (limit, offset);
     }
 
     private static async Task<SiteDeployment> FindDeploymentAsync(SitesService sites, Guid siteId, string deploymentId, CancellationToken ct)

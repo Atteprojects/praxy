@@ -30,6 +30,7 @@ import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
 import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
 import { SiteDeploymentsPage } from "./screens/SiteDeploymentsPage";
+import { SiteLogsPage } from "./screens/SiteLogsPage";
 import { SiteSettingsPage } from "./screens/SiteSettingsPage";
 import { SitesPage } from "./screens/SitesPage";
 import { TableSettingsPage } from "./screens/TableSettingsPage";
@@ -221,6 +222,12 @@ const siteDeploymentsRoute = createRoute({
   component: SiteDeploymentsPage,
 });
 
+const siteLogsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "sites/$siteId/logs",
+  component: SiteLogsPage,
+});
+
 const siteSettingsRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "sites/$siteId/settings",
@@ -306,6 +313,7 @@ const routeTree = rootRoute.addChildren([
       functionSettingsRoute,
       sitesRoute,
       siteDeploymentsRoute,
+      siteLogsRoute,
       siteSettingsRoute,
       messagesRoute,
       messagingTopicsRoute,

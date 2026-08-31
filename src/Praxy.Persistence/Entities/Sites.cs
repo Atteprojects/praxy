@@ -129,3 +129,32 @@ public class SiteDomain
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? VerifiedAt { get; set; }
 }
+
+/// <summary>
+/// One proxied request to a site's container — metadata only, per
+/// docs/handoff/sites-request-logs-prompt.md's non-goals (no request/response bodies; that's a much
+/// larger privacy/volume concern here than <see cref="FunctionExecution"/>'s bodies already
+/// accept, since Sites traffic is arbitrary end-user web traffic, not an explicitly invoked call).
+/// Written by <c>Praxy.Sites.SiteRequestLogWorker</c> off a bounded in-memory channel
+/// <c>Praxy.Sites.SiteProxyMiddleware</c> feeds — never a synchronous insert on the request path, and
+/// never a durability guarantee: under sustained overload a row can be silently dropped rather than
+/// slow down or fail real site traffic. High-volume by design (every request to every deployed site,
+/// unconditionally) — retention-eligible from day one, see <c>RetentionSweeper</c>, unlike
+/// <see cref="FunctionExecution"/> which deferred that question.
+/// </summary>
+public class SiteRequestLog
+{
+    public required Guid Id { get; set; }
+    public required Guid SiteId { get; set; }
+    public required string ProjectId { get; set; }
+
+    /// <summary>The deployment that served this request — production or preview, whichever the request actually resolved to. Null is not a real state today (every logged request went through <c>ForwardToContainerAsync</c> with a resolved deployment); nullable only so a future dispatch path that logs without one doesn't need a migration.</summary>
+    public Guid? DeploymentId { get; set; }
+
+    public required string Method { get; set; }
+    public required string Path { get; set; }
+    public int StatusCode { get; set; }
+    public int DurationMs { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}

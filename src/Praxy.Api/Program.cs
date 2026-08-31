@@ -245,15 +245,18 @@ try
         CpuLimit: builder.Configuration.GetValue("Praxy:Sites:CpuLimit", 1.0),
         MaxSourceBytes: builder.Configuration.GetValue("Praxy:Sites:MaxSourceBytes", 26_214_400L),
         PreviewIdleSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewIdleSeconds", 600),
-        PreviewSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewSweepIntervalSeconds", 60));
+        PreviewSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewSweepIntervalSeconds", 60),
+        RequestLogChannelCapacity: builder.Configuration.GetValue("Praxy:Sites:RequestLogChannelCapacity", 10_000));
     builder.Services.AddSingleton(sitesOptions);
     builder.Services.AddSingleton<SiteDockerExecutor>();
     builder.Services.AddSingleton<SiteContainerRegistry>();
     builder.Services.AddSingleton<SiteBuildSignal>();
+    builder.Services.AddSingleton<SiteRequestLogWriter>();
     builder.Services.AddScoped<SitesService>();
     builder.Services.AddHostedService<SiteBuildWorker>();
     builder.Services.AddHostedService<SiteReconciler>();
     builder.Services.AddHostedService<SitePreviewSweeper>();
+    builder.Services.AddHostedService<SiteRequestLogWorker>();
     // Direct forwarding (not the route/cluster config model) — SiteProxyMiddleware resolves its own
     // destination per request from the DB + SiteContainerRegistry, so it only needs the low-level
     // IHttpForwarder adapter, not YARP's routing layer.
@@ -264,7 +267,8 @@ try
         SweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Retention:SweepIntervalSeconds", 3600),
         EventsMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:EventsMaxAgeDays", 90),
         WebhookDeliveriesMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:WebhookDeliveriesMaxAgeDays", 90),
-        AuditLogMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:AuditLogMaxAgeDays", 90)));
+        AuditLogMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:AuditLogMaxAgeDays", 90),
+        SiteRequestsMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:SiteRequestsMaxAgeDays", 7)));
     builder.Services.AddHostedService<RetentionSweeper>();
 
     // Tight buckets on auth endpoints, looser but real ceilings on the rest of the data plane,
