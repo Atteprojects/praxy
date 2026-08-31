@@ -109,6 +109,24 @@ public sealed partial class FunctionsService(
         return fn;
     }
 
+    /// <summary>
+    /// Creates a function from a bundled <see cref="FunctionTemplates"/> starter and deploys its
+    /// tar as the first deployment — reuses <see cref="CreateAsync"/> and
+    /// <see cref="CreateDeploymentAsync"/> unchanged rather than duplicating their validation, the
+    /// same discipline <c>SitesService</c>'s starter-template path follows. The function starts with
+    /// no granted execute roles, same as a manually created one — deny by default.
+    /// </summary>
+    public async Task<(FunctionDef Function, FunctionDeployment Deployment)> CreateFromTemplateAsync(
+        string projectId, string templateKey, string key_, string name, CancellationToken ct)
+    {
+        var template = FunctionTemplates.Find(templateKey);
+        var fn = await CreateAsync(
+            projectId, key_, name, template.Runtime, template.Entrypoint, 15, [], [], template.DefaultSchedule, ct);
+        var tar = await FunctionTemplates.BuildTarAsync(templateKey, ct);
+        var deployment = await CreateDeploymentAsync(fn, tar, ct);
+        return (fn, deployment);
+    }
+
     public async Task DeleteAsync(FunctionDef fn, CancellationToken ct)
     {
         if (fn.ActiveDeploymentId is { } active)

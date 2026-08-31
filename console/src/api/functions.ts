@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
-  ErrorEnvelope, FunctionDeployment, FunctionDeploymentList, FunctionEnvVar, FunctionEnvVarList,
-  FunctionExecution, FunctionExecutionList, FunctionGitBranches, FunctionList, FunctionRuntimeList,
-  PraxyFunction,
+  ErrorEnvelope, FunctionCreatedFromTemplate, FunctionDeployment, FunctionDeploymentList, FunctionEnvVar,
+  FunctionEnvVarList, FunctionExecution, FunctionExecutionList, FunctionGitBranches, FunctionList,
+  FunctionRuntimeList, FunctionTemplateList, PraxyFunction,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/functions`;
@@ -48,6 +48,29 @@ export function useCreateFunction(projectId: string) {
         queryKey: ["projects", projectId, "functions"],
         predicate: (query) => query.queryKey[3] !== functionId,
       }),
+  });
+}
+
+/** The bundled starter catalog (FunctionTemplates.cs) — unauthenticated, project-agnostic, so it's fetched from `/functions/templates` rather than the console's project-scoped base. */
+export function useFunctionTemplates() {
+  return useQuery({
+    queryKey: ["functions", "templates"],
+    queryFn: () => api<FunctionTemplateList>("/functions/templates"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Creates a function from a bundled starter and deploys its tar as the first deployment in one
+ * call. Mirrors `useDeploySiteStarterTemplate`'s call-time-argument shape in spirit, but a function
+ * doesn't exist yet to pass an id for — the whole create-and-deploy happens server-side in one request.
+ */
+export function useDeployFunctionTemplate(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { templateKey: string; key: string; name: string }) =>
+      api<FunctionCreatedFromTemplate>(`${base(projectId)}/from-template`, { method: "POST", body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects", projectId, "functions"] }),
   });
 }
 

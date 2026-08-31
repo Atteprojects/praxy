@@ -13,6 +13,8 @@ public sealed record CreateFunctionRequest(
     string Key, string Name, string Runtime, string Entrypoint, int? TimeoutSeconds, string[]? Events,
     string[]? Execute, string? Schedule);
 
+public sealed record CreateFunctionFromTemplateRequest(string TemplateKey, string Key, string Name);
+
 public sealed record UpdateFunctionRequest(
     string? Name, string? Entrypoint, int? TimeoutSeconds, string[]? Events, string[]? Execute, string? Schedule,
     bool? Enabled);
@@ -64,7 +66,19 @@ public sealed record FunctionExecutionResponse(
 
 public sealed record FunctionGitBranchesResponse(IReadOnlyList<string> Branches);
 
+public sealed record FunctionTemplateResponse(
+    string Key, string Name, string Description, string Runtime, string Entrypoint, string? DefaultSchedule)
+{
+    public static FunctionTemplateResponse From(FunctionTemplateInfo t) => new(
+        t.Key, t.Name, t.Description, t.Runtime, t.Entrypoint, t.DefaultSchedule);
+}
+
+/// <summary>The combined result of creating a function from a template and deploying its tar in the same call — lets the console jump straight to watching the build without a second round trip to discover the deployment id.</summary>
+public sealed record FunctionCreatedFromTemplateResponse(FunctionResponse Function, FunctionDeploymentResponse Deployment);
+
 public sealed record FunctionListResponse(int Total, IReadOnlyList<FunctionResponse> Functions);
+
+public sealed record FunctionTemplateListResponse(IReadOnlyList<FunctionTemplateResponse> Templates);
 
 public sealed record FunctionRuntimeListResponse(IReadOnlyList<FunctionRuntimeResponse> Runtimes);
 
@@ -108,6 +122,8 @@ public static class FunctionEndpoints
             .Produces<FunctionRuntimeListResponse>();
         admin.MapPost("", CreateFunction)
             .Produces<FunctionResponse>(StatusCodes.Status201Created);
+        admin.MapPost("/from-template", CreateFunctionFromTemplate)
+            .Produces<FunctionCreatedFromTemplateResponse>(StatusCodes.Status201Created);
         admin.MapGet("/{functionId}", GetFunction)
             .Produces<FunctionResponse>();
         admin.MapPatch("/{functionId}", UpdateFunction)
@@ -141,6 +157,13 @@ public static class FunctionEndpoints
             .Produces<FunctionExecutionResponse>();
         admin.MapPost("/{functionId}/executions", ConsoleInvoke)
             .Produces<FunctionExecutionResponse>();
+
+        // Unauthenticated, top-level (not under /v1/console/projects/{projectId}/...): a template
+        // catalog isn't project data, so it needs no operator session and no project context — the
+        // same "static catalog, no auth" posture as any other fixed list, just reached from a route
+        // an unauthenticated console screen can hit before/without a project in scope.
+        api.MapGet("/v1/functions/templates", ListFunctionTemplates)
+            .Produces<FunctionTemplateListResponse>();
 
         // Tighter than the rest of the data plane: every permitted request here can start a
         // container, so this is the one bucket where the limit is about capacity, not just abuse.
@@ -228,6 +251,28 @@ public static class FunctionEndpoints
         return Results.Created(
             $"/v1/console/projects/{project.Id}/functions/{Ids.Wire(fn.Id)}", FunctionResponse.From(fn, false));
     }
+
+    /// <summary>
+    /// Creates a function from a bundled starter (<see cref="FunctionTemplates"/>) and deploys its
+    /// tar as the first deployment in one call — the console's "Create function" modal offers this
+    /// alongside the manual path, mirroring <c>SiteEndpoints.CreateDeploymentFromStarterTemplate</c>
+    /// except a function doesn't exist yet to deploy onto, so create and deploy happen together here.
+    /// </summary>
+    private static async Task<IResult> CreateFunctionFromTemplate(
+        CreateFunctionFromTemplateRequest req, HttpContext http, PraxyDb db, FunctionsService functions, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var (fn, deployment) = await functions.CreateFromTemplateAsync(project.Id, req.TemplateKey, req.Key, req.Name, ct);
+        await AuditAsync(db, http, project.Id, "functions.create", $"function/{Ids.Wire(fn.Id)}", ct);
+        await AuditAsync(db, http, project.Id, "functions.deployments.create",
+            $"function/{Ids.Wire(fn.Id)}/deployment/{Ids.Wire(deployment.Id)}", ct);
+        return Results.Created(
+            $"/v1/console/projects/{project.Id}/functions/{Ids.Wire(fn.Id)}",
+            new FunctionCreatedFromTemplateResponse(FunctionResponse.From(fn, false), FunctionDeploymentResponse.From(deployment)));
+    }
+
+    private static IResult ListFunctionTemplates() =>
+        Results.Ok(new FunctionTemplateListResponse([.. FunctionTemplates.All.Select(FunctionTemplateResponse.From)]));
 
     private static async Task<IResult> GetFunction(string functionId, HttpContext http, FunctionsService functions, CancellationToken ct)
     {

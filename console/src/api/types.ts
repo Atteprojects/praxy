@@ -473,6 +473,24 @@ export interface FunctionExecutionList {
   executions: FunctionExecution[];
 }
 
+export interface FunctionTemplate {
+  key: string;
+  name: string;
+  description: string;
+  runtime: FunctionRuntime;
+  entrypoint: string;
+  defaultSchedule: string | null;
+}
+
+export interface FunctionTemplateList {
+  templates: FunctionTemplate[];
+}
+
+export interface FunctionCreatedFromTemplate {
+  function: PraxyFunction;
+  deployment: FunctionDeployment;
+}
+
 // ---- Sites (post-v0.1.0): Next.js hosting ----
 
 export interface PraxySite {
