@@ -10,7 +10,7 @@ export function SiteDetailHeader({
 }: {
   projectId: string;
   site: PraxySite;
-  active: "deployments" | "settings";
+  active: "deployments" | "logs" | "settings";
 }) {
   return (
     <div className="mb-6">
@@ -38,6 +38,7 @@ export function SiteDetailHeader({
       )}
       <div className="flex gap-1 border-b border-ink-800" role="tablist">
         <TabLink to="deployments" label="Deployments" active={active === "deployments"} projectId={projectId} siteId={site.id} />
+        <TabLink to="logs" label="Logs" active={active === "logs"} projectId={projectId} siteId={site.id} />
         <TabLink to="settings" label="Settings" active={active === "settings"} projectId={projectId} siteId={site.id} />
       </div>
     </div>
@@ -46,6 +47,7 @@ export function SiteDetailHeader({
 
 const TAB_ROUTES = {
   deployments: "/project/$projectId/sites/$siteId",
+  logs: "/project/$projectId/sites/$siteId/logs",
   settings: "/project/$projectId/sites/$siteId/settings",
 } as const;
 

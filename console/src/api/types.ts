@@ -573,6 +573,20 @@ export interface SiteDomainList {
   domains: SiteDomain[];
 }
 
+export interface SiteRequestLog {
+  id: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  createdAt: string;
+}
+
+export interface SiteRequestLogList {
+  total: number;
+  requests: SiteRequestLog[];
+}
+
 export interface SiteGitBranches {
   branches: string[];
 }

@@ -293,6 +293,18 @@ redeploy that only touches app code. Persisting Next.js's own `.next/cache` (web
 win Appwrite's log lines actually showed) was researched as a stretch goal and explicitly not attempted;
 see the report for why.
 
+**Sites request logs — shipped 2026-08-31** (kickoff: `docs/handoff/sites-request-logs-prompt.md`;
+report: `docs/handoff/sites-request-logs-report.md`). The fourth and last finding from the same
+Appwrite comparison: Appwrite's Sites has a "Logs" tab showing real per-request activity; Praxy's had
+no equivalent — `SiteProxyMiddleware` forwarded every request and recorded nothing. Every request a
+site's container actually serves is now written to a new `site_requests` table (method, path, status,
+duration — metadata only, no bodies) via a bounded in-memory channel drained by a background worker, so
+logging never adds latency to real site traffic and degrades by dropping entries rather than blocking
+under sustained overload. Retention-eligible from day one (`Praxy:Retention:SiteRequestsMaxAgeDays`,
+default 7 — deliberately shorter than every other retention window, since this table's volume — every
+request to every deployed site, unconditionally — is expected to dwarf the others), unlike
+`function_executions`, which deferred that question. New "Logs" tab on the site detail view.
+
 **Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
 (2026-08-22).
 

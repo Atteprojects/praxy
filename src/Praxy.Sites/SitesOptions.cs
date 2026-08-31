@@ -40,4 +40,10 @@ public sealed record SitesOptions(
     int PreviewIdleSeconds = 600,
     // How often SitePreviewSweeper re-scans for idle preview containers — same cadence as
     // SiteReconciler's own ReconcileIntervalSeconds by default, tunable independently.
-    int PreviewSweepIntervalSeconds = 60);
+    int PreviewSweepIntervalSeconds = 60,
+    // SiteRequestLogWriter's bounded channel — an entry past this depth is dropped, not queued,
+    // per docs/handoff/sites-request-logs-prompt.md's "never block or fail real site traffic over
+    // logging pressure." 10,000 in-flight log entries is a generous burst allowance at a few hundred
+    // bytes each; a self-hoster whose sustained request rate outpaces SiteRequestLogWorker's drain
+    // loop by this much has a bigger problem than dropped log rows.
+    int RequestLogChannelCapacity = 10_000);

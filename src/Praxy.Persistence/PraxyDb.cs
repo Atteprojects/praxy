@@ -45,6 +45,7 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<SiteDeployment> SiteDeployments => Set<SiteDeployment>();
     public DbSet<SiteDeploymentSource> SiteDeploymentSources => Set<SiteDeploymentSource>();
     public DbSet<SiteDomain> SiteDomains => Set<SiteDomain>();
+    public DbSet<SiteRequestLog> SiteRequestLogs => Set<SiteRequestLog>();
     public DbSet<VcsInstallation> VcsInstallations => Set<VcsInstallation>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
@@ -406,6 +407,20 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             // Globally unique, not per-project — two different sites can't claim the same real-world
             // hostname. Also SiteProxyMiddleware's and _ask-tls's exact-match lookup index.
             e.HasIndex(x => x.Hostname).IsUnique();
+        });
+
+        b.Entity<SiteRequestLog>(e =>
+        {
+            e.ToTable("site_requests");
+            e.Property(x => x.Method).HasMaxLength(16);
+            e.Property(x => x.Path).HasMaxLength(2048);
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Cascade);
+            // The console's one real query: a site's requests newest-first (SitesService.ListRequestsAsync).
+            e.HasIndex(x => new { x.SiteId, x.CreatedAt });
+            // RetentionSweeper's own delete: age alone, across every site — a leading-SiteId composite
+            // above doesn't serve that scan, so this table (unlike audit_log) gets a standalone index
+            // for it too, given how much higher-volume this table is expected to be.
+            e.HasIndex(x => x.CreatedAt);
         });
 
         b.Entity<VcsInstallation>(e =>

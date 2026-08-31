@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,12 @@ namespace Praxy.Sites;
 /// itself (site key/project → deployment's cached container address) rather than YARP's own
 /// route/cluster config, since that resolution is a live DB + in-memory-registry lookup Praxy already
 /// owns.
+///
+/// Every request this middleware actually forwards (production, preview, or custom-domain) also gets
+/// a best-effort request-log entry via <see cref="SiteRequestLogWriter"/> — see
+/// <see cref="ForwardToContainerAsync"/>. Requests rejected before ever reaching a container (site not
+/// deployed, preview cold-start failure, quota exceeded) are deliberately not logged there; nothing
+/// was actually served for them to describe.
 ///
 /// The production path is unchanged from Phase 1: it only ever reads <see cref="SiteContainerRegistry"/>
 /// and 404s if there's no entry — <see cref="SiteReconciler"/> and <see cref="SitesService.ActivateAsync"/>
@@ -68,14 +75,15 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
 
     public async Task InvokeAsync(
         HttpContext ctx, PraxyDb db, SitesOptions options, SiteContainerRegistry registry,
-        SiteDockerExecutor docker, SitesService sites, QuotaService quotas, IHttpForwarder forwarder)
+        SiteDockerExecutor docker, SitesService sites, QuotaService quotas, IHttpForwarder forwarder,
+        SiteRequestLogWriter requestLog)
     {
         var host = ctx.Request.Host.Host;
         if (!SiteHostPattern.TryParse(host, options.Domain, out var key, out var projectId, out var deploymentRef))
         {
             // Not shaped like the built-in wildcard pattern at all — check a registered custom
             // domain (Phase 3) before giving up and falling through to the console/API routes.
-            if (!await TryServeCustomDomainAsync(ctx, db, registry, forwarder, host))
+            if (!await TryServeCustomDomainAsync(ctx, db, registry, forwarder, requestLog, host))
                 await next(ctx);
             return;
         }
@@ -84,6 +92,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
             .FirstOrDefaultAsync(s => s.ProjectId == projectId && s.Key == key, ctx.RequestAborted);
 
         RunningSiteContainer running;
+        Guid resolvedDeploymentId;
         if (deploymentRef is null)
         {
             // Production path — unchanged from Phase 1.
@@ -93,6 +102,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
                 await WriteNotDeployedAsync(ctx, "This site is not currently deployed.");
                 return;
             }
+            resolvedDeploymentId = activeId;
         }
         else
         {
@@ -101,6 +111,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
                 await WriteNotDeployedAsync(ctx, "This preview is not available.");
                 return;
             }
+            resolvedDeploymentId = deploymentId;
 
             if (!registry.TryGet(deploymentId, out running!))
             {
@@ -148,7 +159,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
             }
         }
 
-        await ForwardToContainerAsync(ctx, running, host, forwarder);
+        await ForwardToContainerAsync(ctx, running, host, forwarder, requestLog, site.Id, site.ProjectId, resolvedDeploymentId);
     }
 
     /// <summary>
@@ -161,7 +172,8 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
     /// same as every other branch here.
     /// </summary>
     private async Task<bool> TryServeCustomDomainAsync(
-        HttpContext ctx, PraxyDb db, SiteContainerRegistry registry, IHttpForwarder forwarder, string host)
+        HttpContext ctx, PraxyDb db, SiteContainerRegistry registry, IHttpForwarder forwarder,
+        SiteRequestLogWriter requestLog, string host)
     {
         var domain = await SiteCustomDomainLookup.FindAsync(db, host, ctx.RequestAborted);
         if (domain is null)
@@ -175,7 +187,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
             return true;
         }
 
-        var forwarded = await ForwardToContainerAsync(ctx, running, host, forwarder);
+        var forwarded = await ForwardToContainerAsync(ctx, running, host, forwarder, requestLog, site.Id, site.ProjectId, activeId);
 
         // Flip pending -> verified on the first request this middleware itself successfully
         // forwarded — see this class's own remarks on why that's the right moment, not _ask-tls.
@@ -191,17 +203,32 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
     }
 
     private async Task<bool> ForwardToContainerAsync(
-        HttpContext ctx, RunningSiteContainer running, string host, IHttpForwarder forwarder)
+        HttpContext ctx, RunningSiteContainer running, string host, IHttpForwarder forwarder,
+        SiteRequestLogWriter requestLog, Guid siteId, string projectId, Guid deploymentId)
     {
         var destinationPrefix = $"http://{running.Host}:{running.Port}";
+        var method = ctx.Request.Method;
+        var path = ctx.Request.Path.Value ?? "/";
+
+        // Wraps only the forward call itself, not this method's own logging afterward — the prompt's
+        // own landmine: a request's recorded duration must reflect what the visitor actually waited
+        // for, not this task's bookkeeping on top of it.
+        var stopwatch = Stopwatch.StartNew();
         var error = await forwarder.SendAsync(ctx, destinationPrefix, HttpClient, RequestConfig);
-        if (error != ForwarderError.None)
+        stopwatch.Stop();
+
+        var success = error == ForwarderError.None;
+        if (!success)
         {
             var errorFeature = ctx.GetForwarderErrorFeature();
             logger.LogWarning(errorFeature?.Exception, "Site proxy forwarding error {Error} for {Host}", error, host);
-            return false;
         }
-        return true;
+
+        requestLog.TryEnqueue(new SiteRequestLogEntry(
+            siteId, projectId, deploymentId, method, path, ctx.Response.StatusCode,
+            (int)stopwatch.ElapsedMilliseconds, DateTimeOffset.UtcNow));
+
+        return success;
     }
 
     private static async Task WriteNotDeployedAsync(HttpContext ctx, string message)

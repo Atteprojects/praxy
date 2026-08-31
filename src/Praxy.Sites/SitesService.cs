@@ -375,4 +375,19 @@ public sealed partial class SitesService(
             await CreateGitDeploymentAsync(site, evt.CommitSha, evt.CommitMessage, evt.Branch, ct);
         return matches.Count;
     }
+
+    // ---- request logs (docs/handoff/sites-request-logs-prompt.md) -------------------------------
+
+    /// <summary>
+    /// Read-only — the write side is <c>SiteRequestLogWorker</c> draining <c>SiteRequestLogWriter</c>'s
+    /// channel, never this service. Newest first, same shape as <c>FunctionsService.ListExecutionsAsync</c>.
+    /// </summary>
+    public async Task<(int Total, List<SiteRequestLog> Page)> ListRequestsAsync(
+        Guid siteId, int limit, int offset, CancellationToken ct)
+    {
+        var query = db.SiteRequestLogs.AsNoTracking().Where(r => r.SiteId == siteId).OrderByDescending(r => r.CreatedAt);
+        var total = await query.CountAsync(ct);
+        var page = await query.Skip(offset).Take(limit).ToListAsync(ct);
+        return (total, page);
+    }
 }
