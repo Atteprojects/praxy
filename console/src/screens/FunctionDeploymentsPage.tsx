@@ -21,6 +21,8 @@ export function FunctionDeploymentsPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadError = create.error instanceof ApiError ? create.error : null;
 
+  const activeDeploymentId = fn.data?.activeDeploymentId ?? null;
+
   const columns = useMemo<DataGridColumn<FunctionDeployment>[]>(() => [
     {
       id: "created",
@@ -63,9 +65,12 @@ export function FunctionDeploymentsPage() {
     {
       id: "active",
       header: "",
-      cell: ({ row }) => (row.original.activatedAt ? <Badge tone="mint">active</Badge> : null),
+      // The function's currently active deployment, not merely "has been activated at some point" —
+      // activatedAt stays set on a deployment forever once it's first activated, even after a
+      // redeploy supersedes it, so activatedAt alone can't tell "active" from "was active once."
+      cell: ({ row }) => (row.original.id === activeDeploymentId ? <Badge tone="mint">active</Badge> : null),
     },
-  ], []);
+  ], [activeDeploymentId]);
 
   if (fn.isPending || deployments.isPending) return <FullPageSpinner />;
   if (fn.isError) throw fn.error;
@@ -125,6 +130,7 @@ export function FunctionDeploymentsPage() {
           projectId={projectId}
           functionId={functionId}
           deploymentId={selectedId}
+          activeDeploymentId={activeDeploymentId}
           onClose={() => setSelectedId(null)}
         />
       ) : null}
@@ -143,11 +149,13 @@ function DeploymentSheet({
   projectId,
   functionId,
   deploymentId,
+  activeDeploymentId,
   onClose,
 }: {
   projectId: string;
   functionId: string;
   deploymentId: string;
+  activeDeploymentId: string | null;
   onClose: () => void;
 }) {
   const detail = useFunctionDeployment(projectId, functionId, deploymentId);
@@ -163,7 +171,12 @@ function DeploymentSheet({
   if (detail.isError) throw detail.error;
 
   const d = detail.data;
-  const canActivate = d.status === "ready" && !d.activatedAt;
+  const isActive = d.id === activeDeploymentId;
+  // "Ready but not the function's current deployment" is what makes a deployment activatable — a
+  // superseded deployment keeps its own activatedAt timestamp forever, so that alone can't
+  // distinguish "currently active" from "was active once" (this is exactly what makes rollback via
+  // this button possible after a redeploy).
+  const canActivate = d.status === "ready" && !isActive;
 
   return (
     <Sheet
@@ -176,7 +189,7 @@ function DeploymentSheet({
           disabled={!canActivate || activate.isPending}
           onClick={() => activate.mutate(deploymentId)}
         >
-          {activate.isPending ? <Spinner /> : d.activatedAt ? "Active" : "Activate"}
+          {activate.isPending ? <Spinner /> : isActive ? "Active" : "Activate"}
         </button>
       }
     >
