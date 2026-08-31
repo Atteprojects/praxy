@@ -249,6 +249,35 @@
         }
       }
     },
+    "/v1/functions/templates": {
+      "get": {
+        "tags": [
+          "FunctionEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionTemplateListResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sites/_ask-tls": {
       "get": {
         "tags": [
@@ -7330,6 +7359,45 @@
         }
       }
     },
+    "/v1/console/projects/{projectId}/functions/from-template": {
+      "post": {
+        "tags": [
+          "FunctionEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFunctionFromTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionCreatedFromTemplateResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/console/projects/{projectId}/functions/{functionId}": {
       "get": {
         "tags": [
@@ -11794,6 +11862,25 @@
           }
         }
       },
+      "CreateFunctionFromTemplateRequest": {
+        "required": [
+          "templateKey",
+          "key",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "templateKey": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "CreateFunctionRequest": {
         "required": [
           "key",
@@ -12305,6 +12392,21 @@
           }
         }
       },
+      "FunctionCreatedFromTemplateResponse": {
+        "required": [
+          "function",
+          "deployment"
+        ],
+        "type": "object",
+        "properties": {
+          "function": {
+            "$ref": "#/components/schemas/FunctionResponse"
+          },
+          "deployment": {
+            "$ref": "#/components/schemas/FunctionDeploymentResponse"
+          }
+        }
+      },
       "FunctionDeploymentListResponse": {
         "required": [
           "total",
@@ -12747,6 +12849,54 @@
           },
           "baseImage": {
             "type": "string"
+          }
+        }
+      },
+      "FunctionTemplateListResponse": {
+        "required": [
+          "templates"
+        ],
+        "type": "object",
+        "properties": {
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunctionTemplateResponse"
+            }
+          }
+        }
+      },
+      "FunctionTemplateResponse": {
+        "required": [
+          "key",
+          "name",
+          "description",
+          "runtime",
+          "entrypoint",
+          "defaultSchedule"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "entrypoint": {
+            "type": "string"
+          },
+          "defaultSchedule": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -15319,6 +15469,9 @@
       "name": "RealtimeEndpoints"
     },
     {
+      "name": "FunctionEndpoints"
+    },
+    {
       "name": "SiteEndpoints"
     },
     {
@@ -15356,9 +15509,6 @@
     },
     {
       "name": "WebhookEndpoints"
-    },
-    {
-      "name": "FunctionEndpoints"
     },
     {
       "name": "MessagingEndpoints"

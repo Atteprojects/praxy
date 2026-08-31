@@ -1,8 +1,8 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { useCreateFunction, useFunctionRuntimes, useFunctions } from "../api/functions";
+import { useCreateFunction, useDeployFunctionTemplate, useFunctionRuntimes, useFunctionTemplates, useFunctions } from "../api/functions";
 import { ApiError } from "../api/client";
-import { FUNCTION_RUNTIMES, type FunctionRuntime } from "../api/types";
+import { FUNCTION_RUNTIMES, type FunctionRuntime, type FunctionTemplate } from "../api/types";
 import {
   Badge, DataTable, EmptyState, ErrorNote, Field, FullPageSpinner, IdChip, Modal, PageHeader, Spinner, timeAgo,
 } from "../components/ui";
@@ -121,7 +121,12 @@ export function FunctionsPage() {
 
 function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const create = useCreateFunction(projectId);
+  const deployTemplate = useDeployFunctionTemplate(projectId);
+  const templates = useFunctionTemplates();
   const runtimes = useFunctionRuntimes(projectId);
+  const navigate = useNavigate();
+  const [start, setStart] = useState<"template" | "manual">("template");
+  const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [key, setKey] = useState("");
   const [keyTouched, setKeyTouched] = useState(false);
   const [name, setName] = useState("");
@@ -130,7 +135,11 @@ function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClos
   const [timeoutSeconds, setTimeoutSeconds] = useState(15);
   const [events, setEvents] = useState<string[]>([]);
   const [schedule, setSchedule] = useState("");
-  const error = create.error instanceof ApiError ? create.error : null;
+  const submitError = create.error ?? deployTemplate.error;
+  const error = submitError instanceof ApiError ? submitError : null;
+  const isPending = create.isPending || deployTemplate.isPending;
+  const selectedTemplate: FunctionTemplate | undefined =
+    templates.data?.templates.find((t) => t.key === templateKey) ?? templates.data?.templates[0];
 
   function slugify(value: string) {
     return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 36) || "function";
@@ -143,6 +152,18 @@ function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClos
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (start === "template") {
+      if (!selectedTemplate) return;
+      const created = await deployTemplate.mutateAsync({
+        templateKey: selectedTemplate.key, key: key || slugify(name), name,
+      });
+      onClose();
+      void navigate({
+        to: "/project/$projectId/functions/$functionId",
+        params: { projectId, functionId: created.function.id },
+      });
+      return;
+    }
     await create.mutateAsync({
       key: key || slugify(name),
       name,
@@ -156,126 +177,207 @@ function CreateFunctionModal({ projectId, onClose }: { projectId: string; onClos
   }
 
   return (
-    <Modal title="Create function" onClose={onClose}>
-      <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
-        {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
-        <Field label="Name" error={error?.fieldErrors("name")[0]}>
-          <input
-            className="input-base"
-            required
-            autoFocus
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!keyTouched) setKey(slugify(e.target.value));
-            }}
-            placeholder="Send welcome email"
+    <Modal title="Create function" onClose={onClose} size={start === "template" ? "lg" : undefined}>
+      <div className="space-y-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <StartOption
+            active={start === "template"}
+            title="From a template"
+            description="Deploy a bundled starter that demonstrates a real Praxy primitive — see a working function in seconds."
+            onClick={() => setStart("template")}
           />
-        </Field>
-        <Field label="Key" error={error?.fieldErrors("key")[0]}>
-          <input
-            className="input-base font-mono"
-            required
-            value={key}
-            onChange={(e) => {
-              setKeyTouched(true);
-              setKey(e.target.value);
-            }}
-            placeholder="send-welcome-email"
+          <StartOption
+            active={start === "manual"}
+            title="Manual"
+            description="Create the function now, upload your own code afterward from its Deployments tab."
+            onClick={() => setStart("manual")}
           />
-        </Field>
-        <Field label="Runtime" error={error?.fieldErrors("runtime")[0]}>
-          <select
-            className="input-base"
-            value={runtime}
-            onChange={(e) => onRuntimeChange(e.target.value as FunctionRuntime)}
-          >
-            {FUNCTION_RUNTIMES.map((r) => {
-              const baseImage = runtimes.data?.runtimes.find((info) => info.id === r)?.baseImage;
-              return (
-                <option key={r} value={r}>
-                  {r}{baseImage ? ` (${baseImage})` : ""}
-                </option>
-              );
-            })}
-          </select>
-        </Field>
-        <Field label="Entrypoint" error={error?.fieldErrors("entrypoint")[0]}>
-          <input
-            className="input-base font-mono"
-            required
-            value={entrypoint}
-            onChange={(e) => setEntrypoint(e.target.value)}
-            placeholder={runtime === "dart" ? "main.dart" : "index.js"}
-          />
-        </Field>
-        <div>
-          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
-            {entrypoint || (runtime === "dart" ? "main.dart" : "index.js")} must export
-          </span>
-          <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-300">
-            {RUNTIME_EXAMPLES[runtime]}
-          </pre>
-          <span className="mt-1 block text-[11px] text-ink-500">
-            Praxy's own contract, not Appwrite/open-runtimes-compatible — see docs/functions-runtimes.md.
-          </span>
         </div>
-        <Field label="Timeout (seconds)" error={error?.fieldErrors("timeoutSeconds")[0]}>
-          <input
-            className="input-base"
-            type="number"
-            min={1}
-            max={900}
-            required
-            value={timeoutSeconds}
-            onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
-          />
-        </Field>
 
-        <div>
-          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
-            Event triggers (optional)
-          </span>
-          <div className="grid grid-cols-1 gap-2">
-            {EVENT_PRESETS.map((preset) => (
-              <label
-                key={preset.pattern}
-                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                  events.includes(preset.pattern)
-                    ? "border-iris-500/60 bg-iris-500/10 text-ink-100"
-                    : "border-ink-700 text-ink-400 hover:border-ink-500"
-                }`}
-              >
+        {start === "template" ? (
+          templates.isPending ? (
+            <div className="flex justify-center py-6"><Spinner /></div>
+          ) : templates.isError ? (
+            <ErrorNote message="Couldn't load the template catalog." />
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              {templates.data.templates.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTemplateKey(t.key)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    selectedTemplate?.key === t.key
+                      ? "border-iris-500 bg-iris-500/5"
+                      : "border-ink-800 bg-ink-900 hover:border-ink-700"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-medium ${selectedTemplate?.key === t.key ? "text-iris-300" : "text-ink-100"}`}>
+                      {t.name}
+                    </span>
+                    <Badge tone="ink">{t.runtime}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-ink-500">{t.description}</p>
+                  {t.defaultSchedule ? (
+                    <p className="mt-1.5 font-mono text-[11px] text-ink-600">cron: {t.defaultSchedule}</p>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          )
+        ) : null}
+
+        <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+          {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
+          <Field label="Name" error={error?.fieldErrors("name")[0]}>
+            <input
+              className="input-base"
+              required
+              autoFocus
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!keyTouched) setKey(slugify(e.target.value));
+              }}
+              placeholder="Send welcome email"
+            />
+          </Field>
+          <Field label="Key" error={error?.fieldErrors("key")[0]}>
+            <input
+              className="input-base font-mono"
+              required
+              value={key}
+              onChange={(e) => {
+                setKeyTouched(true);
+                setKey(e.target.value);
+              }}
+              placeholder="send-welcome-email"
+            />
+          </Field>
+
+          {start === "manual" ? (
+            <>
+              <Field label="Runtime" error={error?.fieldErrors("runtime")[0]}>
+                <select
+                  className="input-base"
+                  value={runtime}
+                  onChange={(e) => onRuntimeChange(e.target.value as FunctionRuntime)}
+                >
+                  {FUNCTION_RUNTIMES.map((r) => {
+                    const baseImage = runtimes.data?.runtimes.find((info) => info.id === r)?.baseImage;
+                    return (
+                      <option key={r} value={r}>
+                        {r}{baseImage ? ` (${baseImage})` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </Field>
+              <Field label="Entrypoint" error={error?.fieldErrors("entrypoint")[0]}>
                 <input
-                  type="checkbox"
-                  className="hidden"
-                  checked={events.includes(preset.pattern)}
-                  onChange={(e) =>
-                    setEvents((current) =>
-                      e.target.checked ? [...current, preset.pattern] : current.filter((p) => p !== preset.pattern),
-                    )
-                  }
+                  className="input-base font-mono"
+                  required
+                  value={entrypoint}
+                  onChange={(e) => setEntrypoint(e.target.value)}
+                  placeholder={runtime === "dart" ? "main.dart" : "index.js"}
                 />
-                <span>{preset.label}</span>
-                <span className="ml-auto font-mono text-[11px] text-ink-500">{preset.pattern}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+              </Field>
+              <div>
+                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
+                  {entrypoint || (runtime === "dart" ? "main.dart" : "index.js")} must export
+                </span>
+                <pre className="overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 px-3 py-2.5 font-mono text-xs text-ink-300">
+                  {RUNTIME_EXAMPLES[runtime]}
+                </pre>
+                <span className="mt-1 block text-[11px] text-ink-500">
+                  Praxy's own contract, not Appwrite/open-runtimes-compatible — see docs/functions-runtimes.md.
+                </span>
+              </div>
+              <Field label="Timeout (seconds)" error={error?.fieldErrors("timeoutSeconds")[0]}>
+                <input
+                  className="input-base"
+                  type="number"
+                  min={1}
+                  max={900}
+                  required
+                  value={timeoutSeconds}
+                  onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
+                />
+              </Field>
 
-        <Field label="Cron schedule (optional)" error={error?.fieldErrors("schedule")[0]}>
-          <input
-            className="input-base font-mono text-xs"
-            value={schedule}
-            onChange={(e) => setSchedule(e.target.value)}
-            placeholder="0 * * * * (every hour)"
-          />
-        </Field>
+              <div>
+                <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">
+                  Event triggers (optional)
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  {EVENT_PRESETS.map((preset) => (
+                    <label
+                      key={preset.pattern}
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                        events.includes(preset.pattern)
+                          ? "border-iris-500/60 bg-iris-500/10 text-ink-100"
+                          : "border-ink-700 text-ink-400 hover:border-ink-500"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={events.includes(preset.pattern)}
+                        onChange={(e) =>
+                          setEvents((current) =>
+                            e.target.checked ? [...current, preset.pattern] : current.filter((p) => p !== preset.pattern),
+                          )
+                        }
+                      />
+                      <span>{preset.label}</span>
+                      <span className="ml-auto font-mono text-[11px] text-ink-500">{preset.pattern}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
-        <button type="submit" className="btn-primary w-full" disabled={create.isPending}>
-          {create.isPending ? <Spinner /> : "Create function"}
-        </button>
-      </form>
+              <Field label="Cron schedule (optional)" error={error?.fieldErrors("schedule")[0]}>
+                <input
+                  className="input-base font-mono text-xs"
+                  value={schedule}
+                  onChange={(e) => setSchedule(e.target.value)}
+                  placeholder="0 * * * * (every hour)"
+                />
+              </Field>
+            </>
+          ) : null}
+
+          <button type="submit" className="btn-primary w-full" disabled={isPending || (start === "template" && !selectedTemplate)}>
+            {isPending ? <Spinner /> : start === "template" ? "Create & deploy from template" : "Create function"}
+          </button>
+        </form>
+      </div>
     </Modal>
+  );
+}
+
+function StartOption({
+  active,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border p-3.5 text-left transition-colors ${
+        active ? "border-iris-500 bg-iris-500/5" : "border-ink-800 bg-ink-900 hover:border-ink-700"
+      }`}
+    >
+      <span className={`block text-sm font-medium ${active ? "text-iris-300" : "text-ink-100"}`}>{title}</span>
+      <span className="mt-0.5 block text-xs text-ink-500">{description}</span>
+    </button>
   );
 }

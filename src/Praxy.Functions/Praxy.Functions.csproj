@@ -5,6 +5,12 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The bundled starter templates (FunctionTemplates.cs) need these on disk next to the running
+         assembly, in both `dotnet run` and the published Docker image — same reasoning as
+         Praxy.Sites.csproj's own Templates Content item. -->
+    <Content Include="Templates\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Praxy.Core\Praxy.Core.csproj" />
     <ProjectReference Include="..\Praxy.Persistence\Praxy.Persistence.csproj" />
     <ProjectReference Include="..\Praxy.Events\Praxy.Events.csproj" />
