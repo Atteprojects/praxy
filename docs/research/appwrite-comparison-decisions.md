@@ -12,7 +12,7 @@ worth remembering independent of the implementation specifics.
 
 | Finding | Prompt | Report | Landed |
 |---|---|---|---|
-| Functions starter templates | `functions-templates-prompt.md` | `functions-templates-report.md` | **PR #31 open, not yet merged** |
+| Functions starter templates | `functions-templates-prompt.md` | `functions-templates-report.md` | Merged (`main`) |
 | Sites build caching | `sites-build-caching-prompt.md` | `sites-build-caching-report.md` | Merged (`main`) |
 | Scheduled/event function credentials | `functions-scheduled-credentials-prompt.md` | `functions-scheduled-credentials-report.md` | Merged (`main`) |
 | Sites per-request logs | `sites-request-logs-prompt.md` | — | Not started |
@@ -156,12 +156,10 @@ there, wire it up yourself."
   load-bearing precedent worth a permanent one-liner there, alongside ID format and product naming.
 - **`docs/self-host.md`** — once `PRAXY_ENDPOINT` (or whatever it ends up being called) is actually
   decided and implemented, it belongs in the config reference table next to the other `Praxy:*` knobs.
-- **`docs/api-reference.md` / README** — once PR #31 merges, the template catalog endpoint
-  (`GET /v1/functions/templates`) deserves a mention alongside Sites' own starter-template deploy path.
+- **`docs/api-reference.md` / README** — the template catalog endpoint (`GET /v1/functions/templates`)
+  deserves a mention alongside Sites' own starter-template deploy path.
 
 ## Open items
 
-- **PR #31 (`feat/functions-templates`) is still open, unmerged as of this doc.** The decisions recorded
-  in §1 come from that branch, not from `main` — verify and merge it before treating templates as shipped.
-- `sites-request-logs-prompt.md` is unstarted.
+- `sites-request-logs-prompt.md` is unstarted — the only one of the four findings not yet picked up.
 - The `PRAXY_ENDPOINT` gap (Cross-cutting, above) has no kickoff prompt written yet.
