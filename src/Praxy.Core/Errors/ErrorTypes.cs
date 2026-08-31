@@ -98,6 +98,7 @@ public static class ErrorTypes
 
     public const string VcsGithubNotConfigured = "vcs_github_not_configured";
     public const string VcsGithubInstallationRequired = "vcs_github_installation_required";
+    public const string VcsGithubInstallationNotFound = "vcs_github_installation_not_found";
     public const string VcsGithubRepositoryInaccessible = "vcs_github_repository_inaccessible";
     public const string VcsWebhookInvalidSignature = "vcs_webhook_invalid_signature";
 
@@ -194,6 +195,7 @@ public static class ErrorTypes
         SiteGitRepositoryInvalid,
         VcsGithubNotConfigured,
         VcsGithubInstallationRequired,
+        VcsGithubInstallationNotFound,
         VcsGithubRepositoryInaccessible,
         VcsWebhookInvalidSignature,
         MessagingProviderNotFound,

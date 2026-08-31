@@ -32,6 +32,7 @@ public static class VcsEndpoints
     {
         var console = api.MapGroup("/v1/console/vcs/github").AddEndpointFilter<RequireOperatorFilter>();
         console.MapGet("/installations", ListInstallations).Produces<VcsInstallationListResponse>();
+        console.MapDelete("/installations/{id}", RemoveInstallation).Produces(StatusCodes.Status204NoContent);
         console.MapGet("/install-url", GetInstallUrl).Produces<VcsInstallUrlResponse>();
 
         // Both public — GitHub calls these directly, no operator session exists on either request.
@@ -44,6 +45,20 @@ public static class VcsEndpoints
     {
         var list = await github.ListInstallationsAsync(ct);
         return Results.Ok(new VcsInstallationListResponse(list.Count, [.. list.Select(VcsInstallationResponse.From)]));
+    }
+
+    /// <summary>
+    /// The console's "Disconnect" action on an installation row — the only way to remove one today,
+    /// since nothing reacts to an operator uninstalling the App directly on GitHub's side (that
+    /// leaves a stale row here until this same action clears it by hand). Uninstalls the App from
+    /// GitHub's side too, not just this row — see <see cref="GitHubAppService.RemoveInstallationAsync"/>.
+    /// </summary>
+    private static async Task<IResult> RemoveInstallation(string id, GitHubAppService github, CancellationToken ct)
+    {
+        if (!Ids.TryParseWire(id, out var parsed))
+            throw PraxyException.NotFound(ErrorTypes.VcsGithubInstallationNotFound, "Installation not found.");
+        await github.RemoveInstallationAsync(parsed, ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> GetInstallUrl(GitHubAppService github, CancellationToken ct)

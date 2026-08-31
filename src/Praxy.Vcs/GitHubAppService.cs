@@ -54,6 +54,27 @@ public sealed class GitHubAppService(PraxyDb db, IGitHubClient github)
     public Task<List<VcsInstallation>> ListInstallationsAsync(CancellationToken ct) =>
         db.VcsInstallations.OrderByDescending(i => i.CreatedAt).ToListAsync(ct);
 
+    /// <summary>
+    /// The console's "Disconnect" action — uninstalls the App from GitHub's side (not just clearing
+    /// our own record; leaving the App installed while Praxy forgets about it would leave GitHub
+    /// still delivering webhooks and honoring API calls the console no longer shows as connected)
+    /// and then removes the local row. Any site or function still holding this repository's
+    /// <c>repositoryFullName</c> is deliberately left alone — Praxy never tracked which installation
+    /// covered which repository (see this class's own remarks), so there is nothing to cascade; its
+    /// next build simply fails with <see cref="ErrorTypes.VcsGithubRepositoryInaccessible"/> the same
+    /// way a revoked-on-GitHub's-side installation already does.
+    /// </summary>
+    public async Task RemoveInstallationAsync(Guid id, CancellationToken ct)
+    {
+        var installation = await db.VcsInstallations.FirstOrDefaultAsync(i => i.Id == id, ct)
+            ?? throw PraxyException.NotFound(ErrorTypes.VcsGithubInstallationNotFound, "Installation not found.");
+
+        await github.DeleteInstallationAsync(installation.InstallationId, ct);
+
+        db.VcsInstallations.Remove(installation);
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>Throws <see cref="ErrorTypes.VcsGithubInstallationRequired"/> if no installation is connected at all, or <see cref="ErrorTypes.VcsGithubRepositoryInaccessible"/> if one is but doesn't cover this repository.</summary>
     public async Task EnsureRepositoryAccessibleAsync(string repositoryFullName, CancellationToken ct)
     {

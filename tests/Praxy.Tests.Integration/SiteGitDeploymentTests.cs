@@ -169,6 +169,38 @@ public class SiteGitDeploymentTests(PostgresContainerFixture pg) : AuthTestBase(
         Assert.Equal(0, deployments.GetProperty("total").GetInt32());
     }
 
+    [Fact]
+    public async Task Disconnecting_an_installation_removes_it_and_uninstalls_it_on_githubs_side()
+    {
+        var (operatorToken, _) = await SetupProjectAsync();
+        await ConnectGitHubAsync("acme/website", ["main"]);
+
+        var listed = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,
+            "/v1/console/vcs/github/installations", operatorToken)));
+        Assert.Equal(1, listed.GetProperty("total").GetInt32());
+        var installationId = listed.GetProperty("installations")[0].GetProperty("id").GetString()!;
+
+        var deleteResponse = await Client.SendAsync(Authed(HttpMethod.Delete,
+            $"/v1/console/vcs/github/installations/{installationId}", operatorToken));
+        Assert.Equal(204, (int)deleteResponse.StatusCode);
+
+        var afterDelete = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,
+            "/v1/console/vcs/github/installations", operatorToken)));
+        Assert.Equal(0, afterDelete.GetProperty("total").GetInt32());
+        Assert.Contains(_github.InstallationId, _github.DeletedInstallationIds);
+    }
+
+    [Fact]
+    public async Task Disconnecting_an_unknown_installation_id_is_a_clean_404_not_a_crash()
+    {
+        var (operatorToken, _) = await SetupProjectAsync();
+
+        var response = await Client.SendAsync(Authed(HttpMethod.Delete,
+            $"/v1/console/vcs/github/installations/{Guid.NewGuid()}", operatorToken));
+
+        Assert.Equal(404, (int)response.StatusCode);
+    }
+
     // ---- helpers ------------------------------------------------------------------------------
 
     private async Task<string> CreateSiteAsync(string operatorToken, string projectId, string key)
@@ -309,6 +341,14 @@ public sealed class FakeGitHubClient : IGitHubClient
 
     public Task<IReadOnlyList<string>> ListBranchesAsync(string installationToken, string owner, string repo, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<string>>(Branches);
+
+    public List<long> DeletedInstallationIds { get; } = [];
+
+    public Task DeleteInstallationAsync(long installationId, CancellationToken ct)
+    {
+        DeletedInstallationIds.Add(installationId);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Materializes the same minimal fake Next.js-shaped app <c>SiteCustomDomainTests</c>/<c>SitesAskTlsTests</c> tar up, but as real files on disk — the real Docker build pipeline still runs genuinely, only the clone step is faked.</summary>

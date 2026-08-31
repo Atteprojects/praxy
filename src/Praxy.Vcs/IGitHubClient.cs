@@ -26,4 +26,9 @@ public interface IGitHubClient
 
     /// <summary>Installation-token-authed.</summary>
     Task<IReadOnlyList<string>> ListBranchesAsync(string installationToken, string owner, string repo, CancellationToken ct);
+
+    /// <summary>App-JWT-authed. Uninstalls the App from this installation's account — the real,
+    /// GitHub-side disconnect, not just clearing our own record. A 404 (already uninstalled on
+    /// GitHub's side, e.g. the account owner removed it there first) is treated as success.</summary>
+    Task DeleteInstallationAsync(long installationId, CancellationToken ct);
 }
