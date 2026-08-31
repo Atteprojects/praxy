@@ -279,6 +279,20 @@ independently. Self-hosted owner reuses the GitHub App Sites Phase 4 already wal
 creating — no second App, same five `Praxy:Vcs:GitHub:*` config values (`docs/self-host.md`'s "Git
 integration" section now documents both resource types).
 
+**Sites build caching — shipped 2026-08-30** (kickoff: `docs/handoff/sites-build-caching-prompt.md`;
+report: `docs/handoff/sites-build-caching-report.md`). Found during an informal self-host-vs-Appwrite
+comparison: Appwrite's Sites builds reuse `npm install` between deployments of the same site; Praxy's
+built from scratch every time. Root cause was a Dockerfile-ordering bug, not a Docker-daemon limitation —
+`SiteRuntimeTemplates.Dockerfile(...)` did `COPY . .` before `RUN npm install`, so any app-code change
+(i.e. every deployment) invalidated the install layer even when `package.json`/`package-lock.json`
+hadn't changed. Reordered to copy+install dependencies before the full source copy — Docker's local
+layer cache (already enabled, no plumbing change) now skips `npm install` whenever the lockfile is
+unchanged. Verified against a real Docker daemon, not just by reading the diff: the classic (non-
+BuildKit) builder's `Step N/M : RUN npm install` line is immediately followed by `---> Using cache` on a
+redeploy that only touches app code. Persisting Next.js's own `.next/cache` (webpack/SWC — the deeper
+win Appwrite's log lines actually showed) was researched as a stretch goal and explicitly not attempted;
+see the report for why.
+
 **Additional framework presets** beyond Next.js — explicitly deferred past all of the above, owner's call
 (2026-08-22).
 
