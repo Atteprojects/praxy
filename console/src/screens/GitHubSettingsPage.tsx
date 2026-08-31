@@ -1,8 +1,9 @@
-import { useGithubInstallUrl, useGithubInstallations } from "../api/vcs";
+import { useGithubInstallUrl, useGithubInstallations, useRemoveGithubInstallation } from "../api/vcs";
 import { ApiError } from "../api/client";
+import { ConfirmButton } from "../components/ConfirmButton";
 import { DataTable, EmptyState, ErrorNote, FullPageSpinner, PageHeader, Spinner, timeAgo } from "../components/ui";
 
-const HEADERS = ["Account", "Type", "Installation ID", "Connected"];
+const HEADERS = ["Account", "Type", "Installation ID", "Connected", ""];
 
 /**
  * Instance-wide GitHub App status — not project-, site-, or function-scoped, even though it lives
@@ -14,6 +15,7 @@ const HEADERS = ["Account", "Type", "Installation ID", "Connected"];
 export function GitHubSettingsPage() {
   const installations = useGithubInstallations();
   const installUrl = useGithubInstallUrl();
+  const removeInstallation = useRemoveGithubInstallation();
 
   if (installations.isPending) return <FullPageSpinner />;
   if (installations.isError) throw installations.error;
@@ -70,6 +72,23 @@ export function GitHubSettingsPage() {
               <td className="px-4 py-3 text-ink-400">{i.accountType}</td>
               <td className="px-4 py-3 font-mono text-xs text-ink-400">{i.installationId}</td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(i.createdAt)}</td>
+              <td className="px-4 py-3 text-right">
+                <ConfirmButton
+                  label="Disconnect"
+                  title="Disconnect GitHub?"
+                  confirmLabel="Disconnect"
+                  successMessage="Disconnected."
+                  body={
+                    <>
+                      Uninstalls Praxy's GitHub App from <span className="font-mono text-ink-300">{i.accountLogin}</span>.
+                      Any site or function still connected to a repository there stops deploying on push — its next
+                      build will fail with a clear error until it's reconnected to a working installation. This
+                      doesn't touch your code or repositories on GitHub, only the App's access to them.
+                    </>
+                  }
+                  onConfirm={() => removeInstallation.mutateAsync(i.id)}
+                />
+              </td>
             </tr>
           ))}
         </DataTable>

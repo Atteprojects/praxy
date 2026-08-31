@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type { GithubInstallationList, GithubInstallUrl } from "./types";
 
@@ -10,6 +10,16 @@ export function useGithubInstallations() {
     queryKey: ["vcs", "github", "installations"],
     queryFn: () => api<GithubInstallationList>("/console/vcs/github/installations"),
     refetchInterval: 5_000,
+  });
+}
+
+export function useRemoveGithubInstallation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/console/vcs/github/installations/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["vcs", "github", "installations"] });
+    },
   });
 }
 

@@ -65,6 +65,9 @@ public sealed class GitHubClient(HttpClient http, VcsOptions options) : IGitHubC
         return branches;
     }
 
+    public Task DeleteInstallationAsync(long installationId, CancellationToken ct) =>
+        SendAppNoContentAsync(HttpMethod.Delete, $"app/installations/{installationId}", ct);
+
     private async Task<JsonElement?> SendAppAsync(HttpMethod method, string path, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, path);
@@ -74,6 +77,17 @@ public sealed class GitHubClient(HttpClient http, VcsOptions options) : IGitHubC
             return null;
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+    }
+
+    /// <summary>Same 404-tolerant shape as <see cref="SendAppAsync"/>, for calls (like DELETE) whose success response has no body to parse.</summary>
+    private async Task SendAppNoContentAsync(HttpMethod method, string path, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        Prepare(request, GitHubAppJwt.Create(options.GitHub));
+        using var response = await http.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return;
+        response.EnsureSuccessStatusCode();
     }
 
     private static void Prepare(HttpRequestMessage request, string bearerToken)
