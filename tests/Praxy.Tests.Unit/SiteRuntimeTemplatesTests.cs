@@ -85,6 +85,30 @@ public class SiteRuntimeTemplatesTests
         Assert.Contains("""CMD ["node", "server.js"]""", dockerfile);
     }
 
+    /// <summary>
+    /// The caching fix: <c>package.json</c>/<c>package-lock.json</c> must be copied and installed
+    /// *before* the full source copy, so Docker's local layer cache can skip <c>npm install</c> when
+    /// only app code (not dependencies) changed between two builds of the same site.
+    /// </summary>
+    [Fact]
+    public async Task Dependency_install_layer_is_ordered_before_the_full_source_copy_for_docker_layer_caching()
+    {
+        await using var userTar = new MemoryStream(BuildUserTar(("package.json", "{}"), ("package-lock.json", "{}")));
+        await using var context = await SiteRuntimeTemplates.BuildContextAsync("", "node:22-alpine", [], userTar, CancellationToken.None);
+        var files = await ReadTarAsync(context);
+        var dockerfile = files["Dockerfile"];
+
+        Assert.Contains("COPY package.json package-lock.json* ./", dockerfile);
+
+        var pkgCopyIndex = dockerfile.IndexOf("COPY package.json package-lock.json* ./", StringComparison.Ordinal);
+        var installIndex = dockerfile.IndexOf("RUN npm install", StringComparison.Ordinal);
+        var fullCopyIndex = dockerfile.IndexOf("COPY . .", StringComparison.Ordinal);
+        var buildIndex = dockerfile.IndexOf("RUN npm run build", StringComparison.Ordinal);
+
+        Assert.True(pkgCopyIndex >= 0 && installIndex > pkgCopyIndex && fullCopyIndex > installIndex && buildIndex > fullCopyIndex,
+            "Expected order: COPY package.json/lock -> RUN npm install -> COPY . . -> RUN npm run build.");
+    }
+
     [Fact]
     public async Task Root_directory_changes_the_builder_workdir_and_copy_source_paths()
     {
@@ -95,6 +119,7 @@ public class SiteRuntimeTemplatesTests
         var dockerfile = files["Dockerfile"];
 
         Assert.Contains("WORKDIR /app/apps/web", dockerfile);
+        Assert.Contains("COPY apps/web/package.json apps/web/package-lock.json* ./", dockerfile);
         Assert.Contains("COPY --from=builder /app/apps/web/.next/standalone ./", dockerfile);
         Assert.Contains("COPY --from=builder /app/apps/web/public ./public", dockerfile);
     }
