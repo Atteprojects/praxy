@@ -310,6 +310,32 @@ request to every deployed site, unconditionally — is expected to dwarf the oth
 
 ---
 
+## Table relationships (post-v0.1.0 initiative)
+
+Deferred since before v0.1.0 shipped ("Relationships deferred to v1.1" — Phase 2's own scope note,
+above). Design doc: `docs/research/table-relationships.md` — full architecture, the tradeoffs behind
+reusing Praxy's existing array-column mechanism instead of an Appwrite-style relationType/junction-table
+model, and why. Three phases, each independently useful:
+
+- **Phase 1** (kickoff: `docs/handoff/relationships-phase-1-prompt.md`) — the primitive: a new
+  `relationship` column type storing a scalar `uuid` (real Postgres FK, `ON DELETE RESTRICT` — one-to-one
+  falls out for free via the existing `unique` index type) or a `uuid[]` (array flag every column type
+  already has, no native FK possible on array elements). Write-time existence checking, basic query
+  support, a plain target-table picker in the console, Flutter codegen's raw-id passthrough. No
+  delete-blocking yet, no expansion.
+- **Phase 2** — delete-time integrity: blocks deleting a row or table that's still referenced (409
+  `row_referenced`/`relationship_dependency`), `force=true` escape hatch on the table side only, matching
+  every other destructive-schema-change gate in this engine.
+- **Phase 3** — read-time expansion (`?expand=`, embedding the related row's JSON instead of just its
+  id, permission-filtered) and a real search-picker in the console row editor, replacing Phase 1's plain
+  text id input.
+
+Explicitly out of scope for the whole sequence, not just deferred within it: typed cross-table Flutter
+codegen (a `praxy_codegen` architecture change, not a relationships deliverable — sits alongside
+Storage/TOTP/multi-org as its own future initiative).
+
+---
+
 ## Rules that hold across every phase
 
 1. **DDL is synchronous and transactional**; long operations are explicit, queryable, cancellable jobs.
