@@ -37,7 +37,7 @@ export function GitHubSettingsPage() {
   const connectButton = (
     <button
       type="button"
-      className="btn-ghost border border-ink-700 disabled:opacity-40"
+      className="btn-ghost border border-ink-700 bg-ink-800 hover:bg-ink-700 disabled:opacity-40"
       disabled={!installUrl.data}
       onClick={() => {
         if (installUrl.data) window.location.href = installUrl.data.url;
