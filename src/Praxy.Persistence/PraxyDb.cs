@@ -198,9 +198,14 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Status).HasMaxLength(32);
             e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.TableId, x.Key }).IsUnique();
-            // Restrict, not cascade: deleting a target table must never silently delete other
-            // tables' relationship columns — Phase 2 gates it explicitly (relationship_dependency).
-            e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TargetTableId).OnDelete(DeleteBehavior.Restrict);
+            // SetNull, not cascade or restrict: deleting a target table must never silently delete
+            // other tables' relationship columns (cascade) — Phase 2 gates that explicitly via
+            // relationship_dependency, force=true required. But restrict would make force=true
+            // impossible to honor: Postgres has no way to bypass a RESTRICT/NO ACTION violation from
+            // an in-flight referencing row, so the column's target reference must actually be
+            // cleared in the same transaction — SetNull does exactly that at the DB level, orphaning
+            // the column (it and its data survive) without deleting it.
+            e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TargetTableId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<IndexDef>(e =>
