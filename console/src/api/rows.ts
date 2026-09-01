@@ -23,20 +23,24 @@ function serializeQueries(filters: QueryFilter[], sort: SortState | null, cursor
   return queries;
 }
 
-function buildUrl(pathBase: string, queries: string[], total: boolean): string {
+function buildUrl(pathBase: string, queries: string[], total: boolean, expand: string[]): string {
   const params = new URLSearchParams();
   for (const q of queries) params.append("queries[]", q);
   if (!total) params.append("total", "false");
+  if (expand.length > 0) params.append("expand", expand.join(","));
   return `${pathBase}?${params.toString()}`;
 }
 
-export function useRows(projectId: string, databaseId: string, tableId: string, filters: QueryFilter[], sort: SortState | null) {
+export function useRows(
+  projectId: string, databaseId: string, tableId: string, filters: QueryFilter[], sort: SortState | null,
+  expand: string[] = [],
+) {
   return useInfiniteQuery({
-    queryKey: [...rowsKey(projectId, databaseId, tableId), { filters, sort }],
+    queryKey: [...rowsKey(projectId, databaseId, tableId), { filters, sort, expand }],
     queryFn: ({ pageParam }) => {
       const cursor = pageParam as string | undefined;
       const queries = serializeQueries(filters, sort, cursor);
-      return api<RowList>(buildUrl(base(projectId, databaseId, tableId), queries, /* total */ !cursor));
+      return api<RowList>(buildUrl(base(projectId, databaseId, tableId), queries, /* total */ !cursor, expand));
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => {

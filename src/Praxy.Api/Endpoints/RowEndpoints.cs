@@ -56,7 +56,7 @@ public static class RowEndpoints
         var (roles, bypass) = await CallerAsync(http, roleResolver);
         var queries = QueryStrings(http);
         var includeTotal = !bool.TryParse(http.Request.Query["total"], out var t) || t;
-        var (total, list) = await rows.ListAsync(entry, queries, roles, bypass, includeTotal, ct);
+        var (total, list) = await rows.ListAsync(entry, queries, roles, bypass, includeTotal, ExpandKeys(http), ct);
         return Results.Ok(new RowListResponse(total, list));
     }
 
@@ -68,7 +68,7 @@ public static class RowEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         var entry = await ResolveAsync(rows, project.Id, databaseId, tableId, ct);
         var (roles, bypass) = await CallerAsync(http, roleResolver);
-        var row = await rows.GetAsync(entry, ParseRowId(rowId), roles, bypass, ct);
+        var row = await rows.GetAsync(entry, ParseRowId(rowId), roles, bypass, ExpandKeys(http), ct);
         return Results.Ok(row);
     }
 
@@ -127,5 +127,12 @@ public static class RowEndpoints
     {
         var values = http.Request.Query["queries[]"];
         return values.Count > 0 ? [.. values.Where(v => v is not null)!] : [.. http.Request.Query["queries"].Where(v => v is not null)!];
+    }
+
+    /// <summary>A single comma-separated <c>?expand=a,b</c> — the common REST convention, matching the design doc's own framing.</summary>
+    internal static string[] ExpandKeys(HttpContext http)
+    {
+        var raw = http.Request.Query["expand"].ToString();
+        return string.IsNullOrEmpty(raw) ? [] : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 }
