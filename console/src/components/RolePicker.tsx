@@ -56,7 +56,8 @@ export function AddRoleButton({
   );
 }
 
-function usePanelPosition(anchorRef: React.RefObject<HTMLElement | null>) {
+/** Exported for RelationshipPicker.tsx, which reuses this same positioning shape. */
+export function usePanelPosition(anchorRef: React.RefObject<HTMLElement | null>) {
   const [style, setStyle] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -193,7 +194,8 @@ function RolePicker({
   );
 }
 
-function PickerRow({
+/** Exported for RelationshipPicker.tsx, which reuses this same result-row shape. */
+export function PickerRow({
   children,
   hint,
   onClick,

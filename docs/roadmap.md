@@ -312,10 +312,10 @@ request to every deployed site, unconditionally — is expected to dwarf the oth
 
 ## Table relationships (post-v0.1.0 initiative)
 
-Deferred since before v0.1.0 shipped ("Relationships deferred to v1.1" — Phase 2's own scope note,
-above). Design doc: `docs/research/table-relationships.md` — full architecture, the tradeoffs behind
-reusing Praxy's existing array-column mechanism instead of an Appwrite-style relationType/junction-table
-model, and why. Three phases, each independently useful:
+**Shipped 2026-09-01.** Deferred since before v0.1.0 shipped ("Relationships deferred to v1.1" —
+Phase 2's own scope note, above). Design doc: `docs/research/table-relationships.md` — full
+architecture, the tradeoffs behind reusing Praxy's existing array-column mechanism instead of an
+Appwrite-style relationType/junction-table model, and why. Three phases, each independently useful:
 
 - **Phase 1 — shipped 2026-09-01** (kickoff: `docs/handoff/relationships-phase-1-prompt.md`; report:
   `docs/handoff/relationships-phase-1-report.md`) — the primitive: a new `relationship` column type
@@ -337,9 +337,17 @@ model, and why. Three phases, each independently useful:
   (column and data survive, `TargetTableId` clears) instead of blocking the delete outright; also fixed a
   `CatalogCache` staleness bug this surfaced (a referencing table's cached columns need invalidating too,
   not just the deleted table's own cache slot).
-- **Phase 3** — read-time expansion (`?expand=`, embedding the related row's JSON instead of just its
-  id, permission-filtered) and a real search-picker in the console row editor, replacing Phase 1's plain
-  text id input.
+- **Phase 3 — shipped 2026-09-01** (kickoff: `docs/handoff/relationships-phase-3-prompt.md`; report:
+  `docs/handoff/relationships-phase-3-report.md`) — read-time expansion: `?expand=<columnKey>[,...]`
+  on list/get-row endpoints, a batched enrichment pass (one query per distinct target table, reusing
+  `QueryCompiler.CompilePermissionPredicate` with the caller's own roles) that embeds the related row's
+  full JSON in place of its raw id, falling back to the raw id for a target table that was force-deleted,
+  a row that no longer exists, or a row the caller can't read — three causes, one uniform outcome, never
+  an error. `OPERATORS_BY_TYPE` gains a `relationship` entry (`equal`/`notEqual`/`isNull`/`isNotNull`
+  always, `contains` only when array). The console's plain text row-id input is replaced by a real
+  search-as-you-type picker (`RelationshipPicker.tsx`), modeled on `RolePicker.tsx`'s
+  portal-popover-with-search structure, searching the target table by `$id` prefix (client-side over one
+  fetched page — no display-field concept exists to search by anything more meaningful).
 
 Explicitly out of scope for the whole sequence, not just deferred within it: typed cross-table Flutter
 codegen (a `praxy_codegen` architecture change, not a relationships deliverable — sits alongside

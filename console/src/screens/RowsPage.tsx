@@ -9,16 +9,18 @@ import type { ColumnSchema, ColumnType, QueryFilter, Row } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { DataGrid, type DataGridColumn } from "../components/DataGrid";
 import { AddRoleButton, RoleLabel } from "../components/RolePicker";
+import { RelationshipValueEditor } from "../components/RelationshipPicker";
 import { EmptyState, ErrorNote, Field, FullPageSpinner, Sheet, Spinner } from "../components/ui";
 import { TableDetailHeader } from "./TableDetailHeader";
 
-// Partial, not a full Record: a "relationship" column has no entry here yet — the console's
-// filter picker for it is a Phase 3 deliverable (docs/research/table-relationships.md), even
-// though the query compiler already supports equal/notEqual/isNull/isNotNull/contains on one.
+// relationship's entry is the array-column superset (adds "contains") — describeFilter only needs
+// it for label lookup; FilterPicker below re-derives the array-conditioned list per column
+// instance, since eligibility depends on that column's own `array` flag, not just its type.
 const OPERATORS_BY_TYPE: Partial<Record<ColumnType, { value: string; label: string; arity: 0 | 1 | 2 }[]>> = {
   string: textOps(), email: textOps(), url: textOps(), ip: textOps(), enum: equalityOps(),
   integer: numericOps(), float: numericOps(), datetime: numericOps(),
   boolean: equalityOps(),
+  relationship: relationshipOps(true),
 };
 
 function equalityOps() {
@@ -46,6 +48,10 @@ function textOps() {
     { value: "contains", label: "contains", arity: 1 as const },
   ];
 }
+/** Never startsWith/endsWith (meaningless on uuids); contains only makes sense for the array case. */
+function relationshipOps(array: boolean) {
+  return array ? [...equalityOps(), { value: "contains", label: "contains", arity: 1 as const }] : equalityOps();
+}
 
 function readFiltersFromUrl(): QueryFilter[] {
   try {
@@ -72,23 +78,55 @@ function describeFilter(f: QueryFilter): string {
   return `${f.attribute}${f.attribute ? " " : ""}${label}${value}`;
 }
 
+// An expanded relationship value (?expand=) is an object (or array of objects) in place of the
+// raw id string(s) the grid previously always saw — the one place that assumption broke.
+function relationshipPreview(value: unknown): string {
+  const id = (value as Record<string, unknown> | null)?.$id;
+  return typeof id === "string" ? `#${id.slice(0, 8)}` : String(value);
+}
+
 function formatCell(value: unknown): ReactNode {
   if (value === null || value === undefined) return <span className="text-ink-600 italic">NULL</span>;
   if (typeof value === "boolean") return <span className={value ? "text-mint-400" : "text-coral-400"}>{String(value)}</span>;
-  if (Array.isArray(value)) return value.length === 0 ? <span className="text-ink-600">[]</span> : value.join(", ");
+  if (Array.isArray(value)) {
+    return value.length === 0
+      ? <span className="text-ink-600">[]</span>
+      : value.map((v) => (v && typeof v === "object" ? relationshipPreview(v) : String(v))).join(", ");
+  }
+  if (value && typeof value === "object") return relationshipPreview(value);
   return String(value);
 }
 
 /** One editable cell: click to edit, Enter/blur saves only this field, Escape cancels. */
 function EditableCell({
-  column, value, onSave,
+  column, value, onSave, projectId, databaseId,
 }: {
   column: ColumnSchema;
   value: unknown;
   onSave: (value: unknown) => void;
+  projectId: string;
+  databaseId: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+
+  // No display-field concept exists (docs/research/table-relationships.md) — the picker searches by
+  // $id prefix. targetTableId is null only when Phase 2 orphaned the column (its target table was
+  // force-deleted); there's nothing left to search, so that case falls through to the plain text
+  // input below instead, same as Phase 1's original behavior.
+  if (column.type === "relationship" && column.targetTableId) {
+    const ids = column.array ? (Array.isArray(value) ? value : []) : value === null || value === undefined ? [] : [value];
+    return (
+      <RelationshipValueEditor
+        ids={ids}
+        array={column.array}
+        targetTableId={column.targetTableId}
+        projectId={projectId}
+        databaseId={databaseId}
+        onChange={(next) => onSave(column.array ? next : (next[0] ?? null))}
+      />
+    );
+  }
 
   function begin() {
     setDraft(column.array ? (Array.isArray(value) ? value.join(", ") : "") : value === null || value === undefined ? "" : String(value));
@@ -205,6 +243,10 @@ export function RowsPage() {
   };
   const table = useTable(projectId, databaseId, tableId);
   const columns = useColumns(projectId, databaseId, tableId);
+  // Always expand relationship columns for display — RowSheet's raw JSON and the grid's cell
+  // preview both benefit, and it's the only way the owner can see a linked row's data without a
+  // display-field concept (docs/research/table-relationships.md's explicit non-goal).
+  const relationshipKeys = columns.data?.columns.filter((c) => c.type === "relationship").map((c) => c.key) ?? [];
   const [filters, setFilters] = useState<QueryFilter[]>(() => readFiltersFromUrl());
   const [sort, setSort] = useState<SortState | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -214,7 +256,7 @@ export function RowsPage() {
     () => new URLSearchParams(window.location.search).get("row"),
   );
 
-  const rows = useRows(projectId, databaseId, tableId, filters, sort);
+  const rows = useRows(projectId, databaseId, tableId, filters, sort, relationshipKeys);
   const updateRow = useUpdateRow(projectId, databaseId, tableId);
   const deleteRow = useDeleteRow(projectId, databaseId, tableId);
   const bulkDelete = useBulkDeleteRows(projectId, databaseId, tableId);
@@ -289,6 +331,8 @@ export function RowsPage() {
         <EditableCell
           column={column}
           value={row.original[column.key]}
+          projectId={projectId}
+          databaseId={databaseId}
           onSave={(value) =>
             updateRow.mutate({ rowId: row.original.$id, data: { [column.key]: value } })
           }
@@ -441,7 +485,7 @@ function FilterPicker({
   const [method, setMethod] = useState("equal");
   const [value, setValue] = useState("");
   const column = columns.find((c) => c.key === attribute);
-  const ops = (column ? OPERATORS_BY_TYPE[column.type] : []) ?? [];
+  const ops = column ? (column.type === "relationship" ? relationshipOps(column.array) : (OPERATORS_BY_TYPE[column.type] ?? [])) : [];
   const op = ops.find((o) => o.value === method) ?? ops[0];
 
   useEffect(() => {
@@ -513,7 +557,16 @@ function CreateRowSheet({
         {columns.length === 0 ? <p className="text-sm text-ink-500">Add a column first.</p> : null}
         {columns.map((column) => (
           <Field key={column.id} label={`${column.key}${column.required ? " *" : ""}`} error={error?.fieldErrors(column.key)[0]}>
-            {column.type === "boolean" ? (
+            {column.type === "relationship" && column.targetTableId ? (
+              <RelationshipValueEditor
+                ids={values[column.key] ? values[column.key].split(",").map((s) => s.trim()).filter(Boolean) : []}
+                array={column.array}
+                targetTableId={column.targetTableId}
+                projectId={projectId}
+                databaseId={databaseId}
+                onChange={(next) => setValues((v) => ({ ...v, [column.key]: next.join(",") }))}
+              />
+            ) : column.type === "boolean" ? (
               <select
                 className="input-base"
                 value={values[column.key] ?? ""}

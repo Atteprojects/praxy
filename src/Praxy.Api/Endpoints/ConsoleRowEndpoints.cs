@@ -49,7 +49,7 @@ public static class ConsoleRowEndpoints
         var entry = await RowEndpoints.ResolveAsync(rows, project.Id, databaseId, tableId, ct);
         var queries = RowEndpoints.QueryStrings(http);
         var includeTotal = !bool.TryParse(http.Request.Query["total"], out var t) || t;
-        var (total, list) = await rows.ListAsync(entry, queries, [], bypassPermissions: true, includeTotal, ct);
+        var (total, list) = await rows.ListAsync(entry, queries, [], bypassPermissions: true, includeTotal, RowEndpoints.ExpandKeys(http), ct);
         return Results.Ok(new RowListResponse(total, list));
     }
 
@@ -58,7 +58,7 @@ public static class ConsoleRowEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var entry = await RowEndpoints.ResolveAsync(rows, project.Id, databaseId, tableId, ct);
-        var row = await rows.GetAsync(entry, RowEndpoints.ParseRowId(rowId), [], bypassPermissions: true, ct);
+        var row = await rows.GetAsync(entry, RowEndpoints.ParseRowId(rowId), [], bypassPermissions: true, RowEndpoints.ExpandKeys(http), ct);
         return Results.Ok(row);
     }
 

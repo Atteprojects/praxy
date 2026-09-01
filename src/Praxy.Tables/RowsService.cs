@@ -167,8 +167,11 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
     // ---- get --------------------------------------------------------------------------------
 
     public async Task<JsonObject> GetAsync(
-        CatalogEntry entry, Guid rowId, string[] callerRoles, bool bypassPermissions, CancellationToken ct)
+        CatalogEntry entry, Guid rowId, string[] callerRoles, bool bypassPermissions,
+        IReadOnlyList<string> expandKeys, CancellationToken ct)
     {
+        var expandColumns = ResolveExpandColumns(entry, expandKeys);
+
         var predicate = QueryCompiler.CompilePermissionPredicate(entry, PermissionStrings.Read, callerRoles, bypassPermissions);
         var qualified = PhysicalNaming.QualifiedTable(entry.Database.SchemaName, entry.Table.PhysicalName);
         var parameters = ToParams(predicate.Params, ("row_id", rowId));
@@ -180,6 +183,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
         var row = rows[0];
         row["$permissions"] = ToPermissionArray(await GetRowPermissionsAsync(entry, rowId, ct));
+        await ExpandAsync(rows, expandColumns, callerRoles, bypassPermissions, ct);
         return row;
     }
 
@@ -187,8 +191,10 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
     public async Task<(int? Total, List<JsonObject> Rows)> ListAsync(
         CatalogEntry entry, IReadOnlyList<string> rawQueries, string[] callerRoles, bool bypassPermissions,
-        bool includeTotal, CancellationToken ct)
+        bool includeTotal, IReadOnlyList<string> expandKeys, CancellationToken ct)
     {
+        var expandColumns = ResolveExpandColumns(entry, expandKeys);
+
         var parsed = QueryDsl.Parse(rawQueries);
         var compiled = QueryCompiler.CompileList(entry, parsed, callerRoles, bypassPermissions, includeTotal);
 
@@ -198,6 +204,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
             rows.Reverse();
 
         await AttachPermissionsAsync(entry, rows, ct);
+        await ExpandAsync(rows, expandColumns, callerRoles, bypassPermissions, ct);
 
         int? total = null;
         if (includeTotal && compiled.CountSql is not null)
@@ -209,6 +216,128 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         return (total, rows);
     }
 
+    // ---- read-time expansion (?expand=) -------------------------------------------------------
+
+    /// <summary>
+    /// Validates every requested expand key names a real relationship column on this table —
+    /// before any query runs, per docs/research/table-relationships.md Phase 3. Reuses the same
+    /// <c>general_query_invalid</c> QueryCompiler's own search-on-relationship rejection already
+    /// uses; this isn't a new error type.
+    /// </summary>
+    private static List<ColumnDef> ResolveExpandColumns(CatalogEntry entry, IReadOnlyList<string> expandKeys)
+    {
+        var columns = new List<ColumnDef>(expandKeys.Count);
+        foreach (var key in expandKeys)
+        {
+            var column = entry.FindColumn(key);
+            if (column is null)
+                throw QueryDsl.Invalid($"Unknown expand attribute '{key}'.", "expand", $"'{key}' is not a column on this table.");
+            if (column.Type != ColumnTypes.Relationship)
+                throw QueryDsl.Invalid($"'{key}' can't be expanded.", "expand", $"'{key}' is not a relationship column.");
+            columns.Add(column);
+        }
+        return columns;
+    }
+
+    /// <summary>
+    /// Replaces each requested relationship column's raw id (or array of ids) with the referenced
+    /// row's full JSON, one level deep. Runs as a separate enrichment pass after the primary query
+    /// — batched one <c>SELECT ... WHERE _id = ANY(@ids)</c> per distinct target table across every
+    /// row and every expand column, never per row. Three distinct fallback causes share one uniform
+    /// outcome (leave the raw id in place, never error, never leak data): the target table was
+    /// itself force-deleted (<see cref="ColumnDef.TargetTableId"/> is null, Phase 2's orphaning), the
+    /// referenced row no longer exists, or the caller's roles can't read it (enforced by running the
+    /// *same* <see cref="QueryCompiler.CompilePermissionPredicate"/> the target table's own read
+    /// endpoints use — never a reimplemented check).
+    /// </summary>
+    private async Task ExpandAsync(
+        List<JsonObject> rows, IReadOnlyList<ColumnDef> expandColumns,
+        string[] callerRoles, bool bypassPermissions, CancellationToken ct)
+    {
+        if (expandColumns.Count == 0 || rows.Count == 0)
+            return;
+
+        var idsByTarget = new Dictionary<Guid, HashSet<Guid>>();
+        foreach (var column in expandColumns)
+        {
+            // Phase 2: the target table was itself force-deleted, TargetTableId cleared — nothing
+            // left to expand against, fall back to the raw id (never queried, never touched below).
+            if (column.TargetTableId is not { } targetTableId)
+                continue;
+            if (!idsByTarget.TryGetValue(targetTableId, out var set))
+                idsByTarget[targetTableId] = set = [];
+            foreach (var row in rows)
+                CollectRelationshipIds(row, column, set);
+        }
+        if (idsByTarget.Count == 0 || idsByTarget.All(kv => kv.Value.Count == 0))
+            return;
+
+        var expandedByTarget = new Dictionary<Guid, Dictionary<Guid, JsonObject>>();
+        foreach (var (targetTableId, ids) in idsByTarget)
+        {
+            if (ids.Count == 0)
+                continue;
+            var target = await cache.GetAsync(targetTableId, ct);
+            var predicate = QueryCompiler.CompilePermissionPredicate(target, PermissionStrings.Read, callerRoles, bypassPermissions);
+            var qualified = PhysicalNaming.QualifiedTable(target.Database.SchemaName, target.Table.PhysicalName);
+            var parameters = ToParams(predicate.Params, ("ids", ids.ToArray()));
+            var sql = $"SELECT {SelectColumns(target)} FROM {qualified} AS t WHERE t.{IdCol} = ANY(@ids) AND ({predicate.Sql})";
+            var found = await QueryAsync(sql, parameters, r => BuildRowJson(target, r, null), ct);
+            await AttachPermissionsAsync(target, found, ct);
+            expandedByTarget[targetTableId] = found.ToDictionary(r => ParseWireId(r));
+        }
+
+        foreach (var column in expandColumns)
+        {
+            if (column.TargetTableId is not { } targetTableId ||
+                !expandedByTarget.TryGetValue(targetTableId, out var expandedMap))
+                continue;
+            foreach (var row in rows)
+                ReplaceWithExpanded(row, column, expandedMap);
+        }
+    }
+
+    private static void CollectRelationshipIds(JsonObject row, ColumnDef column, HashSet<Guid> ids)
+    {
+        if (!row.TryGetPropertyValue(column.Key, out var node) || node is null)
+            return;
+        if (column.IsArray)
+        {
+            foreach (var element in node.AsArray())
+                if (element is not null && Ids.TryParseWire(element.GetValue<string>(), out var id))
+                    ids.Add(id);
+        }
+        else if (Ids.TryParseWire(node.GetValue<string>(), out var id))
+        {
+            ids.Add(id);
+        }
+    }
+
+    private static void ReplaceWithExpanded(JsonObject row, ColumnDef column, Dictionary<Guid, JsonObject> expandedMap)
+    {
+        if (!row.TryGetPropertyValue(column.Key, out var node) || node is null)
+            return;
+        if (column.IsArray)
+        {
+            var replaced = new JsonArray();
+            foreach (var element in node.AsArray())
+                replaced.Add(element is not null && Ids.TryParseWire(element.GetValue<string>(), out var id) &&
+                             expandedMap.TryGetValue(id, out var expandedRow)
+                    ? expandedRow.DeepClone()
+                    : element?.DeepClone());
+            row[column.Key] = replaced;
+        }
+        else if (Ids.TryParseWire(node.GetValue<string>(), out var id) && expandedMap.TryGetValue(id, out var expandedRow))
+        {
+            row[column.Key] = expandedRow.DeepClone();
+        }
+    }
+
+    private static Guid ParseWireId(JsonObject row) =>
+        Ids.TryParseWire(row["$id"]!.GetValue<string>(), out var id)
+            ? id
+            : throw new InvalidOperationException("BuildRowJson always sets a valid $id.");
+
     // ---- update (genuinely partial) ----------------------------------------------------------
 
     public async Task<JsonObject> UpdateAsync(
@@ -216,7 +345,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         string[] callerRoles, bool bypassPermissions, CancellationToken ct)
     {
         if (data is null && permissions is null)
-            return await GetAsync(entry, rowId, callerRoles, bypassPermissions, ct);
+            return await GetAsync(entry, rowId, callerRoles, bypassPermissions, [], ct);
         if (data is { ValueKind: not JsonValueKind.Object })
             throw PraxyException.ArgumentInvalid("Row data must be a JSON object.",
                 new Dictionary<string, string[]> { ["data"] = ["Must be a JSON object."] });
@@ -270,7 +399,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         if (fields.Count > 0)
             throw new PraxyException(400, ErrorTypes.RowInvalidStructure, "Invalid row data.", fields);
         if (setClauses.Count == 0 && permissions is null)
-            return await GetAsync(entry, rowId, callerRoles, bypassPermissions, ct);
+            return await GetAsync(entry, rowId, callerRoles, bypassPermissions, [], ct);
 
         setClauses.Add("\"_updated_at\" = now()");
 

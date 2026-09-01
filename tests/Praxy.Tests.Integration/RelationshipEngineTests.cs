@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Npgsql;
 using Praxy.Core.Errors;
 using Praxy.Tests.Integration.Infrastructure;
 
@@ -10,7 +11,8 @@ namespace Praxy.Tests.Integration;
 /// the async existence pre-pass, one-to-one via a plain `unique` index, and basic query support.
 /// Phase 2 (docs/handoff/relationships-phase-2-prompt.md) extends this file with delete-time
 /// integrity: the scalar FK's 23503 catch, the array case's application-level pre-check, and the
-/// table-delete `relationship_dependency` gate.
+/// table-delete `relationship_dependency` gate. Phase 3 (docs/handoff/relationships-phase-3-prompt.md)
+/// extends it again with `?expand=` read-time enrichment and its three fallback causes.
 /// </summary>
 public class RelationshipEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
@@ -257,6 +259,209 @@ public class RelationshipEngineTests(PostgresContainerFixture pg) : AuthTestBase
         Assert.Equal(newFakeId, updated.GetProperty("authorId").GetString());
     }
 
+    // ---- Phase 3: read-time expansion (?expand=) -----------------------------------------------
+
+    [Fact]
+    public async Task Expand_on_get_returns_the_authors_full_row_json_in_place_of_the_raw_id()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var author = await CreateRowAsync(projectId, apiKey, databaseId, authorsId, new { data = new { name = "Ada" } });
+        var authorId = author.GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Hello", authorId } });
+        var postId = post.GetProperty("$id").GetString();
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}?expand=authorId", projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var expanded = body.GetProperty("authorId");
+        Assert.Equal(JsonValueKind.Object, expanded.ValueKind);
+        Assert.Equal(authorId, expanded.GetProperty("$id").GetString());
+        Assert.Equal("Ada", expanded.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Expand_on_list_returns_the_authors_full_row_json()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        await CreateRowAsync(projectId, apiKey, databaseId, postsId, new { data = new { title = "Hello", authorId } });
+
+        var url = $"/v1/databases/{databaseId}/tables/{postsId}/rows?expand=authorId";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var expanded = body.GetProperty("rows")[0].GetProperty("authorId");
+        Assert.Equal(JsonValueKind.Object, expanded.ValueKind);
+        Assert.Equal(authorId, expanded.GetProperty("$id").GetString());
+    }
+
+    [Fact]
+    public async Task Expand_of_an_array_relationship_returns_objects_in_the_same_order_as_the_raw_ids()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var a1 = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var a2 = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Grace" } })).GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Team post", authorId = a1, coAuthorIds = new[] { a2, a1 } } });
+        var postId = post.GetProperty("$id").GetString();
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}?expand=coAuthorIds", projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var coAuthors = body.GetProperty("coAuthorIds").EnumerateArray().ToArray();
+        Assert.Equal(2, coAuthors.Length);
+        Assert.Equal(JsonValueKind.Object, coAuthors[0].ValueKind);
+        Assert.Equal(a2, coAuthors[0].GetProperty("$id").GetString());
+        Assert.Equal("Grace", coAuthors[0].GetProperty("name").GetString());
+        Assert.Equal(a1, coAuthors[1].GetProperty("$id").GetString());
+        Assert.Equal("Ada", coAuthors[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Expanding_a_row_the_callers_roles_cant_read_falls_back_to_the_raw_id()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "databases.read", "databases.write");
+        var databaseId = await CreateDatabaseAsync(projectId, apiKey, "blog");
+
+        var authorsId = await CreateTableAsync(projectId, apiKey, databaseId, "authors");
+        await CreateColumnAsync(projectId, apiKey, databaseId, authorsId, "string",
+            new { key = "name", size = 100, required = true });
+        // create/update/delete are public so the test can seed data with the same public key, but
+        // read is deliberately withheld from "any" — the caller below can never read an author row
+        // directly, which is exactly the condition expansion's own permission check must respect.
+        await Client.SendAsync(DataPlane(HttpMethod.Patch, $"/v1/databases/{databaseId}/tables/{authorsId}/permissions",
+            projectId, apiKey: apiKey, body: new
+            {
+                permissions = new[] { "create(\"any\")", "update(\"any\")", "delete(\"any\")" },
+            }));
+
+        var postsId = await CreateTableAsync(projectId, apiKey, databaseId, "posts");
+        await CreateColumnAsync(projectId, apiKey, databaseId, postsId, "string",
+            new { key = "title", size = 200, required = true });
+        await CreateColumnAsync(projectId, apiKey, databaseId, postsId, "relationship",
+            new { key = "authorId", required = true, targetTableId = authorsId });
+        await GrantPublicAsync(projectId, apiKey, databaseId, postsId);
+
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Hello", authorId } });
+        var postId = post.GetProperty("$id").GetString();
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}?expand=authorId", projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var authorField = body.GetProperty("authorId");
+        // Not expanded — the caller's roles ("any" only) can't satisfy authors' read grant, so
+        // expansion falls back to the raw id rather than erroring the request or leaking the row.
+        Assert.Equal(JsonValueKind.String, authorField.ValueKind);
+        Assert.Equal(authorId, authorField.GetString());
+    }
+
+    [Fact]
+    public async Task Expanding_a_row_that_no_longer_exists_falls_back_to_the_raw_id()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var a1 = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var a2 = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Grace" } })).GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Team post", authorId = a1, coAuthorIds = new[] { a2 } } });
+        var postId = post.GetProperty("$id").GetString();
+
+        // The array case has no physical FK (Postgres can't constrain array elements) — Phase 2
+        // documents the resulting check-then-delete race as an accepted, unfixed gap. Deleting the
+        // row directly (bypassing RowsService.DeleteAsync's own pre-check) deterministically
+        // reproduces the dangling state that race would otherwise leave behind non-deterministically.
+        await DeleteRowBypassingGuardsAsync(authorsId, a2);
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}?expand=coAuthorIds", projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var coAuthors = body.GetProperty("coAuthorIds").EnumerateArray().ToArray();
+        Assert.Single(coAuthors);
+        Assert.Equal(JsonValueKind.String, coAuthors[0].ValueKind);
+        Assert.Equal(a2, coAuthors[0].GetString());
+    }
+
+    [Fact]
+    public async Task Expanding_a_column_whose_target_table_was_force_deleted_falls_back_to_the_raw_id()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Hello", authorId } });
+        var postId = post.GetProperty("$id").GetString();
+
+        await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}?force=true", projectId, apiKey: apiKey));
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}?expand=authorId", projectId, apiKey: apiKey));
+        // Not a crash — column.TargetTableId is now null (Phase 2's orphaning), so expansion skips
+        // the column entirely rather than dereferencing a target table that no longer exists.
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var authorField = body.GetProperty("authorId");
+        Assert.Equal(JsonValueKind.String, authorField.ValueKind);
+        Assert.Equal(authorId, authorField.GetString());
+    }
+
+    [Fact]
+    public async Task Expand_naming_an_unknown_or_non_relationship_column_is_a_clean_400()
+    {
+        var (projectId, apiKey, databaseId, _, postsId) = await SetupAsync();
+
+        var unknown = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows?expand=doesNotExist", projectId, apiKey: apiKey));
+        await AssertError(unknown, 400, ErrorTypes.GeneralQueryInvalid);
+
+        var notRelationship = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows?expand=title", projectId, apiKey: apiKey));
+        await AssertError(notRelationship, 400, ErrorTypes.GeneralQueryInvalid);
+    }
+
+    [Fact]
+    public async Task Several_rows_sharing_the_same_target_table_all_expand_correctly()
+    {
+        // Verifies the batched enrichment pass is correct across many rows referencing the same
+        // target table — the code groups every id by target table id into a single dictionary
+        // entry (RowsService.ExpandAsync), so this list produces exactly one `SELECT ... WHERE _id
+        // = ANY(@ids)` against `authors` regardless of row count; no query-counting harness exists
+        // in this repo to assert that literally, so the guarantee rests on code review of that
+        // grouping plus this correctness check, per the phase prompt's own allowance.
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        for (var i = 0; i < 3; i++)
+            await CreateRowAsync(projectId, apiKey, databaseId, postsId, new { data = new { title = $"Post {i}", authorId } });
+
+        var url = $"/v1/databases/{databaseId}/tables/{postsId}/rows?expand=authorId";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var rows = body.GetProperty("rows").EnumerateArray().ToArray();
+        Assert.Equal(3, rows.Length);
+        Assert.All(rows, row =>
+        {
+            var expanded = row.GetProperty("authorId");
+            Assert.Equal(JsonValueKind.Object, expanded.ValueKind);
+            Assert.Equal(authorId, expanded.GetProperty("$id").GetString());
+            Assert.Equal("Ada", expanded.GetProperty("name").GetString());
+        });
+    }
+
     // ---- setup helpers ------------------------------------------------------------------------
 
     private async Task<(string ProjectId, string ApiKey, string DatabaseId, string AuthorsId, string PostsId)> SetupAsync()
@@ -323,6 +528,39 @@ public class RelationshipEngineTests(PostgresContainerFixture pg) : AuthTestBase
             $"/v1/databases/{databaseId}/tables/{tableId}/rows", projectId, apiKey: apiKey, body: body));
         Assert.Equal(201, (int)response.StatusCode);
         return await ReadJson(response);
+    }
+
+    /// <summary>
+    /// Deletes a row directly against the physical table, bypassing RowsService.DeleteAsync's own
+    /// reference guard entirely — the only deterministic way to reach the "still-referenced row was
+    /// deleted anyway" state the array case's documented check-then-delete race would otherwise leave
+    /// behind non-deterministically (there's no app-reachable path to it, by design: the scalar case's
+    /// real Postgres FK makes it structurally impossible there).
+    /// </summary>
+    private async Task DeleteRowBypassingGuardsAsync(string tableId, string rowId)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+
+        string schemaName, physicalName;
+        await using (var lookup = new NpgsqlCommand(
+            """
+            SELECT d.schema_name, t.physical_name
+            FROM praxy.tables t JOIN praxy.databases d ON d.id = t.database_id
+            WHERE t.id = $1
+            """, conn))
+        {
+            lookup.Parameters.AddWithValue(Guid.Parse(tableId));
+            await using var reader = await lookup.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            schemaName = reader.GetString(0);
+            physicalName = reader.GetString(1);
+        }
+
+        await using var delete = new NpgsqlCommand(
+            $"""DELETE FROM "{schemaName}"."{physicalName}" WHERE "_id" = $1""", conn);
+        delete.Parameters.AddWithValue(Guid.Parse(rowId));
+        Assert.Equal(1, await delete.ExecuteNonQueryAsync());
     }
 
     private async Task<JsonElement> ListAsync(
