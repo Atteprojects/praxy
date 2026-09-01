@@ -8,6 +8,9 @@ namespace Praxy.Tests.Integration;
 /// Relationships Phase 1 (docs/research/table-relationships.md, docs/handoff/relationships-phase-1-prompt.md):
 /// the scalar/array `relationship` column type against a real Postgres instance — the actual FK,
 /// the async existence pre-pass, one-to-one via a plain `unique` index, and basic query support.
+/// Phase 2 (docs/handoff/relationships-phase-2-prompt.md) extends this file with delete-time
+/// integrity: the scalar FK's 23503 catch, the array case's application-level pre-check, and the
+/// table-delete `relationship_dependency` gate.
 /// </summary>
 public class RelationshipEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
@@ -124,6 +127,134 @@ public class RelationshipEngineTests(PostgresContainerFixture pg) : AuthTestBase
         var url = $"/v1/databases/{databaseId}/tables/{postsId}/rows?queries[]={Uri.EscapeDataString(query)}";
         var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
         await AssertError(response, 400, ErrorTypes.GeneralQueryInvalid);
+    }
+
+    // ---- Phase 2: delete-time integrity --------------------------------------------------------
+
+    [Fact]
+    public async Task Deleting_an_author_still_referenced_by_a_scalar_relationship_is_rejected()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Hello", authorId } });
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}/rows/{authorId}", projectId, apiKey: apiKey));
+        // Confirms the new 23503 catch actually fires on the real FK violation — a raw, unhandled
+        // 500 before this phase (Phase 1's documented rough edge).
+        await AssertError(response, 409, ErrorTypes.RowReferenced);
+    }
+
+    [Fact]
+    public async Task Deleting_an_author_still_referenced_by_an_array_relationship_is_rejected()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var a1 = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var a2 = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Grace" } })).GetProperty("$id").GetString()!;
+        // a1 is the scalar author; a2 is referenced only through the array column, isolating the
+        // array pre-check (there's no FK on this column for Postgres to catch).
+        await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Team post", authorId = a1, coAuthorIds = new[] { a2 } } });
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}/rows/{a2}", projectId, apiKey: apiKey));
+        await AssertError(response, 409, ErrorTypes.RowReferenced);
+    }
+
+    [Fact]
+    public async Task Deleting_an_author_no_longer_referenced_succeeds()
+    {
+        var (projectId, apiKey, databaseId, authorsId, _) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}/rows/{authorId}", projectId, apiKey: apiKey));
+        Assert.Equal(204, (int)response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleting_the_posts_table_is_not_blocked_by_relationship_dependency()
+    {
+        var (projectId, apiKey, databaseId, _, postsId) = await SetupAsync();
+
+        // posts -> authors is the dependency direction; posts is never anyone's relationship
+        // target, so the new gate must not fire for it — only the pre-existing generic gate does.
+        var noForce = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{postsId}", projectId, apiKey: apiKey));
+        await AssertError(noForce, 400, ErrorTypes.GeneralForceRequired);
+
+        var withForce = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{postsId}?force=true", projectId, apiKey: apiKey));
+        Assert.Equal(204, (int)withForce.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleting_the_authors_table_without_force_is_rejected_with_relationship_dependency()
+    {
+        var (projectId, apiKey, databaseId, authorsId, _) = await SetupAsync();
+        // posts.authorId already targets authors (SetupAsync creates the column); no row needed —
+        // this is a pure metadata check.
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}", projectId, apiKey: apiKey));
+        // Confirms the more specific error wins over the generic general_force_required.
+        await AssertError(response, 409, ErrorTypes.RelationshipDependency);
+    }
+
+    [Fact]
+    public async Task Deleting_the_authors_table_with_force_orphans_the_referencing_column()
+    {
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Hello", authorId } });
+        var postId = post.GetProperty("$id").GetString();
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}?force=true", projectId, apiKey: apiKey));
+        Assert.Equal(204, (int)response.StatusCode);
+
+        // DROP TABLE ... CASCADE silently drops the scalar FK constraint on posts.authorId —
+        // the column itself, and its now-dangling value, are orphaned rather than cleaned up.
+        var readBack = await Client.SendAsync(DataPlane(HttpMethod.Get,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}", projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)readBack.StatusCode);
+        var body = await ReadJson(readBack);
+        Assert.Equal(authorId, body.GetProperty("authorId").GetString());
+    }
+
+    [Fact]
+    public async Task Writing_to_an_orphaned_relationship_column_after_force_delete_does_not_crash()
+    {
+        // ColumnDef.TargetTableId is SetNull on the target table's delete (metadata-level, distinct
+        // from the physical FK docs/research/table-relationships.md describes) — a subsequent write
+        // to the now-target-less column must fall back to accepting the raw id, not throw. Also
+        // confirms the referencing table's own CatalogCache entry gets invalidated alongside the
+        // deleted table's — otherwise a stale cached TargetTableId still points at a table that no
+        // longer exists.
+        var (projectId, apiKey, databaseId, authorsId, postsId) = await SetupAsync();
+        var authorId = (await CreateRowAsync(projectId, apiKey, databaseId, authorsId,
+            new { data = new { name = "Ada" } })).GetProperty("$id").GetString()!;
+        var post = await CreateRowAsync(projectId, apiKey, databaseId, postsId,
+            new { data = new { title = "Hello", authorId } });
+        var postId = post.GetProperty("$id").GetString();
+
+        await Client.SendAsync(DataPlane(HttpMethod.Delete,
+            $"/v1/databases/{databaseId}/tables/{authorsId}?force=true", projectId, apiKey: apiKey));
+
+        var newFakeId = Guid.NewGuid().ToString("n");
+        var update = await Client.SendAsync(DataPlane(HttpMethod.Patch,
+            $"/v1/databases/{databaseId}/tables/{postsId}/rows/{postId}", projectId, apiKey: apiKey,
+            body: new { data = new { authorId = newFakeId } }));
+        Assert.Equal(200, (int)update.StatusCode);
+        var updated = await ReadJson(update);
+        Assert.Equal(newFakeId, updated.GetProperty("authorId").GetString());
     }
 
     // ---- setup helpers ------------------------------------------------------------------------

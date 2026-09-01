@@ -124,10 +124,14 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         {
             if (column.Type != ColumnTypes.Relationship || value is DBNull)
                 continue;
+            // Orphaned (Phase 2): its target table was force-deleted, TargetTableId is now null.
+            // Nothing left to validate against — accept the raw id, same as any other uuid write.
+            if (column.TargetTableId is not { } targetTableId)
+                continue;
             var ids = column.IsArray ? (Guid[])value : [(Guid)value];
             perColumn.Add((column, ids));
-            if (!byTarget.TryGetValue(column.TargetTableId!.Value, out var set))
-                byTarget[column.TargetTableId!.Value] = set = [];
+            if (!byTarget.TryGetValue(targetTableId, out var set))
+                byTarget[targetTableId] = set = [];
             foreach (var id in ids)
                 set.Add(id);
         }
@@ -320,11 +324,24 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
         var readRoles = await SchemaDdl.InTransactionAsync(db, async () =>
         {
+            // No point computing roles (below) or running the DELETE for a row that's about to be
+            // rejected — the array pre-check runs first.
+            await AssertNotArrayReferencedAsync(entry, rowId, ct);
+
             // Roles must be captured before the row (and its __perms rows, via ON DELETE CASCADE)
             // disappear — this is what makes the DELETE event authorizable later.
             var roles = await ComputeReadRolesAsync(entry, rowId, ct);
 
-            var deleted = await QueryAsync(sql, parameters, r => r.GetFieldValue<Guid>(0), ct);
+            List<Guid> deleted;
+            try
+            {
+                deleted = await QueryAsync(sql, parameters, r => r.GetFieldValue<Guid>(0), ct);
+            }
+            catch (PostgresException ex) when (ex.SqlState == "23503")
+            {
+                throw new PraxyException(409, ErrorTypes.RowReferenced,
+                    "This row is still referenced by another row's relationship column.");
+            }
             if (deleted.Count == 0)
                 throw PraxyException.NotFound(ErrorTypes.RowNotFound, "Row not found.");
 
@@ -333,6 +350,33 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         }, ct);
 
         await PublishAsync(entry, "delete", rowId, readRoles, ct);
+    }
+
+    /// <summary>
+    /// Application-level check for the array case — Postgres can't constrain array elements with a
+    /// native FK, so there's no free 23503 here. Checks every array relationship column anywhere
+    /// that targets this table (there may be more than one, on more than one other table), each via
+    /// its own <c>EXISTS ... = ANY(...)</c> against that column's own table. Accepted as a
+    /// check-then-delete race under read-committed isolation (docs/research/table-relationships.md,
+    /// Phase 2 non-goals) — application-level enforcement, not a real constraint.
+    /// </summary>
+    private async Task AssertNotArrayReferencedAsync(CatalogEntry entry, Guid rowId, CancellationToken ct)
+    {
+        var referencingColumns = await db.Columns
+            .Where(c => c.TargetTableId == entry.Table.Id && c.IsArray)
+            .ToListAsync(ct);
+
+        foreach (var column in referencingColumns)
+        {
+            var referencing = await cache.GetAsync(column.TableId, ct);
+            var referencingQualified = PhysicalNaming.QualifiedTable(referencing.Database.SchemaName, referencing.Table.PhysicalName);
+            var referencingCol = PhysicalNaming.Quote(column.PhysicalName);
+            var sql = $"SELECT EXISTS (SELECT 1 FROM {referencingQualified} WHERE @row_id = ANY({referencingCol}))";
+            var exists = (bool)(await ScalarAsync(sql, [new NpgsqlParameter("row_id", rowId)], ct))!;
+            if (exists)
+                throw new PraxyException(409, ErrorTypes.RowReferenced,
+                    $"This row is still referenced by column '{column.Key}' on table '{referencing.Table.Key}'.");
+        }
     }
 
     // ---- row-level permissions --------------------------------------------------------------

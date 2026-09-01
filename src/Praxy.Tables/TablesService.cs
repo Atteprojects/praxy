@@ -128,12 +128,37 @@ public sealed class TablesService(PraxyDb db, CatalogCache cache, QuotaService q
         return table;
     }
 
-    /// <summary>Always destructive; the caller (console) gets a typed-name confirm before setting <paramref name="force"/>.</summary>
+    /// <summary>
+    /// Always destructive; the caller (console) gets a typed-name confirm before setting
+    /// <paramref name="force"/>. A relationship column elsewhere that still targets this table gets
+    /// its own, more specific 409 instead of falling through to the generic force-required error —
+    /// <paramref name="force"/> is the one and only escape hatch for both gates. On force, the
+    /// existing <c>DROP TABLE ... CASCADE</c> already drops the scalar FK constraint on every
+    /// referencing column silently, and <see cref="Praxy.Persistence.Entities.ColumnDef.TargetTableId"/>'s
+    /// own FK (<c>ON DELETE SET NULL</c>) clears the metadata reference in the same transaction —
+    /// referencing columns are deliberately orphaned, not auto-deleted.
+    /// </summary>
     public async Task DeleteAsync(Database database, TableDef table, bool force, CancellationToken ct)
     {
+        // Also doubles as the cache-invalidation list below: a referencing table's own CatalogEntry
+        // (cached, up to 5s stale) still shows the old TargetTableId until invalidated, and a write
+        // against it would otherwise try to resolve a target table id that's about to stop existing.
+        var referencingTableIds = await db.Columns
+            .Where(c => c.TargetTableId == table.Id)
+            .Select(c => c.TableId)
+            .Distinct()
+            .ToListAsync(ct);
+
         if (!force)
+        {
+            if (referencingTableIds.Count > 0)
+                throw new PraxyException(409, ErrorTypes.RelationshipDependency,
+                    $"Table '{table.Key}' is the target of a relationship column on another table. " +
+                    "Pass force=true to confirm — the referencing column will be orphaned, not deleted.");
+
             throw new PraxyException(400, ErrorTypes.GeneralForceRequired,
                 "Deleting a table is destructive. Pass force=true to confirm.");
+        }
 
         await SchemaDdl.InTransactionAsync(db, async () =>
         {
@@ -146,6 +171,8 @@ public sealed class TablesService(PraxyDb db, CatalogCache cache, QuotaService q
             await SchemaDdl.ExecuteAsync(db, $"DROP TABLE IF EXISTS {qualified} CASCADE", ct);
         }, ct);
         cache.Invalidate(table.Id);
+        foreach (var referencingTableId in referencingTableIds)
+            cache.Invalidate(referencingTableId);
     }
 
     // ---- permissions ----------------------------------------------------------------------------
