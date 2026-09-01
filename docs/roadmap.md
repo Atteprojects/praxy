@@ -326,9 +326,17 @@ model, and why. Three phases, each independently useful:
   target-table `<select>` in the console's column creator, Flutter codegen's raw-id passthrough. New error
   type `relationship_target_not_found` (400). No delete-blocking yet (a blocked scalar delete still
   500s via the raw FK violation, a documented rough edge), no `?expand=`, no console search-picker.
-- **Phase 2** — delete-time integrity: blocks deleting a row or table that's still referenced (409
-  `row_referenced`/`relationship_dependency`), `force=true` escape hatch on the table side only, matching
-  every other destructive-schema-change gate in this engine.
+- **Phase 2 — shipped 2026-08-31** (kickoff: `docs/handoff/relationships-phase-2-prompt.md`; report:
+  `docs/handoff/relationships-phase-2-report.md`) — delete-time integrity: `RowsService.DeleteAsync`
+  catches the scalar FK's real `23503` and rejects an array reference via a new `EXISTS` pre-check, both
+  as `row_referenced` (409); `TablesService.DeleteAsync` gains a `relationship_dependency` (409) gate
+  (more specific than the pre-existing generic `general_force_required`) with `force=true` as the one
+  escape hatch for both. Found and fixed a gap the design doc didn't anticipate: `ColumnDef.TargetTableId`
+  had its own metadata-level FK (`Restrict`) that made `force=true` structurally impossible to honor —
+  switched to `SetNull` so a force-deleted target table's referencing columns are cleanly orphaned
+  (column and data survive, `TargetTableId` clears) instead of blocking the delete outright; also fixed a
+  `CatalogCache` staleness bug this surfaced (a referencing table's cached columns need invalidating too,
+  not just the deleted table's own cache slot).
 - **Phase 3** — read-time expansion (`?expand=`, embedding the related row's JSON instead of just its
   id, permission-filtered) and a real search-picker in the console row editor, replacing Phase 1's plain
   text id input.
