@@ -47,7 +47,7 @@ public class ColumnDef
     public required Guid TableId { get; set; }
     public required string Key { get; set; }
 
-    /// <summary>string | integer | float | boolean | datetime | email | url | ip | enum</summary>
+    /// <summary>string | integer | float | boolean | datetime | email | url | ip | enum | relationship</summary>
     public required string Type { get; set; }
 
     public required string PhysicalName { get; set; }
@@ -56,6 +56,9 @@ public class ColumnDef
 
     /// <summary>Byte size for <c>string</c>; unused otherwise.</summary>
     public int? Size { get; set; }
+
+    /// <summary>FK to <see cref="TableDef"/>, same database only. Set only when <see cref="Type"/> is <c>relationship</c>.</summary>
+    public Guid? TargetTableId { get; set; }
 
     /// <summary>Wire key is <c>default</c> — Appwrite's <c>xdefault</c> dodge is JS-only, we don't need it.</summary>
     public string? DefaultValue { get; set; }

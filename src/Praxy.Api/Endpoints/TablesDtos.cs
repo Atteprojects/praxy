@@ -17,7 +17,8 @@ public sealed record CreateTableRequest(string Key, string Name);
 public sealed record UpdateTableRequest(string? Name, bool? Enabled);
 
 public sealed record CreateColumnRequest(
-    string Key, bool? Required, bool? Array, JsonElement? Default, int? Size, string[]? Elements);
+    string Key, bool? Required, bool? Array, JsonElement? Default, int? Size, string[]? Elements,
+    string? TargetTableId);
 
 public sealed record UpdateColumnRequest(string? Key, bool? Required);
 
@@ -42,12 +43,13 @@ public sealed record TableResponse(
 
 public sealed record ColumnResponse(
     string Id, string TableId, string Key, string Type, bool Required, bool Array, int? Size,
-    JsonNode? Default, string[]? Elements, string Status, string? Error, int Position,
+    JsonNode? Default, string[]? Elements, string? TargetTableId, string Status, string? Error, int Position,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static ColumnResponse From(ColumnDef c) => new(
         Ids.Wire(c.Id), Ids.Wire(c.TableId), c.Key, c.Type, c.Required, c.IsArray, c.Size,
-        ParseDefault(c.DefaultValue), Praxy.Tables.ColumnTypes.ExtractElements(c.Options), c.Status, c.Error, c.Position,
+        ParseDefault(c.DefaultValue), Praxy.Tables.ColumnTypes.ExtractElements(c.Options),
+        c.TargetTableId is { } t ? Ids.Wire(t) : null, c.Status, c.Error, c.Position,
         c.CreatedAt, c.UpdatedAt);
 
     private static JsonNode? ParseDefault(string? json)

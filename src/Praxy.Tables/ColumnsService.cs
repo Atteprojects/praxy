@@ -19,12 +19,20 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
 {
     public async Task<ColumnDef> CreateAsync(
         Database database, TableDef table, string type, string key, bool required, bool isArray,
-        int? size, string[]? elements, JsonElement? defaultValue, CancellationToken ct)
+        int? size, string[]? elements, JsonElement? defaultValue, string? targetTableId, CancellationToken ct)
     {
         if (!ColumnTypes.IsValid(type))
             throw PraxyException.NotFound(ErrorTypes.ColumnInvalid, $"Unknown column type '{type}'.");
         ValidateKey(key);
-        ValidateTypeShape(type, size, elements);
+        ValidateTypeShape(type, size, elements, targetTableId, defaultValue);
+
+        TableDef? targetTable = null;
+        if (type == ColumnTypes.Relationship)
+        {
+            Ids.TryParseWire(targetTableId, out var parsedTargetId);
+            targetTable = await db.Tables.FirstOrDefaultAsync(t => t.Id == parsedTargetId && t.DatabaseId == database.Id, ct)
+                ?? throw PraxyException.NotFound(ErrorTypes.TableNotFound, "Target table not found.");
+        }
 
         await quotas.EnsureColumnQuotaAsync(database.ProjectId, table.Id, ct);
 
@@ -51,6 +59,7 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
             Required = required,
             IsArray = isArray,
             Size = type == ColumnTypes.String ? size : null,
+            TargetTableId = targetTable?.Id,
             DefaultValue = defaultValue is { ValueKind: not JsonValueKind.Undefined } dv2 ? dv2.GetRawText() : null,
             Options = type == ColumnTypes.Enum ? JsonSerializer.Serialize(new { elements }) : "{}",
             Status = "available",
@@ -73,8 +82,13 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
             var qualified = PhysicalNaming.QualifiedTable(database.SchemaName, table.PhysicalName);
             var notNull = required ? " NOT NULL" : "";
             var withDefault = defaultLiteral is not null ? $" DEFAULT {defaultLiteral}" : "";
+            // Array relationships get no native FK — Postgres can't constrain array elements, so
+            // integrity there is application-level only (existence pre-pass, RowsService).
+            var references = type == ColumnTypes.Relationship && !isArray
+                ? $" REFERENCES {PhysicalNaming.QualifiedTable(database.SchemaName, targetTable!.PhysicalName)}(\"_id\") ON DELETE RESTRICT"
+                : "";
             await SchemaDdl.ExecuteAsync(db,
-                $"ALTER TABLE {qualified} ADD COLUMN {PhysicalNaming.Quote(physicalName)} {storageType}{withDefault}{notNull}",
+                $"ALTER TABLE {qualified} ADD COLUMN {PhysicalNaming.Quote(physicalName)} {storageType}{references}{withDefault}{notNull}",
                 ct);
             return column;
         }, ct);
@@ -180,7 +194,8 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
                 });
     }
 
-    private static void ValidateTypeShape(string type, int? size, string[]? elements)
+    private static void ValidateTypeShape(
+        string type, int? size, string[]? elements, string? targetTableId, JsonElement? defaultValue)
     {
         var fields = new Dictionary<string, string[]>();
         if (type == ColumnTypes.String && size is not (> 0 and <= ColumnTypes.MaxStringSize))
@@ -193,6 +208,15 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
                 fields["elements"] = [$"Each value must be 1 to {ColumnTypes.MaxEnumElementLength} characters."];
             else if (elements.Distinct().Count() != elements.Length)
                 fields["elements"] = ["Values must be unique."];
+        }
+        if (type == ColumnTypes.Relationship)
+        {
+            if (!Ids.TryParseWire(targetTableId, out _))
+                fields["targetTableId"] = ["Required for 'relationship' columns: a valid table id."];
+            // A hardcoded default row id has its own edge case (what happens when that row is
+            // later deleted, under ON DELETE RESTRICT?) — rejected outright instead.
+            if (defaultValue is { ValueKind: not JsonValueKind.Null and not JsonValueKind.Undefined })
+                fields["default"] = ["Relationship columns can't have a default value."];
         }
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid column payload.", fields);

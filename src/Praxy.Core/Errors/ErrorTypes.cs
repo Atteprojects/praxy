@@ -64,6 +64,7 @@ public static class ErrorTypes
     public const string RowAlreadyExists = "row_already_exists";
     public const string RowInvalidStructure = "row_invalid_structure";
     public const string GeneralQueryInvalid = "general_query_invalid";
+    public const string RelationshipTargetNotFound = "relationship_target_not_found";
 
     public const string WebhookNotFound = "webhook_not_found";
     public const string WebhookDeliveryNotFound = "webhook_delivery_not_found";
@@ -166,6 +167,7 @@ public static class ErrorTypes
         RowAlreadyExists,
         RowInvalidStructure,
         GeneralQueryInvalid,
+        RelationshipTargetNotFound,
         WebhookNotFound,
         WebhookDeliveryNotFound,
         WebhookInvalidRedeliverState,

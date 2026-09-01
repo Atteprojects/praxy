@@ -4,10 +4,11 @@ using System.Text.Json;
 namespace Praxy.Tables;
 
 /// <summary>
-/// The nine column types from roadmap.md's Phase 2 scope (relationships deferred to v1.1). Each
-/// maps to a base Postgres type; semantic types (email/url/ip) are <c>text</c> plus an
-/// application-level validation rule, per architecture.md §4.4 — keeping validation out of the
-/// database means a rule change never needs a table rewrite.
+/// The nine column types from roadmap.md's Phase 2 scope, plus <see cref="Relationship"/> added by
+/// the table-relationships initiative (docs/research/table-relationships.md). Each maps to a base
+/// Postgres type; semantic types (email/url/ip) are <c>text</c> plus an application-level
+/// validation rule, per architecture.md §4.4 — keeping validation out of the database means a rule
+/// change never needs a table rewrite.
 /// </summary>
 public static class ColumnTypes
 {
@@ -21,8 +22,11 @@ public static class ColumnTypes
     public const string Ip = "ip";
     public const string Enum = "enum";
 
+    /// <summary>A scalar <c>uuid</c> (real FK, <c>ON DELETE RESTRICT</c>) or <c>uuid[]</c> pointing at another table's rows.</summary>
+    public const string Relationship = "relationship";
+
     public static readonly IReadOnlyList<string> All =
-        [String, Integer, Float, Boolean, Datetime, Email, Url, Ip, Enum];
+        [String, Integer, Float, Boolean, Datetime, Email, Url, Ip, Enum, Relationship];
 
     public static bool IsValid(string type) => All.Contains(type);
 
@@ -35,6 +39,7 @@ public static class ColumnTypes
         Boolean => "boolean",
         Datetime => "timestamptz",
         Email or Url or Ip or Enum => "text",
+        Relationship => "uuid",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown column type."),
     };
 

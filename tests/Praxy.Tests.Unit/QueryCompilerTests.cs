@@ -20,6 +20,11 @@ public class QueryCompilerTests
         {
             new() { Id = Guid.NewGuid(), TableId = tableId, Key = "title", Type = ColumnTypes.String, PhysicalName = "title_x1", Size = 200 },
             new() { Id = Guid.NewGuid(), TableId = tableId, Key = "views", Type = ColumnTypes.Integer, PhysicalName = "views_x1" },
+            new()
+            {
+                Id = Guid.NewGuid(), TableId = tableId, Key = "authorId", Type = ColumnTypes.Relationship,
+                PhysicalName = "author_id_x1", TargetTableId = Guid.NewGuid(),
+            },
         };
         return new CatalogEntry(database, table, columns, indexes ?? [], permissions ?? []);
     }
@@ -160,6 +165,37 @@ public class QueryCompilerTests
         var queries = Q("""{"method":"equal","attribute":"views","values":["not-a-number"]}""");
         var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
         Assert.Equal(400, ex.Code);
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    [Fact]
+    public void Equal_isNull_and_isNotNull_compile_for_a_relationship_column()
+    {
+        var entry = BuildEntry();
+        var wireId = "0195a1b2c3d4e5f6a7b8c9d0e1f2a3b4";
+        var equal = QueryCompiler.CompileList(entry, Q($$"""{"method":"equal","attribute":"authorId","values":["{{wireId}}"]}"""), ["any"], true, false);
+        Assert.Contains("author_id_x1", equal.Sql);
+
+        var isNull = QueryCompiler.CompileList(entry, Q("""{"method":"isNull","attribute":"authorId"}"""), ["any"], true, false);
+        Assert.Contains("IS NULL", isNull.Sql);
+    }
+
+    [Fact]
+    public void A_relationship_value_that_is_not_a_valid_id_is_a_clean_400_not_a_crash()
+    {
+        var entry = BuildEntry();
+        var queries = Q("""{"method":"equal","attribute":"authorId","values":["not-an-id"]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    /// <summary>'search' makes no sense on a uuid — rejected up front, same as $id/datetime/numeric/boolean.</summary>
+    [Fact]
+    public void Search_against_a_relationship_column_is_rejected()
+    {
+        var entry = BuildEntry();
+        var queries = Q("""{"method":"search","attribute":"authorId","values":["hello"]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
         Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
     }
 }

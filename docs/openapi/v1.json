@@ -11397,6 +11397,7 @@
           "size",
           "default",
           "elements",
+          "targetTableId",
           "status",
           "error",
           "position",
@@ -11450,6 +11451,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "targetTableId": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "status": {
             "type": "string"
@@ -11803,7 +11810,8 @@
           "array",
           "default",
           "size",
-          "elements"
+          "elements",
+          "targetTableId"
         ],
         "type": "object",
         "properties": {
@@ -11849,6 +11857,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "targetTableId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
