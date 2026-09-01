@@ -213,7 +213,7 @@ export interface TableList {
 }
 
 export const COLUMN_TYPES = [
-  "string", "integer", "float", "boolean", "datetime", "email", "url", "ip", "enum",
+  "string", "integer", "float", "boolean", "datetime", "email", "url", "ip", "enum", "relationship",
 ] as const;
 export type ColumnType = (typeof COLUMN_TYPES)[number];
 
@@ -227,6 +227,8 @@ export interface ColumnSchema {
   size: number | null;
   default: unknown;
   elements: string[] | null;
+  /** Set only when type === "relationship": the target table's id. */
+  targetTableId: string | null;
   status: "available" | "processing" | "failed";
   error: string | null;
   position: number;

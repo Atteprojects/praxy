@@ -1,7 +1,8 @@
 import { useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import {
-  useColumns, useCreateColumn, useDeleteColumn, useTable, useUpdateColumn, type CreateColumnInput,
+  useColumns, useCreateColumn, useDeleteColumn, useTable, useTables, useUpdateColumn,
+  type CreateColumnInput,
 } from "../api/databases";
 import { ApiError } from "../api/client";
 import { ConfirmButton } from "../components/ConfirmButton";
@@ -15,7 +16,7 @@ import { TableDetailHeader } from "./TableDetailHeader";
 
 const TYPE_LABEL: Record<ColumnType, string> = {
   string: "STR", integer: "INT", float: "FLT", boolean: "BOOL", datetime: "DATE",
-  email: "MAIL", url: "URL", ip: "IP", enum: "ENUM",
+  email: "MAIL", url: "URL", ip: "IP", enum: "ENUM", relationship: "REL",
 };
 
 function TypeIcon({ type }: { type: ColumnType }) {
@@ -40,12 +41,16 @@ export function ColumnsPage() {
   };
   const table = useTable(projectId, databaseId, tableId);
   const columns = useColumns(projectId, databaseId, tableId);
+  const tables = useTables(projectId, databaseId);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ColumnSchema | null>(null);
 
   if (table.isPending || columns.isPending) return <FullPageSpinner />;
   if (table.isError) throw table.error;
   if (columns.isError) throw columns.error;
+
+  const targetTableLabel = (targetTableId: string | null) =>
+    tables.data?.tables.find((t) => t.id === targetTableId)?.key ?? "…";
 
   const gridColumns: DataGridColumn<ColumnSchema>[] = [
     {
@@ -68,6 +73,9 @@ export function ColumnsPage() {
           {row.original.type === "string" ? <Badge>size {row.original.size}</Badge> : null}
           {row.original.type === "enum" && row.original.elements
             ? <Badge>{row.original.elements.length} values</Badge>
+            : null}
+          {row.original.type === "relationship"
+            ? <Badge>→ {targetTableLabel(row.original.targetTableId)}</Badge>
             : null}
         </span>
       ),
@@ -170,6 +178,7 @@ function CreateColumnSheet({
   onClose: () => void;
 }) {
   const create = useCreateColumn(projectId, databaseId, tableId);
+  const tables = useTables(projectId, databaseId);
   const [type, setType] = useState<ColumnType>("string");
   const [key, setKey] = useState("");
   const [required, setRequired] = useState(false);
@@ -177,6 +186,7 @@ function CreateColumnSheet({
   const [size, setSize] = useState(255);
   const [elementsText, setElementsText] = useState("");
   const [defaultText, setDefaultText] = useState("");
+  const [targetTableId, setTargetTableId] = useState("");
   const [createMore, setCreateMore] = useState(false);
   const error = create.error instanceof ApiError ? create.error : null;
 
@@ -186,6 +196,7 @@ function CreateColumnSheet({
     setArray(false);
     setDefaultText("");
     setElementsText("");
+    setTargetTableId("");
   }
 
   function parseDefault(): unknown {
@@ -203,9 +214,10 @@ function CreateColumnSheet({
       key,
       required,
       array,
-      default: parseDefault(),
+      default: type === "relationship" ? undefined : parseDefault(),
       size: type === "string" ? size : undefined,
       elements: type === "enum" ? elementsText.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+      targetTableId: type === "relationship" ? targetTableId : undefined,
     };
     await create.mutateAsync(input);
     if (createMore) {
@@ -289,26 +301,44 @@ function CreateColumnSheet({
           </Field>
         ) : null}
 
+        {type === "relationship" ? (
+          <Field label="Target table" error={error?.fieldErrors("targetTableId")[0]}>
+            <select
+              className="input-base"
+              required
+              value={targetTableId}
+              onChange={(e) => setTargetTableId(e.target.value)}
+            >
+              <option value="">— select a table —</option>
+              {(tables.data?.tables ?? []).map((t) => (
+                <option key={t.id} value={t.id}>{t.name} ({t.key})</option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+
         <Toggle checked={required} onChange={setRequired} label="Required" />
         <Toggle checked={array} onChange={setArray} label="Array" description="Store multiple values as a native Postgres array." />
 
-        <Field label="Default (optional)" error={error?.fieldErrors("default")[0]}>
-          {type === "boolean" ? (
-            <select className="input-base" value={defaultText} onChange={(e) => setDefaultText(e.target.value)}>
-              <option value="">— none —</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          ) : (
-            <input
-              className="input-base"
-              type={type === "integer" || type === "float" ? "number" : "text"}
-              value={defaultText}
-              onChange={(e) => setDefaultText(e.target.value)}
-              placeholder={array ? "comma-separated values" : undefined}
-            />
-          )}
-        </Field>
+        {type === "relationship" ? null : (
+          <Field label="Default (optional)" error={error?.fieldErrors("default")[0]}>
+            {type === "boolean" ? (
+              <select className="input-base" value={defaultText} onChange={(e) => setDefaultText(e.target.value)}>
+                <option value="">— none —</option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            ) : (
+              <input
+                className="input-base"
+                type={type === "integer" || type === "float" ? "number" : "text"}
+                value={defaultText}
+                onChange={(e) => setDefaultText(e.target.value)}
+                placeholder={array ? "comma-separated values" : undefined}
+              />
+            )}
+          </Field>
+        )}
       </form>
     </Sheet>
   );

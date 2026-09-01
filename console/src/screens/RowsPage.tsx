@@ -12,7 +12,10 @@ import { AddRoleButton, RoleLabel } from "../components/RolePicker";
 import { EmptyState, ErrorNote, Field, FullPageSpinner, Sheet, Spinner } from "../components/ui";
 import { TableDetailHeader } from "./TableDetailHeader";
 
-const OPERATORS_BY_TYPE: Record<ColumnType, { value: string; label: string; arity: 0 | 1 | 2 }[]> = {
+// Partial, not a full Record: a "relationship" column has no entry here yet — the console's
+// filter picker for it is a Phase 3 deliverable (docs/research/table-relationships.md), even
+// though the query compiler already supports equal/notEqual/isNull/isNotNull/contains on one.
+const OPERATORS_BY_TYPE: Partial<Record<ColumnType, { value: string; label: string; arity: 0 | 1 | 2 }[]>> = {
   string: textOps(), email: textOps(), url: textOps(), ip: textOps(), enum: equalityOps(),
   integer: numericOps(), float: numericOps(), datetime: numericOps(),
   boolean: equalityOps(),
@@ -63,7 +66,7 @@ function writeFiltersToUrl(filters: QueryFilter[]) {
 }
 
 function describeFilter(f: QueryFilter): string {
-  const ops = Object.values(OPERATORS_BY_TYPE).flat();
+  const ops = Object.values(OPERATORS_BY_TYPE).flatMap((o) => o ?? []);
   const label = ops.find((o) => o.value === f.method)?.label ?? f.method;
   const value = f.values && f.values.length > 0 ? ` ${f.values.map(String).join(", ")}` : "";
   return `${f.attribute}${f.attribute ? " " : ""}${label}${value}`;
@@ -438,7 +441,7 @@ function FilterPicker({
   const [method, setMethod] = useState("equal");
   const [value, setValue] = useState("");
   const column = columns.find((c) => c.key === attribute);
-  const ops = column ? OPERATORS_BY_TYPE[column.type] : [];
+  const ops = (column ? OPERATORS_BY_TYPE[column.type] : []) ?? [];
   const op = ops.find((o) => o.value === method) ?? ops[0];
 
   useEffect(() => {
