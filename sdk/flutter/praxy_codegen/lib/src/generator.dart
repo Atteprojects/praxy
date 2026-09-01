@@ -138,7 +138,7 @@ String _render({
 
 String _dartType(String columnType, bool isArray) {
   final scalar = switch (columnType) {
-    'string' || 'email' || 'url' || 'ip' || 'enum' => 'String',
+    'string' || 'email' || 'url' || 'ip' || 'enum' || 'relationship' => 'String',
     'integer' => 'int',
     'float' => 'double',
     'boolean' => 'bool',

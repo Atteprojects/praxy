@@ -48,6 +48,11 @@ void main() {
               'array': true, 'size': 64, 'status': 'available', 'position': 1,
               'createdAt': '2026-01-01T00:00:00Z', 'updatedAt': '2026-01-01T00:00:00Z',
             },
+            {
+              'id': 'c3', 'tableId': 'tbl1id', 'key': 'author_id', 'type': 'relationship',
+              'required': false, 'array': false, 'targetTableId': 'usersid', 'status': 'available',
+              'position': 2, 'createdAt': '2026-01-01T00:00:00Z', 'updatedAt': '2026-01-01T00:00:00Z',
+            },
           ],
         });
       }
@@ -75,6 +80,9 @@ void main() {
     expect(content, contains(r"static const id = Col<String>(r'$id');"));
     expect(content, contains("static const title = Col<String>('title');"));
     expect(content, contains("static const tags = Col<List<String>>('tags');"));
+    // relationship: raw id passthrough (String/List<String>) — no cross-table graph awareness,
+    // out of scope for the whole relationships feature (docs/research/table-relationships.md).
+    expect(content, contains("static const authorId = Col<String>('author_id');"));
   });
 
   test('a database key with no match throws CodegenException', () async {
