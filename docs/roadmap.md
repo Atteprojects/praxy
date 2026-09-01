@@ -355,6 +355,33 @@ Storage/TOTP/multi-org as its own future initiative).
 
 ---
 
+## Geo columns and `near` queries (post-v0.1.0 initiative)
+
+Design doc: `docs/research/geo-nearby.md`. First slice of "geo operations," starting with the owner's
+own priority — nearby/radius queries — using real great-circle distance via **PostGIS**, not flat-plane
+approximation (the owner's explicit choice over the lighter `earthdistance`/`cube` contrib alternative).
+This is architecturally new in a way relationships wasn't: the first Postgres extension this codebase has
+ever loaded, the first non-btree/GIN index (GiST), and the first column type whose single value isn't a
+bare JSON scalar. Confirmed, not assumed: **no new .NET package needed** — every column type already
+reads/writes via plain `NpgsqlParameter`/`GetFieldValue<T>` scalars, never a strongly-typed mapped object,
+and geo fits that same shape through plain PostGIS SQL functions (`ST_MakePoint`, `ST_DWithin`, `ST_X`/
+`ST_Y`).
+
+- **Phase 1** (kickoff: `docs/handoff/geo-nearby-phase-1-prompt.md`) — a scalar `geo` point column
+  (`geography(Point, 4326)`, wire shape `{"lat","lng"}`), a new `spatial` (GiST) index type, and
+  `near(lat, lng, radiusMeters)` as a pure radius filter — rejected without a declared spatial index,
+  mirroring `search`'s existing fulltext-index requirement exactly. Requires swapping the Postgres image
+  in both `deploy/docker-compose.yml` and the Testcontainers fixture to a PostGIS-flavored one — the only
+  two files that reference the image tag today, confirmed by grep.
+
+**Explicitly not in Phase 1, real follow-up work, not forgotten**: automatic distance-sorting
+("nearest first") — the query compiler's sort/cursor model is hard-wired to a real physical column today,
+with no computed-expression sort path, so this needs real surgery to that model, not a quick add; array-
+valued geo columns; additional geo types (`line`, `polygon`) and their own operators, if more geo
+operations beyond nearby are wanted later.
+
+---
+
 ## Rules that hold across every phase
 
 1. **DDL is synchronous and transactional**; long operations are explicit, queryable, cancellable jobs.
