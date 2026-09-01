@@ -317,12 +317,15 @@ above). Design doc: `docs/research/table-relationships.md` — full architecture
 reusing Praxy's existing array-column mechanism instead of an Appwrite-style relationType/junction-table
 model, and why. Three phases, each independently useful:
 
-- **Phase 1** (kickoff: `docs/handoff/relationships-phase-1-prompt.md`) — the primitive: a new
-  `relationship` column type storing a scalar `uuid` (real Postgres FK, `ON DELETE RESTRICT` — one-to-one
-  falls out for free via the existing `unique` index type) or a `uuid[]` (array flag every column type
-  already has, no native FK possible on array elements). Write-time existence checking, basic query
-  support, a plain target-table picker in the console, Flutter codegen's raw-id passthrough. No
-  delete-blocking yet, no expansion.
+- **Phase 1 — shipped 2026-09-01** (kickoff: `docs/handoff/relationships-phase-1-prompt.md`; report:
+  `docs/handoff/relationships-phase-1-report.md`) — the primitive: a new `relationship` column type
+  storing a scalar `uuid` (real Postgres FK, `ON DELETE RESTRICT` — one-to-one falls out for free via the
+  existing `unique` index type) or a `uuid[]` (array flag every column type already has, no native FK
+  possible on array elements). Write-time existence checking (batched one query per distinct target
+  table), basic query support (`equal`/`notEqual`/`isNull`/`isNotNull`, array `contains`), a plain
+  target-table `<select>` in the console's column creator, Flutter codegen's raw-id passthrough. New error
+  type `relationship_target_not_found` (400). No delete-blocking yet (a blocked scalar delete still
+  500s via the raw FK violation, a documented rough edge), no `?expand=`, no console search-picker.
 - **Phase 2** — delete-time integrity: blocks deleting a row or table that's still referenced (409
   `row_referenced`/`relationship_dependency`), `force=true` escape hatch on the table side only, matching
   every other destructive-schema-change gate in this engine.
