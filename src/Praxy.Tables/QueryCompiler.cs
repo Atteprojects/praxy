@@ -261,7 +261,7 @@ public static class QueryCompiler
         private string CompileSearch(ColumnDef column, JsonElement valueEl)
         {
             if (column.IsArray || column.Type is IdType or ColumnTypes.Datetime or ColumnTypes.Integer
-                or ColumnTypes.Float or ColumnTypes.Boolean)
+                or ColumnTypes.Float or ColumnTypes.Boolean or ColumnTypes.Relationship)
                 throw QueryDsl.Invalid($"'search' isn't supported on '{column.Key}'.", "queries",
                     "'search' only works on text-like attributes with a fulltext index.");
             var index = entry.FulltextIndexFor(column.Key)

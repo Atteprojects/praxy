@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Npgsql;
+using Praxy.Core;
 using Praxy.Persistence.Entities;
 
 namespace Praxy.Tables;
@@ -33,6 +34,7 @@ public static class RowValues
             ColumnTypes.Url => value.EnumerateArray().Select(e => ValidateUrl(key, RequireString(key, e))).ToArray(),
             ColumnTypes.Ip => value.EnumerateArray().Select(e => ValidateIp(key, RequireString(key, e))).ToArray(),
             ColumnTypes.Enum => value.EnumerateArray().Select(e => ValidateEnum(key, RequireString(key, e), column.Options)).ToArray(),
+            ColumnTypes.Relationship => value.EnumerateArray().Select(e => RequireRelationshipId(key, e)).ToArray(),
             _ => throw new ArgumentOutOfRangeException(nameof(column), column.Type, "Unknown column type."),
         };
     }
@@ -51,6 +53,7 @@ public static class RowValues
         ColumnTypes.Url => ValidateUrl(key, RequireString(key, value)),
         ColumnTypes.Ip => ValidateIp(key, RequireString(key, value)),
         ColumnTypes.Enum => ValidateEnum(key, RequireString(key, value), column.Options),
+        ColumnTypes.Relationship => RequireRelationshipId(key, value),
         _ => throw new ArgumentOutOfRangeException(nameof(column), column.Type, "Unknown column type."),
     };
 
@@ -68,6 +71,9 @@ public static class RowValues
         ColumnTypes.Float => JsonValue.Create(reader.GetFieldValue<double>(ordinal)),
         ColumnTypes.Boolean => JsonValue.Create(reader.GetFieldValue<bool>(ordinal)),
         ColumnTypes.Datetime => JsonValue.Create(FormatDatetime(reader.GetFieldValue<DateTimeOffset>(ordinal))),
+        // Npgsql maps uuid -> Guid natively; the string-fallback default below would format it as
+        // Guid.ToString()'s dashed form, not Praxy's 32-hex-no-dashes wire shape.
+        ColumnTypes.Relationship => JsonValue.Create(Ids.Wire(reader.GetFieldValue<Guid>(ordinal))),
         _ => JsonValue.Create(reader.GetFieldValue<string>(ordinal)),
     };
 
@@ -77,6 +83,7 @@ public static class RowValues
         ColumnTypes.Float => ToJsonArray(reader.GetFieldValue<double[]>(ordinal), v => JsonValue.Create(v)),
         ColumnTypes.Boolean => ToJsonArray(reader.GetFieldValue<bool[]>(ordinal), v => JsonValue.Create(v)),
         ColumnTypes.Datetime => ToJsonArray(reader.GetFieldValue<DateTimeOffset[]>(ordinal), v => JsonValue.Create(FormatDatetime(v))),
+        ColumnTypes.Relationship => ToJsonArray(reader.GetFieldValue<Guid[]>(ordinal), v => JsonValue.Create(Ids.Wire(v))),
         _ => ToJsonArray(reader.GetFieldValue<string[]>(ordinal), v => JsonValue.Create(v)),
     };
 
@@ -155,4 +162,10 @@ public static class RowValues
             ? value
             : throw new FormatException($"'{key}' must be one of the column's declared enum values.");
     }
+
+    /// <summary>Shape only — does a referenced row actually exist is the async pre-pass's job (RowsService).</summary>
+    private static Guid RequireRelationshipId(string key, JsonElement v) =>
+        v.ValueKind == JsonValueKind.String && Ids.TryParseWire(v.GetString(), out var id)
+            ? id
+            : throw new FormatException($"'{key}' must be a valid row id.");
 }

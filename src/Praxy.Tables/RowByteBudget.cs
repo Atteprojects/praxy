@@ -33,6 +33,7 @@ public static class RowByteBudget
             ColumnTypes.Enum => enumElements is { Length: > 0 } elements
                 ? elements.Max(e => e.Length)
                 : ColumnTypes.MaxEnumElementLength,
+            ColumnTypes.Relationship => 16, // uuid width
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown column type."),
         };
 

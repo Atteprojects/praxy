@@ -80,6 +80,8 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
         var (row, readRoles) = await SchemaDdl.InTransactionAsync<(JsonObject Row, string[] ReadRoles)>(db, async () =>
         {
+            await AssertRelationshipTargetsExistAsync(columns.Zip(values), ct);
+
             List<JsonObject> inserted;
             try
             {
@@ -102,6 +104,60 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
         await PublishAsync(entry, "create", id, readRoles, ct);
         return row;
+    }
+
+    // ---- relationship existence pre-pass ------------------------------------------------------
+
+    /// <summary>
+    /// Rejects a write up front with a clean 400 if any relationship value points at a row that
+    /// doesn't exist — batched one <c>SELECT ... WHERE _id = ANY(@ids)</c> per distinct target
+    /// table (never per column, never per id), regardless of how many relationship columns target
+    /// it. Existence-only: no permission check — linking to a row requires only that it exist, not
+    /// that the writer can read it (docs/research/table-relationships.md).
+    /// </summary>
+    private async Task AssertRelationshipTargetsExistAsync(
+        IEnumerable<(ColumnDef Column, object Value)> relationshipValues, CancellationToken ct)
+    {
+        var byTarget = new Dictionary<Guid, HashSet<Guid>>();
+        var perColumn = new List<(ColumnDef Column, Guid[] Ids)>();
+        foreach (var (column, value) in relationshipValues)
+        {
+            if (column.Type != ColumnTypes.Relationship || value is DBNull)
+                continue;
+            var ids = column.IsArray ? (Guid[])value : [(Guid)value];
+            perColumn.Add((column, ids));
+            if (!byTarget.TryGetValue(column.TargetTableId!.Value, out var set))
+                byTarget[column.TargetTableId!.Value] = set = [];
+            foreach (var id in ids)
+                set.Add(id);
+        }
+        if (byTarget.Count == 0)
+            return;
+
+        var missingByTarget = new Dictionary<Guid, HashSet<Guid>>();
+        foreach (var (targetTableId, ids) in byTarget)
+        {
+            var target = await cache.GetAsync(targetTableId, ct);
+            var qualified = PhysicalNaming.QualifiedTable(target.Database.SchemaName, target.Table.PhysicalName);
+            var found = await QueryAsync($"SELECT {IdCol} FROM {qualified} WHERE {IdCol} = ANY(@ids)",
+                [new NpgsqlParameter("ids", ids.ToArray())], r => r.GetFieldValue<Guid>(0), ct);
+            var missing = ids.Except(found).ToHashSet();
+            if (missing.Count > 0)
+                missingByTarget[targetTableId] = missing;
+        }
+        if (missingByTarget.Count == 0)
+            return;
+
+        var fields = new Dictionary<string, string[]>();
+        foreach (var (column, ids) in perColumn)
+        {
+            if (!missingByTarget.TryGetValue(column.TargetTableId!.Value, out var missing))
+                continue;
+            var missingWire = ids.Where(missing.Contains).Select(Ids.Wire).ToArray();
+            if (missingWire.Length > 0)
+                fields[column.Key] = [$"References a row that doesn't exist: {string.Join(", ", missingWire)}."];
+        }
+        throw new PraxyException(400, ErrorTypes.RelationshipTargetNotFound, "Invalid row data.", fields);
     }
 
     // ---- get --------------------------------------------------------------------------------
@@ -166,6 +222,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         var setClauses = new List<string>();
         var parameters = new List<NpgsqlParameter>();
         var fields = new Dictionary<string, string[]>();
+        var relationshipUpdates = new List<(ColumnDef Column, object Value)>();
         var seq = 0;
 
         if (data is { } d)
@@ -196,6 +253,8 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
                         var value = RowValues.ToWriteValue(column, prop.Name, prop.Value);
                         setClauses.Add($"{PhysicalNaming.Quote(column.PhysicalName)} = @{pName}");
                         parameters.Add(new NpgsqlParameter(pName, value));
+                        if (column.Type == ColumnTypes.Relationship)
+                            relationshipUpdates.Add((column, value));
                     }
                     catch (FormatException ex)
                     {
@@ -220,6 +279,8 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
         var (row, readRoles) = await SchemaDdl.InTransactionAsync<(JsonObject Row, string[] ReadRoles)>(db, async () =>
         {
+            await AssertRelationshipTargetsExistAsync(relationshipUpdates, ct);
+
             var updated = await QueryAsync(sql, parameters, r => BuildRowJson(entry, r, null), ct);
             if (updated.Count == 0)
                 throw PraxyException.NotFound(ErrorTypes.RowNotFound, "Row not found.");

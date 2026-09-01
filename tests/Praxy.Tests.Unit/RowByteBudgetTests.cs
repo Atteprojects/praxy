@@ -62,4 +62,11 @@ public class RowByteBudgetTests
         var bytes = RowByteBudget.EstimateBytes(ColumnTypes.Enum, null, false, ["a", "much-longer-element"]);
         Assert.Equal("much-longer-element".Length, bytes);
     }
+
+    [Fact]
+    public void Relationship_estimate_is_uuid_width_scalar_and_capped_when_array()
+    {
+        Assert.Equal(16, RowByteBudget.EstimateBytes(ColumnTypes.Relationship, null, false, null));
+        Assert.Equal(160, RowByteBudget.EstimateBytes(ColumnTypes.Relationship, null, true, null));
+    }
 }

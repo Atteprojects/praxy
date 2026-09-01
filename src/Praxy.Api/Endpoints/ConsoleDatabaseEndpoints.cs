@@ -223,7 +223,7 @@ public static class ConsoleDatabaseEndpoints
         var table = await SchemaLookup.TableAsync(tables, database.Id, tableId, ct);
         var column = await columns.CreateAsync(
             database, table, type, req.Key, req.Required ?? false, req.Array ?? false,
-            req.Size, req.Elements, req.Default, ct);
+            req.Size, req.Elements, req.Default, req.TargetTableId, ct);
         await AuditAsync(db, http, project.Id, "columns.create", $"table/{tableId}/column/{Ids.Wire(column.Id)}", ct);
         return Results.Created(
             $"/v1/console/projects/{project.Id}/databases/{databaseId}/tables/{tableId}/columns/{Ids.Wire(column.Id)}",

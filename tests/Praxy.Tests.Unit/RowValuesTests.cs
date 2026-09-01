@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Praxy.Core;
 using Praxy.Persistence.Entities;
 using Praxy.Tables;
 
@@ -149,5 +150,31 @@ public class RowValuesTests
             ? Column(type, options: """{"elements":["a b"]}""")
             : Column(type, size: 100);
         Assert.Throws<FormatException>(() => RowValues.ToWriteValue(column, "col", Parse("\"a\\u0000b\"")));
+    }
+
+    [Fact]
+    public void Relationship_value_parses_a_wire_id_to_a_guid()
+    {
+        var column = Column(ColumnTypes.Relationship);
+        var wireId = "0195a1b2c3d4e5f6a7b8c9d0e1f2a3b4";
+        var value = RowValues.ToWriteValue(column, "col", Parse($"\"{wireId}\""));
+        Assert.Equal(wireId, Ids.Wire(Assert.IsType<Guid>(value)));
+    }
+
+    [Fact]
+    public void Relationship_value_that_is_not_a_valid_id_is_rejected()
+    {
+        var column = Column(ColumnTypes.Relationship);
+        Assert.Throws<FormatException>(() => RowValues.ToWriteValue(column, "col", Parse("\"not-an-id\"")));
+    }
+
+    [Fact]
+    public void Relationship_array_converts_every_element_to_a_guid()
+    {
+        var column = Column(ColumnTypes.Relationship, isArray: true);
+        var wireId = "0195a1b2c3d4e5f6a7b8c9d0e1f2a3b4";
+        var value = RowValues.ToWriteValue(column, "col", Parse($"[\"{wireId}\"]"));
+        var array = Assert.IsType<Guid[]>(value);
+        Assert.Equal(wireId, Ids.Wire(array[0]));
     }
 }

@@ -198,6 +198,9 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.Property(x => x.Status).HasMaxLength(32);
             e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TableId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.TableId, x.Key }).IsUnique();
+            // Restrict, not cascade: deleting a target table must never silently delete other
+            // tables' relationship columns — Phase 2 gates it explicitly (relationship_dependency).
+            e.HasOne<TableDef>().WithMany().HasForeignKey(x => x.TargetTableId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<IndexDef>(e =>

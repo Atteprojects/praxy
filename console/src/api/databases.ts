@@ -174,6 +174,7 @@ export interface CreateColumnInput {
   default?: unknown;
   size?: number;
   elements?: string[];
+  targetTableId?: string;
 }
 
 export function useCreateColumn(projectId: string, databaseId: string, tableId: string) {
