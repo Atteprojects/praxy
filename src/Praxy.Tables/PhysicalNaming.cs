@@ -32,14 +32,43 @@ public static partial class PhysicalNaming
     public static string EntityName(string key, Guid id, int reserveSuffixChars = 0) =>
         WithHashSuffix(key, id, prefix: null, reserveSuffixChars);
 
-    /// <summary>Physical index name: <c>ix_&lt;sanitized_key&gt;_&lt;hash6&gt;</c>.</summary>
-    public static string IndexName(string key, Guid id) => WithHashSuffix(key, id, prefix: "ix_");
+    /// <summary>
+    /// Physical index name: <c>ix_&lt;sanitized_key&gt;_&lt;hash6&gt;</c>. <paramref name="forFulltext"/>
+    /// reserves the 5 characters <see cref="FulltextColumnName"/>'s <c>__fts</c> suffix will append to
+    /// this name — the same reservation <see cref="EntityName"/> makes for a geo column's derived
+    /// aliases, and for the same reason: keys are valid up to <see cref="Keys.MaxLength"/> characters,
+    /// so without it a long-keyed fulltext index generates a 68-character tsvector column name that
+    /// <see cref="Quote"/> refuses, turning an ordinary create request into a 500.
+    /// </summary>
+    public static string IndexName(string key, Guid id, bool forFulltext = false) =>
+        WithHashSuffix(key, id, prefix: "ix_", reserveSuffixChars: forFulltext ? FulltextSuffix.Length : 0);
 
-    /// <summary>Physical generated tsvector column name for a fulltext index.</summary>
-    public static string FulltextColumnName(string indexPhysicalName) => $"{indexPhysicalName}__fts";
+    private const string FulltextSuffix = "__fts";
 
-    /// <summary>Physical name of a table's row-permissions side table.</summary>
-    public static string PermsTableName(string tablePhysicalName) => $"{tablePhysicalName}__perms";
+    /// <summary>
+    /// Physical generated tsvector column name for a fulltext index. The index's own physical name
+    /// must have been generated with <c>IndexName(..., forFulltext: true)</c> so this suffix fits.
+    /// </summary>
+    public static string FulltextColumnName(string indexPhysicalName) => $"{indexPhysicalName}{FulltextSuffix}";
+
+    /// <summary>
+    /// Physical name of a table's row-permissions side table. The table's own physical name must have
+    /// been generated reserving <see cref="RowSecuritySuffixChars"/> so this — and the index built on
+    /// top of it — fit.
+    /// </summary>
+    public static string PermsTableName(string tablePhysicalName) => $"{tablePhysicalName}{PermsSuffix}";
+
+    private const string PermsSuffix = "__perms";
+    private const string PermsIndexSuffix = "_action_role_idx";
+
+    /// <summary>
+    /// What a table's physical name must reserve so row security can be enabled on it later. Two
+    /// suffixes stack: <c>TablesService.SetRowSecurityAsync</c> derives a <c>__perms</c> side table
+    /// from the table name and then an <c>_action_role_idx</c> index from *that*. Reserved for every
+    /// table rather than only row-secured ones, because row security is toggled long after the name
+    /// is generated and the name can never change.
+    /// </summary>
+    public static int RowSecuritySuffixChars => PermsSuffix.Length + PermsIndexSuffix.Length;
 
     private static string WithHashSuffix(string key, Guid id, string? prefix, int reserveSuffixChars = 0)
     {

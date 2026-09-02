@@ -3,9 +3,9 @@
 **Status: complete, with one plan change from the design doc** (see below — the distance model, which
 was revised twice: this session moved `orderNear`'s ordering off `<->` to fix a real correctness bug,
 and owner review then found a third option that fixes it without losing the index. Final state: sphere
-everywhere, `<->` retained for ordering). `dotnet test` green: **432 unit, 265 integration** (real
+everywhere, `<->` retained for ordering). `dotnet test` green: **435 unit, 265 integration** (real
 PostGIS-enabled Postgres via Testcontainers), including 21 new unit test cases and 8 new integration
-tests for this phase. Console
+tests for this phase, plus 3 more from the pre-existing fixes below. Console
 `tsc -b && vite build` clean. Flutter (`dart analyze .`, `dart test`) and JS/Next.js SDK
 (`typecheck`/`test` on `@praxy/core`, `@praxy/react`, `@praxy/nextjs`) all clean. Owner-tested
 end-to-end against the shared canonical local dev instance (see
@@ -61,12 +61,13 @@ takes the geo column as its attribute.
 **`Praxy.Tables/QueryCompiler.cs`**:
 - `CompiledListQuery` gained a `HasDistance` field, threaded through from `CompileList` to
   `RowsService.BuildRowJson` — mirrors how `SelectedKeys`/`Reversed` already travel for the same reason.
-- `SortKeyExpr`'s `orderNear` branch compiles to `ST_Distance({alias}{col}, {nearPointExpr})` (see the
-  plan-change section above). The trailing `$distance` select-list column, appended only when
-  `hasDistance` is true, reuses `SortKeyExpr("t.")` verbatim rather than building a second expression —
-  appended strictly after `BuildSelectList`'s own columns, never in the middle, exactly matching the
-  ordinal-safety rule `RowsService.BuildRowJson` depends on. `select(...)` narrowing never suppresses it
-  (same "system field" status as `$id`/`$createdAt`).
+- `SortKeyExpr`'s `orderNear` branch keeps the `<->` KNN operator, and a separate `DistanceExpr`
+  compiles the trailing `$distance` select-list column as `ST_Distance({col}, {nearPointExpr}, false)` —
+  the explicit sphere variant, numerically identical to `<->` (see the plan-change section above; this
+  bullet's first version described the superseded ST_Distance-for-both approach). The `$distance` column
+  is appended only when `hasDistance` is true, strictly after `BuildSelectList`'s own columns and never
+  in the middle, exactly matching the ordinal-safety rule `RowsService.BuildRowJson` depends on.
+  `select(...)` narrowing never suppresses it (same "system field" status as `$id`/`$createdAt`).
 - New `CompileWithinBox` (mirrors `CompileNear`'s structure): same column-type and spatial-index gating,
   reorders the wire's lat-first `(minLat, minLng, maxLat, maxLng)` into `ST_MakeEnvelope`'s x/y
   (`minLng, minLat, maxLng, maxLat`) argument order, casts to `::geography`, and compiles to
@@ -149,6 +150,50 @@ covered — `Distance_is_correct_when_the_geo_column_is_followed_by_other_column
 `name`(string) → `location`(geo) → `views`(integer) → `featured`(boolean), confirming every column after
 `location` lands in its correct property and `$distance` is still correct, unlike every other test in
 this file (which happens to put `location` last, the one placement that can't expose an ordinal bug).
+
+## Also fixed in this PR (pre-existing, flagged in earlier phases, not Phase 3 scope)
+
+Three defects that earlier phases had flagged-but-not-fixed, cleaned up in owner review before this
+merged rather than carried forward again.
+
+**1. The console `retry: 1` error-surfacing landmine** (flagged in the Phase 2 report, hit again by this
+phase's antimeridian case). Both sessions suspected it was specific to the browser-automation
+environment. It isn't — the root cause is simpler: **a 4xx was being retried at all.** A rejected query
+fails identically every time, so the retry only delays the error reaching the UI, and under
+react-query's default `networkMode: "online"` that retry can be *paused* rather than run, parking the
+query at `status: "pending"` / `fetchStatus: "paused"` so `isError` never flips and the screen renders
+its empty state. `console/src/main.tsx`'s shared QueryClient now returns `false` from `retry` for any
+`ApiError` with a 4xx code; 5xx and transport failures keep their single retry, since those are the
+ones a retry can fix. Verified live in the console: an antimeridian `withinBox` now surfaces
+**"'withinBox' can't cross the antimeridian."** in the router's error boundary, immediately.
+
+**2. and 3. Two more derived-identifier budget bugs**, the same class as the `reserveSuffixChars` fix
+geo Phase 1 made for `_lng`/`_lat`. That report noted in passing that fulltext indexes "likely" had it
+too; they did, and a sweep found a third, wider instance nobody had spotted:
+
+| derived name | suffix chars | worst case | reachable by |
+|---|---|---|---|
+| geo `_lng`/`_lat` alias | 4 | — | fixed in Phase 1 |
+| fulltext `__fts` column | 5 | **68 chars** | a fulltext index keyed >53 chars |
+| table `__perms` + its `_action_role_idx` | 23 | **86 chars** | enabling row security on a table keyed >56 chars |
+
+Keys are valid up to `Keys.MaxLength` (64), so both were reachable with ordinary valid input, and both
+threw `PhysicalNaming.Quote`'s `InvalidOperationException` ("this is a bug, not user input") — a 500,
+not a clean 400. `IndexName` now takes `forFulltext`, and `EntityName` reserves
+`PhysicalNaming.RowSecuritySuffixChars` for every table (row security is toggled long after the name is
+generated, and the name can never change afterwards). Physical names are stored per-resource in the
+catalog, so only newly created tables and indexes are affected — nothing existing is renamed.
+
+Both regression tests assert that the *unreserved* form is genuinely unsafe, so they document the bug
+rather than just guarding the fix. A sweep of every `Quote($"...")` and `{PhysicalName}`-concatenation
+site confirms these four are the complete set.
+
+**Also in this PR, unrelated to any of the above:** `.github/workflows/ci.yml` now only does each
+area's real work when files in that area changed — a docs-only PR no longer spends ~16 minutes
+rebuilding the API. Every job still *runs* and gates its steps rather than being skipped, because
+`main`'s required checks ("Build and test API", "Build console", "Build and test Flutter SDK") combined
+with `enforce_admins` mean a job that never reports leaves a PR unmergeable with no override. The
+workflow carries a comment explaining that, and when the tidier job-level `if:` becomes safe.
 
 ## Owner-test checklist
 

@@ -82,6 +82,13 @@ This is better news than the design doc's cautious framing anticipated — no fa
 needed for `orderNear` + `cursorAfter`/`cursorBefore` together; both paths use the index. Plain `offset`
 pagination remains available unconditionally regardless (unchanged, pre-existing).
 
+> **Resolved 2026-09-02** (in the Phase 3 PR, alongside its own review fixes). The root cause was
+> simpler than the diagnosis below and *not* harness-specific: a 4xx was being retried at all.
+> The shared QueryClient now refuses to retry 4xx — those fail identically every time, so the
+> retry only delayed the message, and under `networkMode: "online"` it could be paused instead
+> of run, which is what parked the query at `pending`/`paused`. 5xx and transport errors keep
+> their retry. Verified live: the antimeridian case now surfaces its real message.
+
 ## Landmine found: console rows-list error surfacing can get stuck behind `retry: 1` in a
 degraded-online environment
 

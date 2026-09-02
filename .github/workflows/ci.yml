@@ -6,103 +6,190 @@ on:
   pull_request:
     branches: [main]
 
+# Each job below only does its real work when files it actually covers changed — a docs-only PR
+# no longer spends 16 minutes rebuilding and testing the API.
+#
+# Why the jobs still *run* (and gate their steps) rather than being skipped with a job-level `if:`,
+# or filtered out with a workflow-level `on.<event>.paths:` — both of which would read more
+# cleanly: `main` is a protected branch whose required status checks are "Build and test API",
+# "Build console" and "Build and test Flutter SDK", with `enforce_admins` on. A workflow filtered
+# out by `paths:` never reports those contexts at all, so GitHub leaves them Pending forever and
+# the PR becomes unmergeable with no admin override. Keeping every job running means every required
+# context always reports; the skipped work costs a runner spin-up (~15s) instead of ~16 minutes.
+# If the required-check list or `enforce_admins` ever changes, job-level `if:` becomes safe and is
+# the nicer shape — until then, don't "tidy" this into one.
 jobs:
-  api:
-    name: Build and test API
+  changes:
+    name: Detect changed areas
     runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      console: ${{ steps.filter.outputs.console }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+      nextjs: ${{ steps.filter.outputs.nextjs }}
     steps:
       - uses: actions/checkout@v4
 
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Every area also watches this workflow file: a CI change must be validated by the jobs
+          # it changes, not skipped by its own filter.
+          filters: |
+            api:
+              - 'src/**'
+              - 'tests/**'
+              - 'Praxy.sln'
+              - 'Directory.Build.props'
+              - '.github/workflows/ci.yml'
+            console:
+              - 'console/**'
+              - '.github/workflows/ci.yml'
+            flutter:
+              - 'sdk/flutter/**'
+              - '.github/workflows/ci.yml'
+            nextjs:
+              - 'sdk/js/**'
+              - '.github/workflows/ci.yml'
+
+  api:
+    name: Build and test API
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.api == 'true'
+
       - uses: actions/setup-dotnet@v4
+        if: needs.changes.outputs.api == 'true'
         with:
           dotnet-version: "10.0.x"
 
       - name: Restore
+        if: needs.changes.outputs.api == 'true'
         run: dotnet restore Praxy.sln
 
       - name: Build
+        if: needs.changes.outputs.api == 'true'
         run: dotnet build Praxy.sln --no-restore --configuration Release
 
       # Testcontainers needs a Docker daemon — ubuntu-latest runners have one preinstalled at
       # /var/run/docker.sock, so no services: Postgres container here; Testcontainers manages its own.
       - name: Test
+        if: needs.changes.outputs.api == 'true'
         run: dotnet test Praxy.sln --no-build --configuration Release
+
+      - name: No API changes
+        if: needs.changes.outputs.api != 'true'
+        run: echo "No changes under src/, tests/, Praxy.sln or Directory.Build.props — nothing to build."
 
   console:
     name: Build console
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.console == 'true'
 
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.console == 'true'
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: console/package-lock.json
 
       - name: Install
+        if: needs.changes.outputs.console == 'true'
         run: npm ci --prefix console
 
       - name: Build
+        if: needs.changes.outputs.console == 'true'
         run: npm run build --prefix console
+
+      - name: No console changes
+        if: needs.changes.outputs.console != 'true'
+        run: echo "No changes under console/ — nothing to build."
 
   flutter-sdk:
     name: Build and test Flutter SDK
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.flutter == 'true'
 
       # praxy_flutter/example are real Flutter packages (flutter test needs the Flutter SDK's
       # bundled Dart, not just dart-lang/setup-dart) — praxy_core/praxy_codegen are pure Dart but
       # share the same pub workspace, resolved together below.
       - uses: subosito/flutter-action@v2
+        if: needs.changes.outputs.flutter == 'true'
         with:
           channel: stable
 
       - name: Install
+        if: needs.changes.outputs.flutter == 'true'
         run: dart pub get
         working-directory: sdk/flutter
 
       - name: Test pure-Dart packages
+        if: needs.changes.outputs.flutter == 'true'
         run: dart test praxy_core praxy_codegen
         working-directory: sdk/flutter
 
       - name: Test Flutter packages
+        if: needs.changes.outputs.flutter == 'true'
         run: flutter test praxy_flutter example
         working-directory: sdk/flutter
 
       - name: Analyze
+        if: needs.changes.outputs.flutter == 'true'
         run: dart analyze .
         working-directory: sdk/flutter
 
+      - name: No Flutter SDK changes
+        if: needs.changes.outputs.flutter != 'true'
+        run: echo "No changes under sdk/flutter/ — nothing to build."
+
   nextjs-sdk:
     name: Build and test Next.js SDK
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.nextjs == 'true'
 
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.nextjs == 'true'
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: sdk/js/package-lock.json
 
       - name: Install
+        if: needs.changes.outputs.nextjs == 'true'
         run: npm ci --prefix sdk/js
 
       # Dependency order matters: react/nextjs/codegen type-resolve against core's/react's built
       # dist/*.d.ts, not their TS source — this is npm workspaces, not a project-references build.
       - name: Build
+        if: needs.changes.outputs.nextjs == 'true'
         run: npm run build --prefix sdk/js
 
       - name: Test
+        if: needs.changes.outputs.nextjs == 'true'
         run: npm run test --prefix sdk/js
 
       - name: Typecheck packages
+        if: needs.changes.outputs.nextjs == 'true'
         run: npm run typecheck --prefix sdk/js
 
       # The example app isn't one of the shipped packages (no build/test script of its own to run
       # here — it needs a live local Praxy instance + real project ids, verified manually per
       # docs/handoff/nextjs-sdk-prompt.md's "done means"), but it must still type-check cleanly.
       - name: Typecheck example app
+        if: needs.changes.outputs.nextjs == 'true'
         run: npm run typecheck --prefix sdk/js/examples/nextjs
+
+      - name: No Next.js SDK changes
+        if: needs.changes.outputs.nextjs != 'true'
+        run: echo "No changes under sdk/js/ — nothing to build."

@@ -54,7 +54,8 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService 
                 new Dictionary<string, string[]> { ["orders"] = ["Must have one 'asc'/'desc' entry per column."] });
 
         var id = Ids.NewUuid();
-        var physicalName = PhysicalNaming.IndexName(key, id);
+        // Fulltext reserves room for the "__fts" suffix its generated tsvector column appends below.
+        var physicalName = PhysicalNaming.IndexName(key, id, forFulltext: type == TypeFulltext);
         var index = new IndexDef
         {
             Id = id,

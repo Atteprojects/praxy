@@ -98,4 +98,74 @@ public class PhysicalNamingTests
         var qualified = PhysicalNaming.QualifiedTable("px_abc", "posts_123");
         Assert.Equal("\"px_abc\".\"posts_123\"", qualified);
     }
+
+    /// <summary>
+    /// The same budget bug geo columns hit with their derived <c>_lng</c>/<c>_lat</c> aliases, flagged
+    /// as pre-existing in docs/handoff/geo-nearby-phase-1-report.md and unfixed until now: a fulltext
+    /// index's generated tsvector column appends <c>__fts</c> to the index's own physical name, but
+    /// IndexName budgeted the full 63 characters for itself. Keys are valid up to 64 characters
+    /// (<see cref="Keys.MaxLength"/>), so a long-keyed fulltext index produced a 68-character
+    /// identifier that <see cref="PhysicalNaming.Quote"/> then refused — an
+    /// <see cref="InvalidOperationException"/> ("this is a bug, not user input") surfacing as a 500 for
+    /// an ordinary, valid create request.
+    /// </summary>
+    [Fact]
+    public void A_max_length_fulltext_index_key_leaves_room_for_the_fts_column_suffix()
+    {
+        var key = new string('a', Keys.MaxLength);
+        var id = Guid.NewGuid();
+        Assert.True(Keys.IsValid(key));
+
+        // The bug, still reachable through the unreserved overload — this is exactly what the old
+        // IndexName(key, id) produced, and why the flag has to be passed at the fulltext call site.
+        var unreserved = PhysicalNaming.FulltextColumnName(PhysicalNaming.IndexName(key, id));
+        Assert.False(PhysicalNaming.IsSafeIdentifier(unreserved));
+        Assert.Throws<InvalidOperationException>(() => PhysicalNaming.Quote(unreserved));
+
+        var indexName = PhysicalNaming.IndexName(key, id, forFulltext: true);
+        var ftsColumn = PhysicalNaming.FulltextColumnName(indexName);
+
+        Assert.True(PhysicalNaming.IsSafeIdentifier(indexName), $"index name is {indexName.Length} chars");
+        Assert.True(PhysicalNaming.IsSafeIdentifier(ftsColumn), $"fts column is {ftsColumn.Length} chars");
+        PhysicalNaming.Quote(ftsColumn); // must not throw
+    }
+
+    /// <summary>
+    /// Third instance of the same derived-suffix budget bug, and the widest: a table's physical name
+    /// grows a <c>__perms</c> row-permissions side table, and that side table in turn grows a
+    /// <c>_action_role_idx</c> index — both built by string concatenation in
+    /// <c>TablesService.SetRowSecurityAsync</c>. A long-keyed table therefore couldn't have row
+    /// security enabled at all: the derived names ran to 70 and 86 characters against Postgres's
+    /// 63-character limit.
+    /// </summary>
+    [Fact]
+    public void A_max_length_table_key_leaves_room_for_the_perms_table_and_its_index()
+    {
+        var key = new string('a', Keys.MaxLength);
+        Assert.True(Keys.IsValid(key));
+
+        var tableName = PhysicalNaming.EntityName(key, Guid.NewGuid(), PhysicalNaming.RowSecuritySuffixChars);
+        var permsTable = PhysicalNaming.PermsTableName(tableName);
+        var permsIndex = $"{permsTable}_action_role_idx";
+
+        Assert.True(PhysicalNaming.IsSafeIdentifier(tableName), $"table is {tableName.Length} chars");
+        Assert.True(PhysicalNaming.IsSafeIdentifier(permsTable), $"perms table is {permsTable.Length} chars");
+        Assert.True(PhysicalNaming.IsSafeIdentifier(permsIndex), $"perms index is {permsIndex.Length} chars");
+        PhysicalNaming.Quote(permsIndex); // must not throw
+
+        // The unreserved form is what shipped before this fix — both derived names blew the limit.
+        var unreserved = PhysicalNaming.PermsTableName(PhysicalNaming.EntityName(key, Guid.NewGuid()));
+        Assert.False(PhysicalNaming.IsSafeIdentifier(unreserved));
+        Assert.False(PhysicalNaming.IsSafeIdentifier($"{unreserved}_action_role_idx"));
+    }
+
+    /// <summary>Non-fulltext indexes keep the full budget — their names gain no derived suffix.</summary>
+    [Fact]
+    public void A_non_fulltext_index_does_not_pay_the_fts_reservation()
+    {
+        var key = new string('a', Keys.MaxLength);
+        var id = Guid.NewGuid();
+        Assert.True(PhysicalNaming.IndexName(key, id).Length > PhysicalNaming.IndexName(key, id, forFulltext: true).Length);
+        Assert.True(PhysicalNaming.IsSafeIdentifier(PhysicalNaming.IndexName(key, id)));
+    }
 }
