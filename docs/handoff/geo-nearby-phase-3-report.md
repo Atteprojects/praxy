@@ -195,13 +195,17 @@ rebuilding the API. Every job still *runs* and gates its steps rather than being
 with `enforce_admins` mean a job that never reports leaves a PR unmergeable with no override. The
 workflow carries a comment explaining that, and when the tidier job-level `if:` becomes safe.
 
-Verified on this PR rather than assumed, in two runs, because the two halves need different commits
-to exercise: the commit that introduced the workflow resolved **all four filters `true`** (correct —
-every area watches `ci.yml`, so a CI change is validated by every job it changes), and a subsequent
-docs-only commit resolved **all four `false`**, with each job running its "No … changes" step and
-still reporting its required context as passing. That second half is the one worth checking: a
-required check that stops reporting would leave `main` unmergeable, and `enforce_admins` means there
-is no override.
+Verified, with one wrong turn worth recording. The commit that introduced the workflow resolved all
+four filters `true` — correct, since every area watches `ci.yml`. A follow-up docs-only *commit* was
+then pushed expecting all four to flip `false`; they didn't, and the API job ran its full ~16 minutes
+again. The reason is that on `pull_request` events `dorny/paths-filter` diffs against the **base
+branch**, not the previous commit, so it sees the whole PR — and this PR genuinely changes `src/`,
+`tests/` and `console/`. That is the correct semantic (a PR should test everything it changes), but it
+means the skip path cannot be demonstrated from inside a PR that touches those areas at all. It was
+confirmed instead on a separate throwaway docs-only PR opened off `main`, where all four filters
+resolved `false`, every job ran its "No … changes" step, and all three required contexts still
+reported passing — the property that actually matters, since a required check that stops reporting
+would leave `main` unmergeable and `enforce_admins` allows no override.
 
 ## Owner-test checklist
 
