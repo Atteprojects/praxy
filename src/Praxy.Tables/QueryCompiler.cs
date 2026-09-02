@@ -74,7 +74,8 @@ public static class QueryCompiler
                             _ = entry.SpatialIndexFor(sortColumn.Key)
                                 ?? throw QueryDsl.Invalid($"'{sortColumn.Key}' has no spatial index.", "queries",
                                     $"Create a spatial index on '{sortColumn.Key}' before using 'orderNear' — never a silent sequential scan.");
-                            sortNearPoint = (RequireNearValue(q.Values[0], "lat"), RequireNearValue(q.Values[1], "lng"));
+                            sortNearPoint = (RequireNearValue(q.Values[0], "lat", "orderNear"),
+                                RequireNearValue(q.Values[1], "lng", "orderNear"));
                         }
                         else
                         {
@@ -328,9 +329,9 @@ public static class QueryCompiler
                 ?? throw QueryDsl.Invalid($"'{column.Key}' has no spatial index.", "queries",
                     $"Create a spatial index on '{column.Key}' before using 'near' — never a silent sequential scan.");
 
-            var lat = RequireNearValue(values[0], "lat");
-            var lng = RequireNearValue(values[1], "lng");
-            var radiusMeters = RequireNearValue(values[2], "radiusMeters");
+            var lat = RequireNearValue(values[0], "lat", "near");
+            var lng = RequireNearValue(values[1], "lng", "near");
+            var radiusMeters = RequireNearValue(values[2], "radiusMeters", "near");
             return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)})";
         }
     }
@@ -339,11 +340,13 @@ public static class QueryCompiler
 
     /// <summary>Shared by <c>near</c>'s filter and <c>orderNear</c>'s sort-key — both parse a query point's
     /// lat/lng as plain doubles rather than routing through <see cref="ConvertValue"/>, since neither is a
-    /// value *of* the column's own type.</summary>
-    private static double RequireNearValue(JsonElement value, string label)
+    /// value *of* the column's own type. <paramref name="method"/> is named in the error so an
+    /// <c>orderNear</c> failure doesn't report itself as a <c>near</c> one.</summary>
+    private static double RequireNearValue(JsonElement value, string label, string method)
     {
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var d))
-            throw QueryDsl.Invalid("'near' requires numeric values.", "queries", $"'near' {label} must be a number.");
+            throw QueryDsl.Invalid($"'{method}' requires numeric values.", "queries",
+                $"'{method}' {label} must be a number.");
         return d;
     }
 

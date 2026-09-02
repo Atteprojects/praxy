@@ -285,4 +285,25 @@ public class QueryCompilerTests
         Assert.DoesNotContain("ST_DWithin", compiled.Sql);
         Assert.Contains("<->", compiled.Sql);
     }
+
+    /// <summary>
+    /// The shared <c>RequireNearValue</c> serves both methods, so its message has to name the one the
+    /// caller actually sent — an 'orderNear' failure reporting itself as 'near' sends people looking
+    /// at the wrong query.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":["nope",-122.4194]}""", "orderNear", "lat")]
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":[37.7749,"nope"]}""", "orderNear", "lng")]
+    [InlineData("""{"method":"near","attribute":"loc","values":["nope",-122.4194,500]}""", "near", "lat")]
+    [InlineData("""{"method":"near","attribute":"loc","values":[37.7749,-122.4194,"nope"]}""", "near", "radiusMeters")]
+    public void A_non_numeric_query_point_value_names_the_method_the_caller_sent(
+        string query, string method, string label)
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var ex = Assert.Throws<PraxyException>(
+            () => QueryCompiler.CompileList(entry, Q(query), ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+        Assert.Equal($"'{method}' requires numeric values.", ex.Message);
+        Assert.Contains($"'{method}' {label} must be a number.", ex.Fields!["queries"]);
+    }
 }

@@ -56,8 +56,12 @@ export function AddRoleButton({
   );
 }
 
-/** Exported for RelationshipPicker.tsx, which reuses this same positioning shape. */
-export function usePanelPosition(anchorRef: React.RefObject<HTMLElement | null>) {
+/**
+ * Exported for RelationshipPicker.tsx and RowsPage.tsx's geo sort popover, which reuse this same
+ * positioning shape. `panelWidth` must match the width the caller actually renders — it's what the
+ * left-edge clamp is computed against — and defaults to this file's own 320px panel.
+ */
+export function usePanelPosition(anchorRef: React.RefObject<HTMLElement | null>, panelWidth = PANEL_WIDTH) {
   const [style, setStyle] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -70,7 +74,7 @@ export function usePanelPosition(anchorRef: React.RefObject<HTMLElement | null>)
       setStyle({
         top: dropDown ? rect.bottom + GAP : Math.max(GAP, rect.top - GAP - Math.min(above, 384)),
         // Right-aligned to the trigger, then clamped so it never runs past either viewport edge.
-        left: Math.min(Math.max(GAP, rect.right - PANEL_WIDTH), window.innerWidth - PANEL_WIDTH - GAP),
+        left: Math.min(Math.max(GAP, rect.right - panelWidth), window.innerWidth - panelWidth - GAP),
         maxHeight: Math.min(384, dropDown ? below : above),
       });
     }
@@ -81,7 +85,7 @@ export function usePanelPosition(anchorRef: React.RefObject<HTMLElement | null>)
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchorRef]);
+  }, [anchorRef, panelWidth]);
 
   return style;
 }

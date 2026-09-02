@@ -2,10 +2,14 @@
 
 **Status: complete.** Every item in `docs/handoff/geo-nearby-phase-2-prompt.md`'s scope shipped, including
 full keyset-cursor pagination (the prompt's own correction to the research doc's earlier, more cautious
-framing). `dotnet test` green: **405 unit, 257 integration** (real PostGIS-enabled Postgres via
-Testcontainers), including 11 new unit test cases and 7 new integration tests for this feature. Console
+framing). `dotnet test` green: **409 unit, 257 integration** (real PostGIS-enabled Postgres via
+Testcontainers), including 15 new unit test cases and 7 new integration tests for this feature. Console
 `tsc -b && vite build` clean. Owner-tested end-to-end against the shared canonical local dev instance (see
 [Owner-test checklist](#owner-test-checklist)).
+
+Two defects found in the owner's pre-merge review were fixed on this branch before it merged — see
+[Fixed in review, before merge](#fixed-in-review-before-merge). The unit count above includes their
+regression coverage.
 
 ## What shipped
 
@@ -51,7 +55,9 @@ specified:
   helper replaced the inline asc/desc-arrow ternary at both call sites ($id column and regular columns) so
   it correctly renders nothing for a `"near"` sort on a differently-keyed column (structurally can't
   collide in practice, but kept type-correct rather than assuming). Reachable and clearable, confirmed in
-  the owner-test below.
+  the owner-test below. (The panel itself is a portal — see
+  [Fixed in review, before merge](#fixed-in-review-before-merge) for why the original in-grid popover had
+  to change.)
 
 **API DTOs / OpenAPI**: confirmed, not assumed — no changes needed. `queries[]` is already a free-form
 string array on the wire (`OpenApiDocumentTests` passing unchanged confirms the committed snapshot didn't
@@ -101,6 +107,32 @@ this phase and applies to *any* rows-list query error, not just `orderNear` — 
 happened to trigger a compiler-rejected rows-list query before this phase's UI existed (the `near()` filter
 itself was never wired into `FilterPicker` in Phase 1). Flagged as a background task rather than expanded
 into this phase's scope.
+
+## Fixed in review, before merge
+
+Two defects the owner's pre-merge review caught, both fixed on this same branch rather than deferred:
+
+**1. The sort popover was unreachable on a one-row table.** `GeoSortHeader`'s panel was
+`position: absolute` inside `DataGrid`'s `overflow-hidden` → `overflow-auto` wrappers, so it was clipped
+whenever it extended past the grid's own box — and because the panel lives inside a `position: sticky`
+thead that scrolling never moves, the clipped part was unrecoverable rather than merely off-view.
+Measured live on the shared dev instance: at three rows (the fixture this phase's own owner-test used) it
+fits with 77px to spare, which is why the original owner-test passed; at one row it was clipped by 52px,
+leaving **2px of the 40px Apply button** visible and the scroll container refusing to scroll at all.
+
+Fixed the way `RolePicker`/`RelationshipPicker` already solve the identical problem — a `createPortal`
+panel positioned with the shared `usePanelPosition` hook, which also brought outside-click and Escape
+dismissal the original popover never had. `usePanelPosition` gained an optional `panelWidth` parameter
+(defaulting to its existing 320px) because its left-edge clamp is computed against the panel's real
+width, and the geo panel is 224px; both existing call sites pass nothing and are unchanged. Re-measured
+after the fix on the same one-row case: no clipping ancestor at all, Apply 40px of 40px visible.
+
+**2. `orderNear` validation errors named the wrong method.** `RequireNearValue` is shared by both
+methods but hardcoded `'near'` in its message, so a bad `orderNear` value returned
+`'near' requires numeric values.` / `'near' lat must be a number.` — pointing the caller at a query they
+never sent. The error `type` (`general_query_invalid`) was correct throughout, so no public-API string
+changed; only the human-readable message was wrong. `RequireNearValue` now takes the method name, and a
+new `[Theory]` covers all four combinations (`orderNear` lat/lng, `near` lat/radiusMeters).
 
 ## Tests
 
