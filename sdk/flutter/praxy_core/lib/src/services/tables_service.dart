@@ -113,6 +113,7 @@ final class TablesService {
       createdAt: DateTime.parse(json[r'$createdAt'] as String),
       updatedAt: DateTime.parse(json[r'$updatedAt'] as String),
       permissions: ((json[r'$permissions'] as List?) ?? const []).cast<String>(),
+      distance: (json[r'$distance'] as num?)?.toDouble(),
     );
     final data = Map<String, dynamic>.from(json)..removeWhere((key, _) => key.startsWith(r'$'));
     try {

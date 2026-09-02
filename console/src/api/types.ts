@@ -302,6 +302,8 @@ export interface Row {
   $createdAt: string;
   $updatedAt: string;
   $permissions: string[];
+  /** Meters from an `orderNear` query's point — present only when the request carried `orderNear`. */
+  $distance?: number;
   [columnKey: string]: unknown;
 }
 

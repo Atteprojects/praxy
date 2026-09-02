@@ -10,7 +10,7 @@ public readonly record struct SqlParam(string Name, object Value);
 public sealed record CompiledListQuery(
     string Sql, IReadOnlyList<SqlParam> Params,
     string? CountSql, IReadOnlyList<SqlParam>? CountParams,
-    string[]? SelectedKeys, bool Reversed);
+    string[]? SelectedKeys, bool Reversed, bool HasDistance);
 
 public sealed record CompiledPredicate(string Sql, IReadOnlyList<SqlParam> Params);
 
@@ -74,8 +74,8 @@ public static class QueryCompiler
                             _ = entry.SpatialIndexFor(sortColumn.Key)
                                 ?? throw QueryDsl.Invalid($"'{sortColumn.Key}' has no spatial index.", "queries",
                                     $"Create a spatial index on '{sortColumn.Key}' before using 'orderNear' — never a silent sequential scan.");
-                            sortNearPoint = (RequireNearValue(q.Values[0], "lat", "orderNear"),
-                                RequireNearValue(q.Values[1], "lng", "orderNear"));
+                            sortNearPoint = (RequireLat(q.Values[0], "lat", "orderNear"),
+                                RequireLng(q.Values[1], "lng", "orderNear"));
                         }
                         else
                         {
@@ -137,11 +137,22 @@ public static class QueryCompiler
         }
 
         // For a plain column sort this is just the quoted column reference (today's behavior,
-        // unchanged); for orderNear it's the KNN distance expression. `alias` is "" in the unaliased
+        // unchanged); for orderNear it's the distance expression. `alias` is "" in the unaliased
         // cursor subselect and "t." in the two aliased sites (tuple-compare, ORDER BY).
+        //
+        // ST_Distance, not the GiST-index-accelerated <-> KNN operator — a deliberate departure from
+        // the original Phase 3 design doc, which assumed the two would agree closely enough to mix
+        // (<-> for ordering, ST_Distance for the returned $distance). Verified directly, not assumed
+        // (see docs/handoff/geo-nearby-phase-3-report.md): <-> computes geography's *sphere* distance
+        // while ST_Distance defaults to the spheroid, and they disagree often enough on ordering near
+        // ties (584 of the 2000 nearest rows inverted in a 50k-row test, up to ~23m apart) that mixing
+        // them would violate "a row shown as nearer must never sort after one shown as farther." Using
+        // ST_Distance for both loses <->'s KNN index-acceleration for the sort itself — the GiST index
+        // still accelerates any near()/withinBox() WHERE clause combined with orderNear, just not the
+        // ORDER BY in isolation. Correctness over speed here; see the report for the measured cost.
         string SortKeyExpr(string alias) => nearPointExpr is null
             ? $"{alias}{sortColQuoted}"
-            : $"{alias}{sortColQuoted} <-> {nearPointExpr}";
+            : $"ST_Distance({alias}{sortColQuoted}, {nearPointExpr})";
 
         var wherePredicate = select.FullPredicate(filterNodes, "read", callerRoles, bypassPermissions);
 
@@ -159,6 +170,14 @@ public static class QueryCompiler
         }
 
         var (selectList, selectedKeys) = BuildSelectList(entry, selectFields);
+        // $distance is a system field like $id/$createdAt — select(...) never suppresses it. Appended
+        // to the *end* of the select list, never the middle: BuildRowJson walks result ordinals
+        // positionally, and a trailing column is the only placement that can't shift them. Reuses
+        // SortKeyExpr("t.") verbatim — the exact same expression the ORDER BY already computes — so
+        // the displayed value and the sort order can never disagree even at the float level.
+        var hasDistance = nearPointExpr is not null;
+        if (hasDistance)
+            selectList += $", {SortKeyExpr("t.")} AS \"$distance\"";
         var dir = scanAscending ? "ASC" : "DESC";
         var orderClause = $"ORDER BY {SortKeyExpr("t.")} {dir}, t.{idColQuoted} {dir}";
         var limitParam = select.AddParam(effectiveLimit);
@@ -176,7 +195,7 @@ public static class QueryCompiler
             countParams = count.Params;
         }
 
-        return new CompiledListQuery(sql, select.Params, countSql, countParams, selectedKeys, reversed);
+        return new CompiledListQuery(sql, select.Params, countSql, countParams, selectedKeys, reversed, hasDistance);
     }
 
     // ---- shared predicate/filter compilation -------------------------------------------------
@@ -262,6 +281,8 @@ public static class QueryCompiler
                     return CompileSearch(column, q.Values[0]);
                 case "near":
                     return CompileNear(column, colSql, q.Values);
+                case "withinBox":
+                    return CompileWithinBox(column, colSql, q.Values);
                 default:
                     throw QueryDsl.Invalid($"'{q.Method}' can't be used as a filter.", "queries",
                         $"'{q.Method}' is a pagination/select/order method, not a filter.");
@@ -329,10 +350,46 @@ public static class QueryCompiler
                 ?? throw QueryDsl.Invalid($"'{column.Key}' has no spatial index.", "queries",
                     $"Create a spatial index on '{column.Key}' before using 'near' — never a silent sequential scan.");
 
-            var lat = RequireNearValue(values[0], "lat", "near");
-            var lng = RequireNearValue(values[1], "lng", "near");
+            var lat = RequireLat(values[0], "lat", "near");
+            var lng = RequireLng(values[1], "lng", "near");
             var radiusMeters = RequireNearValue(values[2], "radiusMeters", "near");
             return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)})";
+        }
+
+        /// <summary>
+        /// <c>withinBox(minLat, minLng, maxLat, maxLng)</c> — every point inside an axis-aligned
+        /// rectangle, for a map viewport's pan/zoom. Wire values are lat-first (matching <c>near</c>'s
+        /// convention); reordered here into <c>ST_MakeEnvelope</c>'s x/y (lng/lat) argument order,
+        /// exactly as <see cref="CompileNear"/> already does for <c>ST_MakePoint</c> — PostGIS's axis
+        /// order never leaks onto the wire. Same column-type and spatial-index gating as <c>near</c>;
+        /// <c>ST_Intersects</c> uses a GiST index automatically when one exists, so no separate
+        /// <c>&amp;&amp;</c> bounding-box operator is needed (and <c>&amp;&amp;</c> is a geometry
+        /// operator, not a geography one — cargo-culted from geometry-column examples, not needed here).
+        /// </summary>
+        private string CompileWithinBox(ColumnDef column, string colSql, JsonElement[] values)
+        {
+            if (column.Type != ColumnTypes.Geo)
+                throw QueryDsl.Invalid($"'withinBox' isn't supported on '{column.Key}'.", "queries",
+                    "'withinBox' only works on 'geo' attributes.");
+            _ = entry.SpatialIndexFor(column.Key)
+                ?? throw QueryDsl.Invalid($"'{column.Key}' has no spatial index.", "queries",
+                    $"Create a spatial index on '{column.Key}' before using 'withinBox' — never a silent sequential scan.");
+
+            var minLat = RequireLat(values[0], "minLat", "withinBox");
+            var minLng = RequireLng(values[1], "minLng", "withinBox");
+            var maxLat = RequireLat(values[2], "maxLat", "withinBox");
+            var maxLng = RequireLng(values[3], "maxLng", "withinBox");
+
+            if (minLat >= maxLat)
+                throw QueryDsl.Invalid("'withinBox' requires minLat to be less than maxLat.", "queries",
+                    "'withinBox' minLat must be less than maxLat.");
+            if (minLng > maxLng)
+                throw QueryDsl.Invalid("'withinBox' can't cross the antimeridian.", "queries",
+                    "'withinBox' minLng must be less than or equal to maxLng — a box crossing the antimeridian " +
+                    "(minLng > maxLng) isn't supported yet; split it into two withinBox calls instead.");
+
+            return $"ST_Intersects({colSql}, ST_MakeEnvelope({AddParam(minLng)}, {AddParam(minLat)}, " +
+                   $"{AddParam(maxLng)}, {AddParam(maxLat)}, 4326)::geography)";
         }
     }
 
@@ -347,6 +404,27 @@ public static class QueryCompiler
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var d))
             throw QueryDsl.Invalid($"'{method}' requires numeric values.", "queries",
                 $"'{method}' {label} must be a number.");
+        return d;
+    }
+
+    /// <summary>Coordinate-range validation applied consistently across <c>near</c>, <c>orderNear</c>
+    /// and <c>withinBox</c> — a consistency decision, not a per-method detail (docs/research/geo-nearby.md's
+    /// Phase 3 section): adding it to one and not the others would be worse than either extreme.</summary>
+    private static double RequireLat(JsonElement value, string label, string method)
+    {
+        var d = RequireNearValue(value, label, method);
+        if (d is < -90 or > 90)
+            throw QueryDsl.Invalid($"'{method}' requires a valid latitude.", "queries",
+                $"'{method}' {label} must be between -90 and 90.");
+        return d;
+    }
+
+    private static double RequireLng(JsonElement value, string label, string method)
+    {
+        var d = RequireNearValue(value, label, method);
+        if (d is < -180 or > 180)
+            throw QueryDsl.Invalid($"'{method}' requires a valid longitude.", "queries",
+                $"'{method}' {label} must be between -180 and 180.");
         return d;
     }
 

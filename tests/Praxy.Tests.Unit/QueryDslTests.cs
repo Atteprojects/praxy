@@ -87,6 +87,9 @@ public class QueryDslTests
     [InlineData("""{"method":"orderNear","attribute":"loc","values":[1]}""")] // orderNear needs exactly 2 (lat, lng)
     [InlineData("""{"method":"orderNear","attribute":"loc","values":[1,2,3]}""")]
     [InlineData("""{"method":"orderNear","values":[1,2]}""")] // orderNear requires an attribute
+    [InlineData("""{"method":"withinBox","attribute":"loc","values":[1,2,3]}""")] // withinBox needs exactly 4
+    [InlineData("""{"method":"withinBox","attribute":"loc","values":[1,2,3,4,5]}""")]
+    [InlineData("""{"method":"withinBox","values":[1,2,3,4]}""")] // withinBox requires an attribute
     public void Malformed_shapes_are_rejected(string query) =>
         Assert.Throws<PraxyException>(() => QueryDsl.Parse([query]));
 
@@ -105,6 +108,15 @@ public class QueryDslTests
         Assert.Equal("orderNear", parsed[0].Method);
         Assert.Equal("loc", parsed[0].Attribute);
         Assert.Equal(2, parsed[0].Values.Length);
+    }
+
+    [Fact]
+    public void WithinBox_with_exactly_four_values_parses()
+    {
+        var parsed = QueryDsl.Parse(["""{"method":"withinBox","attribute":"loc","values":[37.7,-122.5,37.8,-122.4]}"""]);
+        Assert.Equal("withinBox", parsed[0].Method);
+        Assert.Equal("loc", parsed[0].Attribute);
+        Assert.Equal(4, parsed[0].Values.Length);
     }
 
     [Fact]

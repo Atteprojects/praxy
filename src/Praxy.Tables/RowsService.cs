@@ -198,7 +198,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         var compiled = QueryCompiler.CompileList(entry, parsed, callerRoles, bypassPermissions, includeTotal);
 
         var rows = await QueryAsync(compiled.Sql, ToParams(compiled.Params),
-            r => BuildRowJson(entry, r, compiled.SelectedKeys), ct);
+            r => BuildRowJson(entry, r, compiled.SelectedKeys, compiled.HasDistance), ct);
         if (compiled.Reversed)
             rows.Reverse();
 
@@ -655,7 +655,8 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         return "@" + pName;
     }
 
-    private static JsonObject BuildRowJson(CatalogEntry entry, NpgsqlDataReader reader, string[]? selectedKeys)
+    private static JsonObject BuildRowJson(
+        CatalogEntry entry, NpgsqlDataReader reader, string[]? selectedKeys, bool hasDistance = false)
     {
         var id = reader.GetFieldValue<Guid>(0);
         var createdAt = reader.GetFieldValue<DateTimeOffset>(1);
@@ -686,6 +687,13 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
                 ordinal++;
             }
         }
+
+        // $distance is a system field like $id/$createdAt, always the trailing select-list column
+        // when present (QueryCompiler.CompileList's own ordinal-safety rule) — `ordinal` here is
+        // already exactly the count of columns consumed above, so it's the right index to read next.
+        if (hasDistance)
+            obj["$distance"] = reader.GetFieldValue<double>(ordinal);
+
         return obj;
     }
 
