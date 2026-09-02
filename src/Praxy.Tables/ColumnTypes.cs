@@ -25,8 +25,15 @@ public static class ColumnTypes
     /// <summary>A scalar <c>uuid</c> (real FK, <c>ON DELETE RESTRICT</c>) or <c>uuid[]</c> pointing at another table's rows.</summary>
     public const string Relationship = "relationship";
 
+    /// <summary>
+    /// A scalar <c>geography(Point, 4326)</c> — wire shape <c>{"lat","lng"}</c>, no array support, no
+    /// default (docs/research/geo-nearby.md). Unlike every other type, its value isn't a bare JSON
+    /// scalar and its write/read SQL isn't a single bound parameter — see RowValues/RowsService.
+    /// </summary>
+    public const string Geo = "geo";
+
     public static readonly IReadOnlyList<string> All =
-        [String, Integer, Float, Boolean, Datetime, Email, Url, Ip, Enum, Relationship];
+        [String, Integer, Float, Boolean, Datetime, Email, Url, Ip, Enum, Relationship, Geo];
 
     public static bool IsValid(string type) => All.Contains(type);
 
@@ -40,6 +47,7 @@ public static class ColumnTypes
         Datetime => "timestamptz",
         Email or Url or Ip or Enum => "text",
         Relationship => "uuid",
+        Geo => "geography(Point, 4326)",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown column type."),
     };
 

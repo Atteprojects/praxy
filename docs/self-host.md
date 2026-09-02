@@ -10,6 +10,10 @@ document.
 - A host running Ubuntu (or any Debian-family distro) if you want `./up.sh` to install Docker for
   you; otherwise install [Docker + the Compose plugin](https://docs.docker.com/engine/install/)
   yourself first, on whatever OS.
+- An `amd64` host, or an `arm64` host with `qemu-user-static`/binfmt emulation already configured —
+  the Postgres image (`postgis/postgis`, for geo columns/`near` queries) publishes no `arm64`
+  manifest at all. See the geo image-swap note under [Upgrading](#upgrading) (applies to a fresh
+  install too, not just an upgrade).
 - A host that can reach the internet if you want Google OAuth or outbound SMTP to work, though
   neither is required to run the instance.
 - If you plan to use Functions: a reachable Docker daemon at runtime, not just at build time (see
@@ -483,6 +487,23 @@ same row content and `_created_at` timestamp — as before the simulated disaste
 `docs/handoff/phase-9-report.md` for the full transcript.
 
 ## Upgrading
+
+> **Geo columns/`near` queries need a Postgres image swap — plain `postgres:17-alpine` to
+> `postgis/postgis:17-3.6-alpine`.** Same Postgres 17 underneath (PostGIS images are the official
+> Postgres image plus extensions), so the existing `praxy-pgdata` volume survives the swap
+> unchanged: `docker compose pull && docker compose up -d --build` recreates the `postgres`
+> container against that same volume, and `CREATE EXTENSION IF NOT EXISTS postgis` runs once, on
+> the next `api` startup, through the normal `CatalogMigrator` migration path above — no separate
+> step. Verified against a real container: the `praxy` role (created via the official image's own
+> `POSTGRES_USER` handling) is a superuser, so the extension activates without any extra grant.
+>
+> **This image publishes no `arm64` manifest at all** — `amd64` only, checked across every current
+> Postgres-17/PostGIS-minor combination. `deploy/docker-compose.yml` now pins
+> `platform: linux/amd64` on the `postgres` service so an arm64 host (Apple Silicon Docker Desktop,
+> or an arm64 Linux server with `qemu-user-static`/binfmt emulation already configured) runs it
+> under emulation instead of a hard "no matching manifest" failure at `docker compose up`. A bare
+> arm64 Linux server **without** that emulation set up can't run this image at all — self-host on
+> an amd64 host, or install `qemu-user-static` first.
 
 > **Breaking change when upgrading past v0.1.0 — function execute permissions.**
 > Functions now carry an `execute` role list and **a function nobody has been granted is invokable

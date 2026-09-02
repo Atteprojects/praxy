@@ -53,6 +53,11 @@ void main() {
               'required': false, 'array': false, 'targetTableId': 'usersid', 'status': 'available',
               'position': 2, 'createdAt': '2026-01-01T00:00:00Z', 'updatedAt': '2026-01-01T00:00:00Z',
             },
+            {
+              'id': 'c4', 'tableId': 'tbl1id', 'key': 'location', 'type': 'geo', 'required': false,
+              'array': false, 'status': 'available', 'position': 3,
+              'createdAt': '2026-01-01T00:00:00Z', 'updatedAt': '2026-01-01T00:00:00Z',
+            },
           ],
         });
       }
@@ -83,6 +88,8 @@ void main() {
     // relationship: raw id passthrough (String/List<String>) — no cross-table graph awareness,
     // out of scope for the whole relationships feature (docs/research/table-relationships.md).
     expect(content, contains("static const authorId = Col<String>('author_id');"));
+    // geo: raw Map passthrough, not a dedicated GeoPoint class (docs/research/geo-nearby.md).
+    expect(content, contains("static const location = Col<Map<String, dynamic>>('location');"));
   });
 
   test('a database key with no match throws CodegenException', () async {

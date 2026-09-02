@@ -13,7 +13,7 @@ import { Badge, EmptyState, ErrorNote, Field, FullPageSpinner, Sheet, Spinner } 
 import { STR } from "../strings";
 import { TableDetailHeader } from "./TableDetailHeader";
 
-const TYPE_TONE = { key: "ink", unique: "iris", fulltext: "mint" } as const;
+const TYPE_TONE = { key: "ink", unique: "iris", fulltext: "mint", spatial: "amber" } as const;
 
 const HEADERS = ["Key", "Type", "Columns", "Status", ""];
 
@@ -56,7 +56,9 @@ export function IndexesPage() {
           {row.original.columns.map((c, i) => (
             <Badge key={c}>
               {c}
-              {row.original.orders[i] === "desc" ? " ↓" : row.original.type !== "fulltext" ? " ↑" : ""}
+              {row.original.orders[i] === "desc"
+                ? " ↓"
+                : row.original.type !== "fulltext" && row.original.type !== "spatial" ? " ↑" : ""}
             </Badge>
           ))}
         </span>
@@ -183,7 +185,7 @@ function CreateIndexSheet({
       key,
       type,
       columns: selected,
-      orders: type === "fulltext" ? undefined : selected.map((c) => orders[c] ?? "asc"),
+      orders: type === "fulltext" || type === "spatial" ? undefined : selected.map((c) => orders[c] ?? "asc"),
     });
     onClose();
   }
@@ -248,7 +250,7 @@ function CreateIndexSheet({
                   />
                   <span className="font-mono text-xs">{col}</span>
                 </span>
-                {type !== "fulltext" && selected.includes(col) ? (
+                {type !== "fulltext" && type !== "spatial" && selected.includes(col) ? (
                   <select
                     className="rounded border border-ink-700 bg-ink-950 px-1.5 py-0.5 text-xs"
                     value={orders[col] ?? "asc"}

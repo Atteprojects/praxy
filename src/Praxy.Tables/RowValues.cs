@@ -7,6 +7,13 @@ using Praxy.Persistence.Entities;
 namespace Praxy.Tables;
 
 /// <summary>
+/// A parsed <c>geo</c> column value. Not a bare scalar — <see cref="RowsService"/> binds it as two
+/// parameters wrapped in <c>ST_MakePoint(...)::geography</c>, never a single <c>@param</c>
+/// (docs/research/geo-nearby.md).
+/// </summary>
+public sealed record GeoPoint(double Lat, double Lng);
+
+/// <summary>
 /// The JSON ⇄ Postgres value boundary for row data: validates a wire JSON value against a
 /// column's declared type (reusing the same format rules <see cref="ColumnTypes"/> applies to
 /// DDL-time defaults) and converts it to a CLR value Npgsql can bind, or reads a CLR value back
@@ -39,8 +46,18 @@ public static class RowValues
         };
     }
 
-    /// <summary>Public entry point for the query compiler, which validates filter values against a column's type the same way write values are validated.</summary>
-    public static object ToFilterScalar(ColumnDef column, string key, JsonElement value) => ToScalar(column, key, value);
+    /// <summary>
+    /// Public entry point for the query compiler, which validates filter values against a column's
+    /// type the same way write values are validated. A <c>geo</c> column is the one exception: its
+    /// value is a pair, not a scalar comparable via a generic operator, and <c>near</c> (the only
+    /// filter that makes sense on it) parses its own three doubles directly rather than routing
+    /// through here (docs/research/geo-nearby.md) — so every other operator on a geo column is
+    /// rejected here, cleanly, before it could reach Postgres as a parameter type nothing understands.
+    /// </summary>
+    public static object ToFilterScalar(ColumnDef column, string key, JsonElement value) =>
+        column.Type == ColumnTypes.Geo
+            ? throw new FormatException($"'{key}' is a geo column — only the 'near' operator (and isNull/isNotNull) is supported.")
+            : ToScalar(column, key, value);
 
     private static object ToScalar(ColumnDef column, string key, JsonElement value) => column.Type switch
     {
@@ -54,6 +71,7 @@ public static class RowValues
         ColumnTypes.Ip => ValidateIp(key, RequireString(key, value)),
         ColumnTypes.Enum => ValidateEnum(key, RequireString(key, value), column.Options),
         ColumnTypes.Relationship => RequireRelationshipId(key, value),
+        ColumnTypes.Geo => ParseGeoPoint(key, value),
         _ => throw new ArgumentOutOfRangeException(nameof(column), column.Type, "Unknown column type."),
     };
 
@@ -168,4 +186,28 @@ public static class RowValues
         v.ValueKind == JsonValueKind.String && Ids.TryParseWire(v.GetString(), out var id)
             ? id
             : throw new FormatException($"'{key}' must be a valid row id.");
+
+    /// <summary>
+    /// <c>{"lat": &lt;number&gt;, "lng": &lt;number&gt;}</c> — an object, not GeoJSON's own
+    /// <c>[lng, lat]</c> array convention, precisely to avoid that convention's well-known
+    /// lat/lng-order footgun (docs/research/geo-nearby.md). Range-validated app-side (rather than
+    /// left to Postgres/PostGIS's own <c>geography</c> cast, which would reject an out-of-range
+    /// coordinate with a raw, un-caught exception) so a bad value surfaces as the same clean
+    /// per-field 400 every other type's validation already produces.
+    /// </summary>
+    private static GeoPoint ParseGeoPoint(string key, JsonElement v)
+    {
+        if (v.ValueKind != JsonValueKind.Object)
+            throw new FormatException($"'{key}' must be a JSON object with 'lat' and 'lng' numbers.");
+        if (!v.TryGetProperty("lat", out var latEl) || !v.TryGetProperty("lng", out var lngEl))
+            throw new FormatException($"'{key}' must have 'lat' and 'lng' properties.");
+
+        var lat = RequireFloat(key, latEl);
+        var lng = RequireFloat(key, lngEl);
+        if (lat is < -90 or > 90)
+            throw new FormatException($"'{key}.lat' must be between -90 and 90.");
+        if (lng is < -180 or > 180)
+            throw new FormatException($"'{key}.lng' must be between -180 and 180.");
+        return new GeoPoint(lat, lng);
+    }
 }

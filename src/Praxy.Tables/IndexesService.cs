@@ -21,7 +21,10 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService 
     public const string TypeKey = "key";
     public const string TypeUnique = "unique";
     public const string TypeFulltext = "fulltext";
-    public static readonly IReadOnlyList<string> Types = [TypeKey, TypeUnique, TypeFulltext];
+
+    /// <summary>GiST, over a single <c>geo</c> column — what <c>near</c> requires (docs/research/geo-nearby.md).</summary>
+    public const string TypeSpatial = "spatial";
+    public static readonly IReadOnlyList<string> Types = [TypeKey, TypeUnique, TypeFulltext, TypeSpatial];
 
     public const int MaxColumnsPerIndex = 8;
 
@@ -59,7 +62,7 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService 
             Key = key,
             Type = type,
             Columns = columnKeys,
-            Orders = type == TypeFulltext ? [] : effectiveOrders,
+            Orders = type is TypeFulltext or TypeSpatial ? [] : effectiveOrders,
             PhysicalName = physicalName,
             Status = "processing",
         };
@@ -72,6 +75,7 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService 
             IndexPhysicalName: physicalName,
             Unique: type == TypeUnique,
             Fulltext: type == TypeFulltext,
+            Spatial: type == TypeSpatial,
             ColumnsPhysical: [.. resolved.Select(c => c.PhysicalName)],
             Orders: index.Orders,
             FulltextColumnPhysical: fulltextColumnPhysical));
@@ -139,6 +143,11 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService 
         if (columnKeys.Length is 0 or > MaxColumnsPerIndex)
             throw PraxyException.ArgumentInvalid("Invalid index payload.",
                 new Dictionary<string, string[]> { ["columns"] = [$"Provide 1 to {MaxColumnsPerIndex} column keys."] });
+        // A spatial index wraps a single geography column in ST_DWithin (docs/research/geo-nearby.md)
+        // — there's no multi-column composite shape for it the way fulltext concatenates text columns.
+        if (type == TypeSpatial && columnKeys.Length != 1)
+            throw PraxyException.ArgumentInvalid("Invalid index payload.",
+                new Dictionary<string, string[]> { ["columns"] = ["A 'spatial' index covers exactly one column."] });
 
         var byKey = columns.ToDictionary(c => c.Key);
         var resolved = new List<ColumnDef>();
@@ -149,6 +158,9 @@ public sealed class IndexesService(PraxyDb db, CatalogCache cache, QuotaService 
             if (type == TypeFulltext && !FulltextEligibleTypes.Contains(column.Type))
                 throw new PraxyException(400, ErrorTypes.IndexInvalid,
                     $"Column '{key}' (type '{column.Type}') can't be used in a fulltext index.");
+            if (type == TypeSpatial && column.Type != ColumnTypes.Geo)
+                throw new PraxyException(400, ErrorTypes.IndexInvalid,
+                    $"Column '{key}' (type '{column.Type}') can't be used in a spatial index — only 'geo' columns can.");
             resolved.Add(column);
         }
         return resolved;
@@ -162,4 +174,5 @@ public static class SchemaJobKinds
 
 public sealed record CreateIndexJobPayload(
     string IndexId, string SchemaName, string TablePhysicalName, string IndexPhysicalName,
-    bool Unique, bool Fulltext, string[] ColumnsPhysical, string[] Orders, string? FulltextColumnPhysical);
+    bool Unique, bool Fulltext, bool Spatial, string[] ColumnsPhysical, string[] Orders,
+    string? FulltextColumnPhysical);

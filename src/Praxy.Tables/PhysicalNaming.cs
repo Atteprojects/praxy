@@ -20,8 +20,17 @@ public static partial class PhysicalNaming
     /// <summary>Physical schema name for a database: <c>px_&lt;hex32&gt;</c>.</summary>
     public static string SchemaName(Guid databaseId) => $"px_{Core.Ids.Wire(databaseId)}";
 
-    /// <summary>Physical table/column name: <c>&lt;sanitized_key&gt;_&lt;hash6&gt;</c>.</summary>
-    public static string EntityName(string key, Guid id) => WithHashSuffix(key, id, prefix: null);
+    /// <summary>
+    /// Physical table/column name: <c>&lt;sanitized_key&gt;_&lt;hash6&gt;</c>. <paramref
+    /// name="reserveSuffixChars"/> shrinks the budget further for a column type whose physical name
+    /// gets an extra derived suffix appended at query time (a geo column's read-path
+    /// <c>_lng</c>/<c>_lat</c> aliases) — without it, a max-length key could produce a physical name
+    /// that leaves no room for that suffix, and the derived identifier would then fail this module's
+    /// own length guard (<see cref="Quote"/>) the first time a row is read or written, not at column
+    /// creation.
+    /// </summary>
+    public static string EntityName(string key, Guid id, int reserveSuffixChars = 0) =>
+        WithHashSuffix(key, id, prefix: null, reserveSuffixChars);
 
     /// <summary>Physical index name: <c>ix_&lt;sanitized_key&gt;_&lt;hash6&gt;</c>.</summary>
     public static string IndexName(string key, Guid id) => WithHashSuffix(key, id, prefix: "ix_");
@@ -32,11 +41,11 @@ public static partial class PhysicalNaming
     /// <summary>Physical name of a table's row-permissions side table.</summary>
     public static string PermsTableName(string tablePhysicalName) => $"{tablePhysicalName}__perms";
 
-    private static string WithHashSuffix(string key, Guid id, string? prefix)
+    private static string WithHashSuffix(string key, Guid id, string? prefix, int reserveSuffixChars = 0)
     {
         var hash = Convert.ToHexStringLower(SHA256.HashData(id.ToByteArray()))[..6];
         var suffix = $"_{hash}";
-        var budget = PostgresIdentifierLimit - (prefix?.Length ?? 0) - suffix.Length;
+        var budget = PostgresIdentifierLimit - (prefix?.Length ?? 0) - suffix.Length - reserveSuffixChars;
 
         var sanitized = Sanitize(key);
         if (sanitized.Length == 0)

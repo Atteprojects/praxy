@@ -17,4 +17,12 @@ public class ColumnTypesTests
     {
         Assert.Equal("uuid[]", ColumnTypes.PostgresStorageType(ColumnTypes.Relationship, size: null, isArray: true));
     }
+
+    [Fact]
+    public void Geo_is_a_registered_type_backed_by_geography_point()
+    {
+        Assert.True(ColumnTypes.IsValid(ColumnTypes.Geo));
+        Assert.Contains(ColumnTypes.Geo, ColumnTypes.All);
+        Assert.Equal("geography(Point, 4326)", ColumnTypes.PostgresType(ColumnTypes.Geo, size: null));
+    }
 }

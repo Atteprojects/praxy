@@ -1,3 +1,4 @@
+using DotNet.Testcontainers.Images;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
@@ -11,7 +12,14 @@ public sealed class PostgresContainerFixture : IAsyncLifetime
 {
     private int _dbCounter;
 
-    public PostgreSqlContainer Container { get; } = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    // PostGIS-flavored image (geo columns/`near` queries, docs/research/geo-nearby.md), verified
+    // against a real pull rather than guessed. postgis/postgis publishes no arm64 manifest at all
+    // (checked across every current Postgres-17/PostGIS-minor combination) — only amd64. The
+    // explicit Platform pin makes this portable to an arm64 dev machine (this was written and
+    // verified on one) via emulation, instead of a hard "no matching manifest" failure; without it,
+    // Testcontainers would refuse to even pull the image on such a host.
+    public PostgreSqlContainer Container { get; } =
+        new PostgreSqlBuilder(new DockerImage("postgis/postgis:17-3.6-alpine", new Platform("linux/amd64"))).Build();
 
     public Task InitializeAsync() => Container.StartAsync();
 
