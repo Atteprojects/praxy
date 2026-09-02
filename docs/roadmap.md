@@ -386,9 +386,27 @@ and geo fits that same shape through plain PostGIS SQL functions (`ST_MakePoint`
   cautious framing of the sort/cursor model needing "real surgery." Design: the new "Phase 2" section
   of `docs/research/geo-nearby.md`.
 
-**Explicitly not in Phase 2 either, real follow-up work, not forgotten**: array-valued geo columns;
-additional geo types (`line`, `polygon`) and their own operators, if more geo operations beyond nearby
-are wanted later; a returned `$distance` value alongside `orderNear` results.
+- **Phase 3 — kicked off 2026-09-02** (kickoff: `docs/handoff/geo-nearby-phase-3-prompt.md`) — a
+  returned `$distance` system field (meters, emitted with `orderNear`) and
+  `withinBox(minLat, minLng, maxLat, maxLng)`, the map-viewport/bounding-box filter. Both are things
+  Appwrite does not have, which is why they're sequenced ahead of the parity work below. Design: the
+  "Phase 3" section of `docs/research/geo-nearby.md`.
+
+**Competitive note, verified 2026-09-02** (details in `docs/research/geo-nearby.md`'s "Competitive
+position"): Appwrite already ships `point`/`line`/`polygon` and twelve spatial predicates, so Phases 4-5
+below are **catch-up to parity, not differentiation**. What Appwrite has no equivalent of is
+distance-*ordering* — its four distance operators are all filters — so Phase 2's `orderNear` is already
+the differentiator, and Phase 3 extends that same lead.
+
+**Phases 4-5, agreed in scope but not yet designed** (each needs its own design pass before a prompt):
+- **Phase 4** — `polygon` and `line` column types plus `within`/`intersects`/`contains`. The geofencing
+  capability gap and the expensive phase: new wire shapes for multi-coordinate geometry, a console
+  editor that's a real UI problem rather than a form field, and codegen decisions Phases 1-3 never
+  faced. The two types belong together since they share nearly all of that plumbing.
+- **Phase 5** — the parity tail: `crosses`/`touches`/`overlaps` and their negations, plus array-valued
+  geo columns. Array-geo is last deliberately — relationships already model "one record, many
+  locations" better and `line` covers ordered paths more meaningfully; it's in scope because the owner
+  asked for the full sweep, not because the need is otherwise unmet.
 
 ---
 
