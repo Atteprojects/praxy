@@ -16,7 +16,7 @@ import { TableDetailHeader } from "./TableDetailHeader";
 
 const TYPE_LABEL: Record<ColumnType, string> = {
   string: "STR", integer: "INT", float: "FLT", boolean: "BOOL", datetime: "DATE",
-  email: "MAIL", url: "URL", ip: "IP", enum: "ENUM", relationship: "REL",
+  email: "MAIL", url: "URL", ip: "IP", enum: "ENUM", relationship: "REL", geo: "GEO",
 };
 
 function TypeIcon({ type }: { type: ColumnType }) {
@@ -213,8 +213,8 @@ function CreateColumnSheet({
       type,
       key,
       required,
-      array,
-      default: type === "relationship" ? undefined : parseDefault(),
+      array: type === "geo" ? false : array,
+      default: type === "relationship" || type === "geo" ? undefined : parseDefault(),
       size: type === "string" ? size : undefined,
       elements: type === "enum" ? elementsText.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
       targetTableId: type === "relationship" ? targetTableId : undefined,
@@ -318,9 +318,11 @@ function CreateColumnSheet({
         ) : null}
 
         <Toggle checked={required} onChange={setRequired} label="Required" />
-        <Toggle checked={array} onChange={setArray} label="Array" description="Store multiple values as a native Postgres array." />
+        {type === "geo" ? null : (
+          <Toggle checked={array} onChange={setArray} label="Array" description="Store multiple values as a native Postgres array." />
+        )}
 
-        {type === "relationship" ? null : (
+        {type === "relationship" || type === "geo" ? null : (
           <Field label="Default (optional)" error={error?.fieldErrors("default")[0]}>
             {type === "boolean" ? (
               <select className="input-base" value={defaultText} onChange={(e) => setDefaultText(e.target.value)}>

@@ -34,6 +34,9 @@ public static class RowByteBudget
                 ? elements.Max(e => e.Length)
                 : ColumnTypes.MaxEnumElementLength,
             ColumnTypes.Relationship => 16, // uuid width
+            // Measured against a real postgis/postgis:17-3.6-alpine column (Phase 1 verification):
+            // pg_column_size() of a geography(Point,4326) value is 29 bytes; rounded up for headroom.
+            ColumnTypes.Geo => 32,
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown column type."),
         };
 

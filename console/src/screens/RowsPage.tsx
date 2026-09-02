@@ -5,7 +5,7 @@ import { ApiError } from "../api/client";
 import {
   useBulkDeleteRows, useCreateRow, useDeleteRow, useRows, useUpdateRow, type SortState,
 } from "../api/rows";
-import type { ColumnSchema, ColumnType, QueryFilter, Row } from "../api/types";
+import type { ColumnSchema, ColumnType, GeoPoint, QueryFilter, Row } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { DataGrid, type DataGridColumn } from "../components/DataGrid";
 import { AddRoleButton, RoleLabel } from "../components/RolePicker";
@@ -85,6 +85,11 @@ function relationshipPreview(value: unknown): string {
   return typeof id === "string" ? `#${id.slice(0, 8)}` : String(value);
 }
 
+function isGeoPoint(value: unknown): value is GeoPoint {
+  const v = value as Record<string, unknown> | null;
+  return !!v && typeof v === "object" && typeof v.lat === "number" && typeof v.lng === "number";
+}
+
 function formatCell(value: unknown): ReactNode {
   if (value === null || value === undefined) return <span className="text-ink-600 italic">NULL</span>;
   if (typeof value === "boolean") return <span className={value ? "text-mint-400" : "text-coral-400"}>{String(value)}</span>;
@@ -93,8 +98,54 @@ function formatCell(value: unknown): ReactNode {
       ? <span className="text-ink-600">[]</span>
       : value.map((v) => (v && typeof v === "object" ? relationshipPreview(v) : String(v))).join(", ");
   }
+  if (isGeoPoint(value)) return `${value.lat}, ${value.lng}`;
   if (value && typeof value === "object") return relationshipPreview(value);
   return String(value);
+}
+
+/**
+ * Two number inputs for a `geo` column's `{"lat","lng"}` value. Keeps its own draft state rather
+ * than deriving each field from the `value` prop on every keystroke: `onChange` only fires a
+ * non-null point once *both* fields parse, so a prop-derived draft would snap the first field back
+ * to empty the instant the second one starts being typed (the parent's own value round-trips
+ * through `null` while the pair is still incomplete).
+ */
+function GeoValueEditor({ value, onChange }: { value: GeoPoint | null; onChange: (next: GeoPoint | null) => void }) {
+  const [lat, setLat] = useState(value?.lat != null ? String(value.lat) : "");
+  const [lng, setLng] = useState(value?.lng != null ? String(value.lng) : "");
+
+  function commit(nextLat: string, nextLng: string) {
+    setLat(nextLat);
+    setLng(nextLng);
+    if (nextLat === "" || nextLng === "") {
+      onChange(null);
+      return;
+    }
+    const parsedLat = Number(nextLat);
+    const parsedLng = Number(nextLng);
+    if (!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng)) onChange({ lat: parsedLat, lng: parsedLng });
+  }
+
+  return (
+    <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <input
+        className="input-base py-1 text-sm"
+        type="number"
+        step="any"
+        placeholder="lat"
+        value={lat}
+        onChange={(e) => commit(e.target.value, lng)}
+      />
+      <input
+        className="input-base py-1 text-sm"
+        type="number"
+        step="any"
+        placeholder="lng"
+        value={lng}
+        onChange={(e) => commit(lat, e.target.value)}
+      />
+    </div>
+  );
 }
 
 /** One editable cell: click to edit, Enter/blur saves only this field, Escape cancels. */
@@ -126,6 +177,10 @@ function EditableCell({
         onChange={(next) => onSave(column.array ? next : (next[0] ?? null))}
       />
     );
+  }
+
+  if (column.type === "geo") {
+    return <GeoValueEditor value={isGeoPoint(value) ? value : null} onChange={onSave} />;
   }
 
   function begin() {
@@ -533,9 +588,11 @@ function CreateRowSheet({
     for (const column of columns) {
       const raw = values[column.key];
       if (raw === undefined || raw === "") continue;
-      data[column.key] = column.array
-        ? raw.split(",").map((s) => parseScalar(column.type, s.trim())).filter((v) => v !== "")
-        : column.type === "boolean" ? raw === "true" : parseScalar(column.type, raw);
+      data[column.key] = column.type === "geo"
+        ? (JSON.parse(raw) as GeoPoint)
+        : column.array
+          ? raw.split(",").map((s) => parseScalar(column.type, s.trim())).filter((v) => v !== "")
+          : column.type === "boolean" ? raw === "true" : parseScalar(column.type, raw);
     }
     await create.mutateAsync({ data });
     onClose();
@@ -585,6 +642,11 @@ function CreateRowSheet({
                 <option value="">— unset —</option>
                 {(column.elements ?? []).map((el) => <option key={el} value={el}>{el}</option>)}
               </select>
+            ) : column.type === "geo" ? (
+              <GeoValueEditor
+                value={values[column.key] ? (JSON.parse(values[column.key]) as GeoPoint) : null}
+                onChange={(next) => setValues((v) => ({ ...v, [column.key]: next ? JSON.stringify(next) : "" }))}
+              />
             ) : (
               <input
                 className="input-base font-mono"

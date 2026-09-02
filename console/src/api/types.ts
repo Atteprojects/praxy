@@ -213,9 +213,15 @@ export interface TableList {
 }
 
 export const COLUMN_TYPES = [
-  "string", "integer", "float", "boolean", "datetime", "email", "url", "ip", "enum", "relationship",
+  "string", "integer", "float", "boolean", "datetime", "email", "url", "ip", "enum", "relationship", "geo",
 ] as const;
 export type ColumnType = (typeof COLUMN_TYPES)[number];
+
+/** A `geo` column's value: `{"lat","lng"}`, never GeoJSON's own `[lng, lat]` array convention. */
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
 
 export interface ColumnSchema {
   id: string;
@@ -241,7 +247,7 @@ export interface ColumnList {
   columns: ColumnSchema[];
 }
 
-export const INDEX_TYPES = ["key", "unique", "fulltext"] as const;
+export const INDEX_TYPES = ["key", "unique", "fulltext", "spatial"] as const;
 export type IndexType = (typeof INDEX_TYPES)[number];
 
 export interface IndexSchema {

@@ -165,6 +165,12 @@ public sealed class SchemaJobRunner(
                 await ExecAsync(conn,
                     $"CREATE INDEX CONCURRENTLY IF NOT EXISTS {indexName} ON {qualifiedTable} USING GIN ({ftsColumn})", ct);
             }
+            else if (payload.Spatial)
+            {
+                var geoColumn = PhysicalNaming.Quote(payload.ColumnsPhysical[0]);
+                await ExecAsync(conn,
+                    $"CREATE INDEX CONCURRENTLY IF NOT EXISTS {indexName} ON {qualifiedTable} USING GIST ({geoColumn})", ct);
+            }
             else
             {
                 var uniqueKeyword = payload.Unique ? "UNIQUE " : "";

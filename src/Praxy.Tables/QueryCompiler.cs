@@ -226,6 +226,8 @@ public static class QueryCompiler
                     return CompileStringOrArrayOp(q.Method, colSql, column, q.Values[0]);
                 case "search":
                     return CompileSearch(column, q.Values[0]);
+                case "near":
+                    return CompileNear(column, colSql, q.Values);
                 default:
                     throw QueryDsl.Invalid($"'{q.Method}' can't be used as a filter.", "queries",
                         $"'{q.Method}' is a pagination/select/order method, not a filter.");
@@ -261,7 +263,7 @@ public static class QueryCompiler
         private string CompileSearch(ColumnDef column, JsonElement valueEl)
         {
             if (column.IsArray || column.Type is IdType or ColumnTypes.Datetime or ColumnTypes.Integer
-                or ColumnTypes.Float or ColumnTypes.Boolean or ColumnTypes.Relationship)
+                or ColumnTypes.Float or ColumnTypes.Boolean or ColumnTypes.Relationship or ColumnTypes.Geo)
                 throw QueryDsl.Invalid($"'search' isn't supported on '{column.Key}'.", "queries",
                     "'search' only works on text-like attributes with a fulltext index.");
             var index = entry.FulltextIndexFor(column.Key)
@@ -271,6 +273,39 @@ public static class QueryCompiler
             var raw = ConvertValue(column, valueEl) as string
                 ?? throw QueryDsl.Invalid("'search' requires a string value.", "queries", "'search' needs a string value.");
             return $"t.{ftsCol} @@ websearch_to_tsquery('simple', {AddParam(raw)})";
+        }
+
+        /// <summary>
+        /// <c>near(lat, lng, radiusMeters)</c> — a pure radius filter, never automatic
+        /// nearest-first sorting (docs/research/geo-nearby.md's explicit non-goal). Its three
+        /// values describe a query point and a distance, not a value *of* the column's own type, so
+        /// unlike every other filter method they're parsed as plain doubles here rather than routed
+        /// through <see cref="ConvertValue"/>/<see cref="RowValues.ToFilterScalar"/> — the same
+        /// three-independent-<see cref="AddParam"/> shape <c>between</c> already establishes as
+        /// precedent for a multi-value method. Requires a declared spatial index, mirroring
+        /// <see cref="CompileSearch"/>'s fulltext-index requirement exactly: reject rather than let
+        /// an unindexed <c>ST_DWithin</c> silently sequential-scan.
+        /// </summary>
+        private string CompileNear(ColumnDef column, string colSql, JsonElement[] values)
+        {
+            if (column.Type != ColumnTypes.Geo)
+                throw QueryDsl.Invalid($"'near' isn't supported on '{column.Key}'.", "queries",
+                    "'near' only works on 'geo' attributes.");
+            _ = entry.SpatialIndexFor(column.Key)
+                ?? throw QueryDsl.Invalid($"'{column.Key}' has no spatial index.", "queries",
+                    $"Create a spatial index on '{column.Key}' before using 'near' — never a silent sequential scan.");
+
+            var lat = RequireNearValue(values[0], "lat");
+            var lng = RequireNearValue(values[1], "lng");
+            var radiusMeters = RequireNearValue(values[2], "radiusMeters");
+            return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)})";
+        }
+
+        private static double RequireNearValue(JsonElement value, string label)
+        {
+            if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var d))
+                throw QueryDsl.Invalid("'near' requires numeric values.", "queries", $"'near' {label} must be a number.");
+            return d;
         }
     }
 
@@ -331,7 +366,7 @@ public static class QueryCompiler
         {
             if (entry.Columns.Count == 0)
                 return (systemCols, null);
-            var all = string.Join(", ", entry.Columns.Select(c => $"t.{PhysicalNaming.Quote(c.PhysicalName)}"));
+            var all = string.Join(", ", entry.Columns.Select(GeoAwareColumnExpr));
             return ($"{systemCols}, {all}", null);
         }
 
@@ -339,8 +374,27 @@ public static class QueryCompiler
             ?? throw QueryDsl.Invalid($"Unknown select attribute '{key}'.", "select", $"'{key}' is not a column on this table.")).ToList();
         if (resolved.Count == 0)
             return (systemCols, requestedKeys);
-        var cols = string.Join(", ", resolved.Select(c => $"t.{PhysicalNaming.Quote(c.PhysicalName)}"));
+        var cols = string.Join(", ", resolved.Select(GeoAwareColumnExpr));
         return ($"{systemCols}, {cols}", requestedKeys);
+    }
+
+    /// <summary>
+    /// One column's SELECT expression, always <c>t.</c>-qualified. Every type but geo is the bare
+    /// column reference; geo's single physical column expands into two selected expressions
+    /// (<c>ST_X</c>/<c>ST_Y</c> on the column cast to <c>geometry</c>), aliased
+    /// <c>{physicalName}_lng</c>/<c>{physicalName}_lat</c> in that order — the same shape
+    /// <see cref="RowsService"/>'s own read path (<c>GeoAwareColumnExpr</c>, <c>ReadGeoPoint</c>)
+    /// relies on for <c>Get</c>/<c>Expand</c>, kept independent here since <c>List</c>'s SQL is built
+    /// entirely in this compiler, not <see cref="RowsService"/>.
+    /// </summary>
+    private static string GeoAwareColumnExpr(ColumnDef c)
+    {
+        var quoted = PhysicalNaming.Quote(c.PhysicalName);
+        if (c.Type != ColumnTypes.Geo)
+            return $"t.{quoted}";
+        var lngAlias = PhysicalNaming.Quote($"{c.PhysicalName}_lng");
+        var latAlias = PhysicalNaming.Quote($"{c.PhysicalName}_lat");
+        return $"ST_X(t.{quoted}::geometry) AS {lngAlias}, ST_Y(t.{quoted}::geometry) AS {latAlias}";
     }
 
     private static string[] MergeSelect(string[]? existing, JsonElement[] values)

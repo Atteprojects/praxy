@@ -47,7 +47,7 @@ public class ColumnDef
     public required Guid TableId { get; set; }
     public required string Key { get; set; }
 
-    /// <summary>string | integer | float | boolean | datetime | email | url | ip | enum | relationship</summary>
+    /// <summary>string | integer | float | boolean | datetime | email | url | ip | enum | relationship | geo</summary>
     public required string Type { get; set; }
 
     public required string PhysicalName { get; set; }
@@ -84,7 +84,7 @@ public class IndexDef
     public required Guid TableId { get; set; }
     public required string Key { get; set; }
 
-    /// <summary>key | unique | fulltext</summary>
+    /// <summary>key | unique | fulltext | spatial</summary>
     public required string Type { get; set; }
 
     public required string[] Columns { get; set; }

@@ -26,6 +26,11 @@ public sealed record CatalogEntry(
     public IndexDef? FulltextIndexFor(string columnKey) => Indexes.FirstOrDefault(i =>
         i.Type == IndexesService.TypeFulltext && i.Status == "available" &&
         i.Columns.Length == 1 && i.Columns[0] == columnKey);
+
+    /// <summary>An available spatial (GiST) index covering exactly this single column, if any — what <c>near</c> requires.</summary>
+    public IndexDef? SpatialIndexFor(string columnKey) => Indexes.FirstOrDefault(i =>
+        i.Type == IndexesService.TypeSpatial && i.Status == "available" &&
+        i.Columns.Length == 1 && i.Columns[0] == columnKey);
 }
 
 /// <summary>

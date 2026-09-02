@@ -2,7 +2,16 @@ name: praxy
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # PostGIS-flavored image (geo columns/`near` queries, docs/research/geo-nearby.md) — same
+    # Postgres 17 underneath, existing data volumes survive the swap unchanged (docs/self-host.md's
+    # Upgrading section). Tag verified against a real pull, not guessed: postgis/postgis publishes
+    # no arm64 manifest at all (any Postgres major, any PostGIS minor) — only amd64. `platform:`
+    # pins it explicitly so an arm64 host (Apple Silicon Docker Desktop, an arm64 VPS with
+    # qemu-user-static/binfmt configured) runs it under emulation instead of hard-failing with "no
+    # matching manifest"; a bare arm64 Linux server with no emulation set up still can't run this
+    # image at all — self-host on an amd64 host, or configure binfmt first.
+    image: postgis/postgis:17-3.6-alpine
+    platform: linux/amd64
     restart: unless-stopped
     environment:
       POSTGRES_DB: praxy

@@ -143,6 +143,10 @@ String _dartType(String columnType, bool isArray) {
     'float' => 'double',
     'boolean' => 'bool',
     'datetime' => 'DateTime',
+    // A raw Map passthrough, not a dedicated GeoPoint class — geo has no array support (v1 is
+    // scalar-only, docs/research/geo-nearby.md) so `isArray` is always false for it in practice,
+    // same "don't over-invest in typed codegen this phase" call relationships' own codegen made.
+    'geo' => 'Map<String, dynamic>',
     _ => 'Object?',
   };
   return isArray ? 'List<$scalar>' : scalar;

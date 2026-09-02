@@ -69,4 +69,12 @@ public class RowByteBudgetTests
         Assert.Equal(16, RowByteBudget.EstimateBytes(ColumnTypes.Relationship, null, false, null));
         Assert.Equal(160, RowByteBudget.EstimateBytes(ColumnTypes.Relationship, null, true, null));
     }
+
+    [Fact]
+    public void Geo_estimate_matches_the_measured_geography_point_size()
+    {
+        // pg_column_size() of a real geography(Point,4326) value against a real PostGIS container
+        // was 29 bytes (Phase 1 verification); 32 is the rounded-up estimate this engine uses.
+        Assert.Equal(32, RowByteBudget.EstimateBytes(ColumnTypes.Geo, null, false, null));
+    }
 }

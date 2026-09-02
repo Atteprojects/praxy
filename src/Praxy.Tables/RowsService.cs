@@ -71,8 +71,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         {
             var pName = $"v{i}";
             colNames.Add(PhysicalNaming.Quote(columns[i].PhysicalName));
-            placeholders.Add("@" + pName);
-            parameters.Add(new NpgsqlParameter(pName, values[i]));
+            placeholders.Add(ValuePlaceholder(pName, values[i], parameters));
         }
 
         var sql = $"INSERT INTO {qualified} ({string.Join(", ", colNames)}) VALUES ({string.Join(", ", placeholders)}) " +
@@ -384,8 +383,8 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
                     try
                     {
                         var value = RowValues.ToWriteValue(column, prop.Name, prop.Value);
-                        setClauses.Add($"{PhysicalNaming.Quote(column.PhysicalName)} = @{pName}");
-                        parameters.Add(new NpgsqlParameter(pName, value));
+                        var placeholder = ValuePlaceholder(pName, value, parameters);
+                        setClauses.Add($"{PhysicalNaming.Quote(column.PhysicalName)} = {placeholder}");
                         if (column.Type == ColumnTypes.Relationship)
                             relationshipUpdates.Add((column, value));
                     }
@@ -637,6 +636,25 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
 
     // ---- row shape / value materialization ---------------------------------------------------
 
+    /// <summary>
+    /// Every type but geo binds as one column, one parameter: <c>@{pName}</c>. A geo write value
+    /// (a <see cref="GeoPoint"/>, from <see cref="RowValues.ToWriteValue"/>) is one column, two
+    /// parameters, wrapped in a function call — the real deviation the write path needs
+    /// (docs/research/geo-nearby.md); this is the one place both INSERT and UPDATE go through it, so
+    /// there's exactly one seam to get right instead of two.
+    /// </summary>
+    private static string ValuePlaceholder(string pName, object value, List<NpgsqlParameter> parameters)
+    {
+        if (value is GeoPoint point)
+        {
+            parameters.Add(new NpgsqlParameter($"{pName}_lng", point.Lng));
+            parameters.Add(new NpgsqlParameter($"{pName}_lat", point.Lat));
+            return $"ST_MakePoint(@{pName}_lng, @{pName}_lat)::geography";
+        }
+        parameters.Add(new NpgsqlParameter(pName, value));
+        return "@" + pName;
+    }
+
     private static JsonObject BuildRowJson(CatalogEntry entry, NpgsqlDataReader reader, string[]? selectedKeys)
     {
         var id = reader.GetFieldValue<Guid>(0);
@@ -657,10 +675,34 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         var ordinal = 3;
         foreach (var column in columns)
         {
-            obj[column.Key] = RowValues.ReadValue(reader, ordinal, column);
-            ordinal++;
+            if (column.Type == ColumnTypes.Geo)
+            {
+                obj[column.Key] = ReadGeoPoint(reader, ordinal);
+                ordinal += 2;
+            }
+            else
+            {
+                obj[column.Key] = RowValues.ReadValue(reader, ordinal, column);
+                ordinal++;
+            }
         }
         return obj;
+    }
+
+    /// <summary>
+    /// The read-side mirror of <see cref="ValuePlaceholder"/>: a geo column selects as two
+    /// expressions (<c>ST_X</c>/<c>ST_Y</c> on the same underlying column, see
+    /// <see cref="GeoAwareColumnExpr"/>), not one, so it can't go through
+    /// <see cref="RowValues.ReadValue"/>'s one-ordinal-per-column signature. <paramref name="lngOrdinal"/>
+    /// and its immediate successor (lat) are always adjacent, in that order, by construction.
+    /// </summary>
+    private static JsonNode? ReadGeoPoint(NpgsqlDataReader reader, int lngOrdinal)
+    {
+        if (reader.IsDBNull(lngOrdinal))
+            return null;
+        var lng = reader.GetFieldValue<double>(lngOrdinal);
+        var lat = reader.GetFieldValue<double>(lngOrdinal + 1);
+        return new JsonObject { ["lat"] = JsonValue.Create(lat), ["lng"] = JsonValue.Create(lng) };
     }
 
     private static (List<ColumnDef> Columns, List<object> Values, Dictionary<string, string[]> Fields) ResolveInsertValues(
@@ -719,7 +761,7 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         const string systemCols = "\"_id\", \"_created_at\", \"_updated_at\"";
         return entry.Columns.Count == 0
             ? systemCols
-            : systemCols + ", " + string.Join(", ", entry.Columns.Select(c => PhysicalNaming.Quote(c.PhysicalName)));
+            : systemCols + ", " + string.Join(", ", entry.Columns.Select(c => GeoAwareColumnExpr(c, prefix: "")));
     }
 
     private static string SelectColumns(CatalogEntry entry)
@@ -727,7 +769,24 @@ public sealed class RowsService(PraxyDb db, CatalogCache cache, IEventBus events
         const string systemCols = "t.\"_id\", t.\"_created_at\", t.\"_updated_at\"";
         return entry.Columns.Count == 0
             ? systemCols
-            : systemCols + ", " + string.Join(", ", entry.Columns.Select(c => $"t.{PhysicalNaming.Quote(c.PhysicalName)}"));
+            : systemCols + ", " + string.Join(", ", entry.Columns.Select(c => GeoAwareColumnExpr(c, prefix: "t.")));
+    }
+
+    /// <summary>
+    /// One column's SELECT/RETURNING expression. Every type but geo is the bare (optionally
+    /// <paramref name="prefix"/>-qualified) column reference; geo's single physical column expands
+    /// into two selected expressions — <c>ST_X</c>/<c>ST_Y</c> on the same column cast to
+    /// <c>geometry</c> — aliased <c>{physicalName}_lng</c>/<c>{physicalName}_lat</c>, always in that
+    /// order (see <see cref="ReadGeoPoint"/>, which relies on it).
+    /// </summary>
+    private static string GeoAwareColumnExpr(ColumnDef c, string prefix)
+    {
+        var quoted = PhysicalNaming.Quote(c.PhysicalName);
+        if (c.Type != ColumnTypes.Geo)
+            return $"{prefix}{quoted}";
+        var lngAlias = PhysicalNaming.Quote($"{c.PhysicalName}_lng");
+        var latAlias = PhysicalNaming.Quote($"{c.PhysicalName}_lat");
+        return $"ST_X({prefix}{quoted}::geometry) AS {lngAlias}, ST_Y({prefix}{quoted}::geometry) AS {latAlias}";
     }
 
     private static JsonArray ToPermissionArray(IReadOnlyList<(string Action, string Role)> permissions) =>

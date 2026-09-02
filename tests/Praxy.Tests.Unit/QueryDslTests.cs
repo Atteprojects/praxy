@@ -82,8 +82,18 @@ public class QueryDslTests
     [InlineData("""{"method":"between","attribute":"x","values":[1]}""")] // between needs exactly 2
     [InlineData("""{"method":"limit","values":[1,2]}""")] // limit needs exactly 1
     [InlineData("""{"method":"and","values":[]}""")] // and needs at least one nested query
+    [InlineData("""{"method":"near","attribute":"loc","values":[1,2]}""")] // near needs exactly 3 (lat, lng, radius)
+    [InlineData("""{"method":"near","attribute":"loc","values":[1,2,3,4]}""")]
     public void Malformed_shapes_are_rejected(string query) =>
         Assert.Throws<PraxyException>(() => QueryDsl.Parse([query]));
+
+    [Fact]
+    public void Near_with_exactly_three_values_parses()
+    {
+        var parsed = QueryDsl.Parse(["""{"method":"near","attribute":"loc","values":[37.7749,-122.4194,5000]}"""]);
+        Assert.Equal("near", parsed[0].Method);
+        Assert.Equal(3, parsed[0].Values.Length);
+    }
 
     [Fact]
     public void IsNull_and_select_and_limit_parse_without_an_attribute_where_appropriate()

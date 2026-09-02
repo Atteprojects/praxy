@@ -367,12 +367,17 @@ reads/writes via plain `NpgsqlParameter`/`GetFieldValue<T>` scalars, never a str
 and geo fits that same shape through plain PostGIS SQL functions (`ST_MakePoint`, `ST_DWithin`, `ST_X`/
 `ST_Y`).
 
-- **Phase 1** (kickoff: `docs/handoff/geo-nearby-phase-1-prompt.md`) — a scalar `geo` point column
+- **Phase 1 — shipped 2026-09-02** (kickoff: `docs/handoff/geo-nearby-phase-1-prompt.md`; report:
+  `docs/handoff/geo-nearby-phase-1-report.md`) — a scalar `geo` point column
   (`geography(Point, 4326)`, wire shape `{"lat","lng"}`), a new `spatial` (GiST) index type, and
   `near(lat, lng, radiusMeters)` as a pure radius filter — rejected without a declared spatial index,
-  mirroring `search`'s existing fulltext-index requirement exactly. Requires swapping the Postgres image
-  in both `deploy/docker-compose.yml` and the Testcontainers fixture to a PostGIS-flavored one — the only
-  two files that reference the image tag today, confirmed by grep.
+  mirroring `search`'s existing fulltext-index requirement exactly. Postgres image swapped to
+  `postgis/postgis:17-3.6-alpine` in both `deploy/docker-compose.yml` and the Testcontainers fixture —
+  the only two files that referenced the image tag, confirmed by grep. Found and handled a gap the
+  design doc didn't anticipate: `postgis/postgis` publishes no `arm64` manifest at all (any Postgres
+  major, any PostGIS minor) — both files now pin `Platform`/`platform: linux/amd64` explicitly so an
+  arm64 host (this was written and verified on one) runs it under emulation instead of a hard
+  "no matching manifest" failure.
 
 **Explicitly not in Phase 1, real follow-up work, not forgotten**: automatic distance-sorting
 ("nearest first") — the query compiler's sort/cursor model is hard-wired to a real physical column today,

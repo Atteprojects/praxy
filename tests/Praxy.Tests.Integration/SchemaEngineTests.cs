@@ -528,7 +528,7 @@ public class SchemaEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
             Kind = SchemaJobKinds.CreateIndex,
             Payload = JsonSerializer.Serialize(new CreateIndexJobPayload(
                 IndexId: Ids.Wire(indexId), SchemaName: database.SchemaName, TablePhysicalName: table.PhysicalName,
-                IndexPhysicalName: physicalName, Unique: false, Fulltext: false,
+                IndexPhysicalName: physicalName, Unique: false, Fulltext: false, Spatial: false,
                 ColumnsPhysical: ["does_not_exist"], Orders: ["asc"], FulltextColumnPhysical: null)),
             Status = "queued",
         });

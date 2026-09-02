@@ -24,7 +24,7 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
         if (!ColumnTypes.IsValid(type))
             throw PraxyException.NotFound(ErrorTypes.ColumnInvalid, $"Unknown column type '{type}'.");
         ValidateKey(key);
-        ValidateTypeShape(type, size, elements, targetTableId, defaultValue);
+        ValidateTypeShape(type, size, elements, targetTableId, defaultValue, isArray);
 
         TableDef? targetTable = null;
         if (type == ColumnTypes.Relationship)
@@ -39,7 +39,11 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
         await AssertRowBudgetAsync(table.Id, extra: (key, type, size, isArray, elements), ct);
 
         var id = Ids.NewUuid();
-        var physicalName = PhysicalNaming.EntityName(key, id);
+        // A geo column's read path derives "{physicalName}_lng"/"{physicalName}_lat" aliases
+        // (RowsService.GeoAwareColumnExpr) — reserve room for the longer of the two now, or a
+        // max-length key could produce a physical name with none left, and the very first row
+        // read/write on the table would fail PhysicalNaming's own length guard.
+        var physicalName = PhysicalNaming.EntityName(key, id, reserveSuffixChars: type == ColumnTypes.Geo ? 4 : 0);
         var storageType = ColumnTypes.PostgresStorageType(type, size, isArray);
 
         string? defaultLiteral = null;
@@ -195,7 +199,7 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
     }
 
     private static void ValidateTypeShape(
-        string type, int? size, string[]? elements, string? targetTableId, JsonElement? defaultValue)
+        string type, int? size, string[]? elements, string? targetTableId, JsonElement? defaultValue, bool isArray)
     {
         var fields = new Dictionary<string, string[]>();
         if (type == ColumnTypes.String && size is not (> 0 and <= ColumnTypes.MaxStringSize))
@@ -217,6 +221,15 @@ public sealed class ColumnsService(PraxyDb db, CatalogCache cache, QuotaService 
             // later deleted, under ON DELETE RESTRICT?) — rejected outright instead.
             if (defaultValue is { ValueKind: not JsonValueKind.Null and not JsonValueKind.Undefined })
                 fields["default"] = ["Relationship columns can't have a default value."];
+        }
+        if (type == ColumnTypes.Geo)
+        {
+            // Keeps this phase's surface small (docs/research/geo-nearby.md) — no array-of-points
+            // question to answer yet, no hardcoded-default edge case to design around.
+            if (isArray)
+                fields["array"] = ["'geo' columns can't be arrays."];
+            if (defaultValue is { ValueKind: not JsonValueKind.Null and not JsonValueKind.Undefined })
+                fields["default"] = ["'geo' columns can't have a default value."];
         }
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid column payload.", fields);
