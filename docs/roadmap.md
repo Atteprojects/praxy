@@ -379,11 +379,16 @@ and geo fits that same shape through plain PostGIS SQL functions (`ST_MakePoint`
   arm64 host (this was written and verified on one) runs it under emulation instead of a hard
   "no matching manifest" failure.
 
-**Explicitly not in Phase 1, real follow-up work, not forgotten**: automatic distance-sorting
-("nearest first") — the query compiler's sort/cursor model is hard-wired to a real physical column today,
-with no computed-expression sort path, so this needs real surgery to that model, not a quick add; array-
-valued geo columns; additional geo types (`line`, `polygon`) and their own operators, if more geo
-operations beyond nearby are wanted later.
+- **Phase 2 — kicked off 2026-09-01** (kickoff: `docs/handoff/geo-nearby-phase-2-prompt.md`) — a new
+  `orderNear(lat, lng)` query method for nearest-first distance-sorting, compiling to PostGIS's
+  GiST-index-assisted KNN operator (`ORDER BY col <-> ST_MakePoint(@lng,@lat)::geography`), with full
+  keyset-cursor pagination alongside it — not offset-only, corrected from this doc's earlier, more
+  cautious framing of the sort/cursor model needing "real surgery." Design: the new "Phase 2" section
+  of `docs/research/geo-nearby.md`.
+
+**Explicitly not in Phase 2 either, real follow-up work, not forgotten**: array-valued geo columns;
+additional geo types (`line`, `polygon`) and their own operators, if more geo operations beyond nearby
+are wanted later; a returned `$distance` value alongside `orderNear` results.
 
 ---
 
