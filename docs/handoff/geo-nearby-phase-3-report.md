@@ -195,6 +195,14 @@ rebuilding the API. Every job still *runs* and gates its steps rather than being
 with `enforce_admins` mean a job that never reports leaves a PR unmergeable with no override. The
 workflow carries a comment explaining that, and when the tidier job-level `if:` becomes safe.
 
+Verified on this PR rather than assumed, in two runs, because the two halves need different commits
+to exercise: the commit that introduced the workflow resolved **all four filters `true`** (correct —
+every area watches `ci.yml`, so a CI change is validated by every job it changes), and a subsequent
+docs-only commit resolved **all four `false`**, with each job running its "No … changes" step and
+still reporting its required context as passing. That second half is the one worth checking: a
+required check that stops reporting would leave `main` unmergeable, and `enforce_admins` means there
+is no override.
+
 ## Owner-test checklist
 
 Done by me this session, against the shared canonical local dev instance (`owner@test.local`), reusing
