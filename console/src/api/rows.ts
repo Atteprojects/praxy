@@ -8,16 +8,21 @@ const base = (projectId: string, databaseId: string, tableId: string) =>
 const rowsKey = (projectId: string, databaseId: string, tableId: string) =>
   ["projects", projectId, "databases", databaseId, "tables", tableId, "rows"] as const;
 
-export interface SortState {
-  attribute: string;
-  direction: "asc" | "desc";
-}
+export type SortState =
+  | { attribute: string; direction: "asc" | "desc" }
+  | { attribute: string; direction: "near"; lat: number; lng: number };
 
 const PAGE_SIZE = 50;
 
 function serializeQueries(filters: QueryFilter[], sort: SortState | null, cursorAfter?: string): string[] {
   const queries = filters.map((f) => JSON.stringify(f));
-  if (sort) queries.push(JSON.stringify({ method: sort.direction === "asc" ? "orderAsc" : "orderDesc", attribute: sort.attribute }));
+  if (sort) {
+    queries.push(JSON.stringify(
+      sort.direction === "near"
+        ? { method: "orderNear", attribute: sort.attribute, values: [sort.lat, sort.lng] }
+        : { method: sort.direction === "asc" ? "orderAsc" : "orderDesc", attribute: sort.attribute },
+    ));
+  }
   queries.push(JSON.stringify({ method: "limit", values: [PAGE_SIZE] }));
   if (cursorAfter) queries.push(JSON.stringify({ method: "cursorAfter", values: [cursorAfter] }));
   return queries;

@@ -1,5 +1,6 @@
 import { useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useColumns, useTable } from "../api/databases";
 import { ApiError } from "../api/client";
 import {
@@ -8,7 +9,7 @@ import {
 import type { ColumnSchema, ColumnType, GeoPoint, QueryFilter, Row } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
 import { DataGrid, type DataGridColumn } from "../components/DataGrid";
-import { AddRoleButton, RoleLabel } from "../components/RolePicker";
+import { AddRoleButton, RoleLabel, usePanelPosition } from "../components/RolePicker";
 import { RelationshipValueEditor } from "../components/RelationshipPicker";
 import { EmptyState, ErrorNote, Field, FullPageSpinner, Sheet, Spinner } from "../components/ui";
 import { TableDetailHeader } from "./TableDetailHeader";
@@ -292,6 +293,136 @@ function parseScalar(type: ColumnType, raw: string): unknown {
   return raw;
 }
 
+function sortIndicator(sort: SortState | null, key: string): ReactNode {
+  if (!sort || sort.attribute !== key) return null;
+  return sort.direction === "near" ? "📍" : sort.direction === "asc" ? "↑" : "↓";
+}
+
+const GEO_SORT_PANEL_WIDTH = 224;
+
+/**
+ * A `geo` column's sort entry point. The plain header click-to-toggle-asc/desc affordance doesn't
+ * fit here — a near-point sort needs two numeric inputs, not a toggle — so this is a dedicated
+ * popover instead, opened from the column header itself.
+ */
+function GeoSortHeader({
+  column, sort, onApply, onClear,
+}: {
+  column: ColumnSchema;
+  sort: SortState | null;
+  onApply: (lat: number, lng: number) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const active = sort?.attribute === column.key && sort.direction === "near";
+
+  return (
+    <div className="flex items-center gap-1 uppercase">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="flex items-center gap-1"
+        onClick={() => setOpen((v) => !v)}
+        title="Sort nearest to…"
+      >
+        {column.key} {sortIndicator(sort, column.key)}
+      </button>
+      {active ? (
+        <button
+          type="button"
+          className="normal-case text-ink-500 hover:text-coral-400"
+          onClick={(e) => { e.stopPropagation(); onClear(); }}
+          title="Clear sort"
+        >
+          ✕
+        </button>
+      ) : null}
+      {open ? (
+        <GeoSortPanel
+          anchorRef={buttonRef}
+          initial={active ? { lat: sort.lat, lng: sort.lng } : null}
+          onApply={onApply}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The popover itself, rendered through a portal against the header button. Positioned inside the
+ * grid it would be clipped by DataGrid's own `overflow-hidden`/`overflow-auto` wrappers — and
+ * unrecoverably so, since it sits inside a `position: sticky` thead that scrolling never moves, so
+ * on a one-row table the Apply button ended up unreachable. Same fix, and the same
+ * `usePanelPosition` shape, RolePicker/RelationshipPicker already use for the same reason.
+ */
+function GeoSortPanel({
+  anchorRef, initial, onApply, onClose,
+}: {
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  initial: { lat: number; lng: number } | null;
+  onApply: (lat: number, lng: number) => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const position = usePanelPosition(anchorRef, GEO_SORT_PANEL_WIDTH);
+  const [lat, setLat] = useState(initial ? String(initial.lat) : "");
+  const [lng, setLng] = useState(initial ? String(initial.lng) : "");
+
+  useEffect(() => {
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      onClose();
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onClose();
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [anchorRef, onClose]);
+
+  const valid = lat !== "" && lng !== "" && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng));
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={{
+        position: "fixed",
+        top: position?.top ?? -9999,
+        left: position?.left ?? -9999,
+        width: GEO_SORT_PANEL_WIDTH,
+      }}
+      className="z-[70] space-y-2 rounded-lg border border-ink-700 bg-ink-900 p-3 normal-case shadow-xl shadow-black/40"
+    >
+      <p className="text-xs text-ink-400">Sort nearest to…</p>
+      <div className="flex gap-1.5">
+        <input className="input-base py-1 text-xs" type="number" step="any" placeholder="lat" value={lat} onChange={(e) => setLat(e.target.value)} />
+        <input className="input-base py-1 text-xs" type="number" step="any" placeholder="lng" value={lng} onChange={(e) => setLng(e.target.value)} />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onClose}>Cancel</button>
+        <button
+          type="button"
+          className="btn-primary px-2 py-1 text-xs"
+          disabled={!valid}
+          onClick={() => { onApply(Number(lat), Number(lng)); onClose(); }}
+        >
+          Apply
+        </button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function RowsPage() {
   const { projectId, databaseId, tableId } = useParams({ strict: false }) as {
     projectId: string; databaseId: string; tableId: string;
@@ -370,16 +501,23 @@ export function RowsPage() {
       id: "$id",
       header: () => (
         <button type="button" className="flex items-center gap-1 uppercase" onClick={() => toggleSort("$id")}>
-          $id {sort?.attribute === "$id" ? (sort.direction === "asc" ? "↑" : "↓") : null}
+          $id {sortIndicator(sort, "$id")}
         </button>
       ),
       cell: ({ row }) => <span className="font-mono text-xs text-ink-500">{row.original.$id.slice(0, 12)}…</span>,
     },
     ...cols.map((column): DataGridColumn<Row> => ({
       id: column.key,
-      header: () => (
+      header: () => column.type === "geo" ? (
+        <GeoSortHeader
+          column={column}
+          sort={sort}
+          onApply={(lat, lng) => setSort({ attribute: column.key, direction: "near", lat, lng })}
+          onClear={() => setSort(null)}
+        />
+      ) : (
         <button type="button" className="flex items-center gap-1 uppercase" onClick={() => toggleSort(column.key)}>
-          {column.key} {sort?.attribute === column.key ? (sort.direction === "asc" ? "↑" : "↓") : null}
+          {column.key} {sortIndicator(sort, column.key)}
         </button>
       ),
       cell: ({ row }) => (

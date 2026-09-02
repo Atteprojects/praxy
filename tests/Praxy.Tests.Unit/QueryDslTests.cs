@@ -84,6 +84,9 @@ public class QueryDslTests
     [InlineData("""{"method":"and","values":[]}""")] // and needs at least one nested query
     [InlineData("""{"method":"near","attribute":"loc","values":[1,2]}""")] // near needs exactly 3 (lat, lng, radius)
     [InlineData("""{"method":"near","attribute":"loc","values":[1,2,3,4]}""")]
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":[1]}""")] // orderNear needs exactly 2 (lat, lng)
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":[1,2,3]}""")]
+    [InlineData("""{"method":"orderNear","values":[1,2]}""")] // orderNear requires an attribute
     public void Malformed_shapes_are_rejected(string query) =>
         Assert.Throws<PraxyException>(() => QueryDsl.Parse([query]));
 
@@ -93,6 +96,15 @@ public class QueryDslTests
         var parsed = QueryDsl.Parse(["""{"method":"near","attribute":"loc","values":[37.7749,-122.4194,5000]}"""]);
         Assert.Equal("near", parsed[0].Method);
         Assert.Equal(3, parsed[0].Values.Length);
+    }
+
+    [Fact]
+    public void OrderNear_with_exactly_two_values_parses()
+    {
+        var parsed = QueryDsl.Parse(["""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}"""]);
+        Assert.Equal("orderNear", parsed[0].Method);
+        Assert.Equal("loc", parsed[0].Attribute);
+        Assert.Equal(2, parsed[0].Values.Length);
     }
 
     [Fact]

@@ -25,6 +25,7 @@ public class QueryCompilerTests
                 Id = Guid.NewGuid(), TableId = tableId, Key = "authorId", Type = ColumnTypes.Relationship,
                 PhysicalName = "author_id_x1", TargetTableId = Guid.NewGuid(),
             },
+            new() { Id = Guid.NewGuid(), TableId = tableId, Key = "loc", Type = ColumnTypes.Geo, PhysicalName = "loc_x1" },
         };
         return new CatalogEntry(database, table, columns, indexes ?? [], permissions ?? []);
     }
@@ -197,5 +198,112 @@ public class QueryCompilerTests
         var queries = Q("""{"method":"search","attribute":"authorId","values":["hello"]}""");
         var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
         Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    private static IndexDef SpatialIndex() => new()
+    {
+        Id = Guid.NewGuid(), TableId = Guid.NewGuid(), Key = "idx_loc", Type = IndexesService.TypeSpatial,
+        Columns = ["loc"], PhysicalName = "ix_loc_x1", Status = "available",
+    };
+
+    [Fact]
+    public void OrderNear_on_a_non_geo_column_is_rejected()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"orderNear","attribute":"title","values":[37.7749,-122.4194]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    [Fact]
+    public void OrderNear_on_a_geo_column_with_no_spatial_index_is_rejected()
+    {
+        var entry = BuildEntry();
+        var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    [Fact]
+    public void OrderNear_with_an_available_spatial_index_compiles_to_the_knn_operator()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Contains("loc_x1", compiled.Sql);
+        Assert.Contains("<->", compiled.Sql);
+        Assert.Contains("ST_MakePoint", compiled.Sql);
+        Assert.Contains("::geography", compiled.Sql);
+    }
+
+    /// <summary>
+    /// The design doc's landmine: AddParam must be called exactly once each for lat/lng, with the
+    /// same "@pN" name reused verbatim across the ORDER BY (no cursor here, so just one site) —
+    /// never a duplicate parameter for the same logical value.
+    /// </summary>
+    [Fact]
+    public void OrderNear_adds_exactly_one_param_each_for_lat_and_lng()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Equal(1, compiled.Params.Count(p => p.Value is double d && d == 37.7749));
+        Assert.Equal(1, compiled.Params.Count(p => p.Value is double d && d == -122.4194));
+    }
+
+    [Fact]
+    public void OrderNear_composes_with_a_near_radius_filter()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q(
+            """{"method":"near","attribute":"loc","values":[37.7749,-122.4194,5000]}""",
+            """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Contains("ST_DWithin", compiled.Sql);
+        Assert.Contains("<->", compiled.Sql);
+    }
+
+    /// <summary>First order method sent wins — same rule across orderAsc/orderDesc/orderNear.</summary>
+    [Fact]
+    public void First_order_method_wins_when_orderAsc_precedes_orderNear()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q(
+            """{"method":"orderAsc","attribute":"title"}""",
+            """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Contains("title_x1", compiled.Sql);
+        Assert.DoesNotContain("<->", compiled.Sql);
+    }
+
+    [Fact]
+    public void OrderNear_standalone_with_no_near_filter_still_compiles()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.DoesNotContain("ST_DWithin", compiled.Sql);
+        Assert.Contains("<->", compiled.Sql);
+    }
+
+    /// <summary>
+    /// The shared <c>RequireNearValue</c> serves both methods, so its message has to name the one the
+    /// caller actually sent — an 'orderNear' failure reporting itself as 'near' sends people looking
+    /// at the wrong query.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":["nope",-122.4194]}""", "orderNear", "lat")]
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":[37.7749,"nope"]}""", "orderNear", "lng")]
+    [InlineData("""{"method":"near","attribute":"loc","values":["nope",-122.4194,500]}""", "near", "lat")]
+    [InlineData("""{"method":"near","attribute":"loc","values":[37.7749,-122.4194,"nope"]}""", "near", "radiusMeters")]
+    public void A_non_numeric_query_point_value_names_the_method_the_caller_sent(
+        string query, string method, string label)
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var ex = Assert.Throws<PraxyException>(
+            () => QueryCompiler.CompileList(entry, Q(query), ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+        Assert.Equal($"'{method}' requires numeric values.", ex.Message);
+        Assert.Contains($"'{method}' {label} must be a number.", ex.Fields!["queries"]);
     }
 }
