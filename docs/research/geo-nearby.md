@@ -148,10 +148,125 @@ column-list-building also needs a geo-specific branch, not just `ReadScalar`'s r
   `search`'s fulltext-index requirement exactly), console support for creating a `geo` column and editing
   a row's lat/lng, Flutter codegen passthrough. No distance-sorting, no array-of-points, no
   `line`/`polygon` types.
-- **Later, not designed here**: distance-based sorting (the real cursor/sort-model surgery flagged
-  above); array-valued geo columns; additional geo column types (`line`, `polygon`) and their own
-  operators (`within`, bounding-box search) if more geo operations beyond "nearby" are wanted, matching
-  the owner's own framing ("geo operations like nearby *first*").
+- **Phase 2 — distance-sorting (`orderNear`)**: nearest-first ordering, with full keyset-cursor
+  pagination alongside it. Designed below, kickoff: `docs/handoff/geo-nearby-phase-2-prompt.md`.
+- **Later, not designed here**: array-valued geo columns; additional geo column types (`line`,
+  `polygon`) and their own operators (`within`, bounding-box search) if more geo operations beyond
+  "nearby" are wanted, matching the owner's own framing ("geo operations like nearby *first*"); a
+  returned `$distance` value alongside `orderNear` results (a natural adjacent feature — most
+  nearby-search UIs show "2.3 km away" — deliberately left out of Phase 2 to keep that phase to
+  exactly one slice: order, not a new payload shape).
+
+## Phase 2 — distance-sorting (`orderNear`)
+
+**Corrects an earlier answer given to the owner.** When Phase 1 shipped, this doc's "Later, not
+designed here" bullet called distance-sorting "the real cursor/sort-model surgery" and implied it
+might need to fall back to offset-only pagination for a first cut. A closer, line-level re-read of
+the actual `QueryCompiler.CompileList`/`Builder.AddParam` code (not the earlier summarized research)
+shows that's overly cautious: **full keyset-cursor pagination is achievable in this phase**, detailed
+below. Nothing about Phase 1's shipped `near()` contract changes — `orderNear` is new and additive.
+
+### DSL: `orderNear(lat, lng)`
+
+A new query method, attribute = the geo column key, 2-arity (`lat`, `lng` — matching `between`'s
+existing two-value precedent, the same shape `near`'s three values already established for
+`QueryDsl.ValidateArity`):
+
+```
+QueryDsl.AllMethods gains "orderNear"
+QueryDsl.ValidateArity gains: "orderNear" => count == 2, // lat, lng
+```
+
+**Self-sufficient — does not require a co-occurring `near()` filter.** This is deliberate, for two
+reasons: it supports "K nearest, no radius cutoff" as its own valid use case (the most common shape
+for "find the 10 closest stores"), and it leaves Phase 1's shipped `near()` untouched as a pure radius
+filter with no implicit sorting — exactly the contract its own doc comment already promises
+(`CompileNear`'s doc comment: "a pure radius filter, never automatic nearest-first sorting"). A caller
+who wants both radius-bounding *and* nearest-first order simply sends both `near(...)` and
+`orderNear(...)` in the same request — they compose independently, no new interaction code needed,
+since `near()` lives in the filter/WHERE path and `orderNear` lives in the order/cursor path.
+
+**Nearest-first only — no `orderNearDesc`.** Farthest-first isn't a real use case worth a second
+method; keeping the surface to one verb matches the "don't build for a hypothetical" discipline
+already applied elsewhere in this engine.
+
+**Requires the column to be `geo`-typed and to have a declared spatial (GiST) index** — the same two
+checks `CompileNear` already makes for `near()` (`column.Type != ColumnTypes.Geo` → 400,
+`entry.SpatialIndexFor(column.Key)` missing → 400 pointing at "create a spatial index" rather than let
+an unindexed `<->` silently sequential-scan-and-sort). Validated where `CompileList`'s method switch
+recognizes `orderNear`, mirroring `ResolveColumn`'s existing role for `orderAsc`/`orderDesc`.
+
+### Compiles to PostGIS's KNN operator
+
+```sql
+ORDER BY {quoted} <-> ST_MakePoint(@lng, @lat)::geography ASC
+```
+
+`<->` on `geography` is GiST-index-assisted best-first nearest-neighbor search (confirmed via
+websearch, not assumed) — efficient and `LIMIT`-aware, with one real constraint: a geometry/geography
+*literal or parameter* on one side of the operator, never a column reference on both sides. That's
+satisfied automatically here since the query point is always the request's own `lat`/`lng` values,
+never derived from another row.
+
+### Sort-key generalization in `CompileList`
+
+Today, `sortColQuoted` (`QueryCompiler.cs:103`, `PhysicalNaming.Quote(effectiveSortColumn.PhysicalName)`)
+is a single quoted-identifier string, computed once from a resolved `ColumnDef`, then reused verbatim
+in exactly three places: the cursor subselect (`:122`), the cursor tuple-compare (`:124`), and the
+final `ORDER BY` (`:129`). `orderNear` needs the same three call sites to emit a *computed expression*
+instead of a bare column reference — the generalization is contained to those three sites because all
+three already just interpolate a string, none of them inspect `sortColQuoted`'s shape:
+
+- The loop (`:57-87`) gains a third arm in the order-method case (`case "orderAsc" or "orderDesc" or
+  "orderNear":`), and on `orderNear` resolves the attribute to a `geo` column (with the type + spatial
+  index checks above) and stashes the two parsed `lat`/`lng` doubles alongside it — `AddParam` can't
+  be called yet here, since `select`/`count`'s `Builder` instances don't exist until after the loop
+  (`:111`, `:139`).
+- Immediately after `select = new Builder(entry)` (`:111`), when the resolved sort is `orderNear`,
+  call `select.AddParam(lng)` and `select.AddParam(lat)` **once** each, building
+  `nearPointExpr = $"ST_MakePoint({lngParam}, {latParam})::geography"` from the two returned `"@pN"`
+  strings.
+- Replace the three `{sortColQuoted}`/`t.{sortColQuoted}` interpolations with calls to a small
+  `SortKeyExpr(string alias)` local function: for a column sort it returns
+  `$"{alias}{PhysicalNaming.Quote(resolvedColumn.PhysicalName)}"` (today's behavior, unchanged bit for
+  bit); for `orderNear` it returns `$"{alias}{PhysicalNaming.Quote(geoColumn.PhysicalName)} <-> {nearPointExpr}"`.
+  `alias` is `""` in the unaliased cursor subselect and `"t."` in the two aliased sites — matching
+  today's `sortColQuoted` vs `t.{sortColQuoted}` split exactly.
+- The `count` query (`:139`, used only for `includeTotal`) needs none of this — it has no `ORDER BY`
+  and no cursor, so `orderNear`'s params are never added to its independent `Builder`/`Params` list.
+
+**Why keyset pagination just works, reusing the exact mechanism `Builder.AddParam` already provides**:
+`AddParam` (`:155-160`) returns a `"@pN"` name string after appending one entry to `Params`; Npgsql
+resolves bound parameters **by name**, so the same `"@pN"` text can appear multiple times in one SQL
+statement while the parameter itself is bound only once. This is exactly what makes reusing
+`nearPointExpr` verbatim across the subselect, the tuple-compare, and the `ORDER BY` free — no
+cross-request state, no second round of parameter binding. It also matches how a client already has to
+behave with today's column-based cursors: `orderAsc(col)` must be resent on every page request for the
+cursor to mean anything, and `orderNear(lat, lng)` is the identical shape — the client resends the
+same query point on every page, which it already has to do anyway since it's the thing being searched
+near.
+
+```sql
+-- resuming after row @cursorId, nearest-first:
+... AND (
+  ({quoted} <-> ST_MakePoint(@lng, @lat)::geography, _id)
+    > (
+      (SELECT {quoted} <-> ST_MakePoint(@lng, @lat)::geography FROM {qualified} WHERE _id = @cursorId),
+      @cursorId
+    )
+)
+ORDER BY t.{quoted} <-> ST_MakePoint(@lng, @lat)::geography ASC, t._id ASC
+LIMIT @limit
+```
+
+**One open question the implementing session must verify, not assume**: whether Postgres still picks
+the GiST KNN index-assisted plan for the `ORDER BY ... <-> ... LIMIT` once it's combined with the
+keyset `WHERE` clause's own (non-indexable) distance recomputation for the tuple-compare. Confirm with
+`EXPLAIN ANALYZE` against a realistically-sized seeded table, not by inspection alone. If the planner
+does *not* use the index-assisted scan under that combination, that's not a correctness problem —
+results are still right — only a performance one; `CompileList` already supports plain `offset`-based
+pagination unconditionally (`:93-94`, `:132-133`), so nothing needs to be removed or gated to keep that
+path available as a documented fallback for callers who hit it.
 
 ## Verification
 
@@ -168,3 +283,15 @@ verification: `dotnet test` against a real PostGIS-enabled Postgres via Testcont
 owner-test, and a real end-to-end `near` query (two rows at known coordinates, a radius that includes one
 and excludes the other, confirmed against real distance math) — the same discipline every prior phase
 used.
+
+Phase 2's design above was checked the same way, directly against the current
+`src/Praxy.Tables/QueryCompiler.cs` (not the earlier, coarser research this doc's Phase 1 section was
+originally grounded in): `CompileList`'s exact loop structure and line numbers, `Builder.AddParam`'s
+by-name reuse semantics, and `CompileNear`'s existing type/spatial-index checks as the direct model for
+`orderNear`'s own. PostGIS's `<->` KNN behavior (GiST-index-assisted, `LIMIT`-aware, one-literal-side
+constraint) was confirmed via websearch, not assumed. The Phase 2 implementation session (kickoff:
+`docs/handoff/geo-nearby-phase-2-prompt.md`) owns its own verification: `dotnet test`, the console
+owner-test, a real end-to-end `orderNear` query (several rows at known coordinates and known relative
+distances, confirmed returned in the right order), keyset pagination across `orderNear` specifically
+(page through past a cursor, confirm no duplicate/skipped rows), and the `EXPLAIN ANALYZE` index-usage
+check flagged above.
