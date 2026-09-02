@@ -435,3 +435,5 @@ The owner starts each phase in a **fresh session**. At the end of phase N, the i
 4. Print that prompt in the final message for the owner to paste.
 
 `docs/handoff/phase-0-prompt.md` exists now; Phase 0's session starts from it.
+
+<!-- throwaway probe: verifies CI path filters skip non-docs jobs. Not for merge. -->
