@@ -150,12 +150,117 @@ column-list-building also needs a geo-specific branch, not just `ReadScalar`'s r
   `line`/`polygon` types.
 - **Phase 2 — distance-sorting (`orderNear`)**: nearest-first ordering, with full keyset-cursor
   pagination alongside it. Designed below, kickoff: `docs/handoff/geo-nearby-phase-2-prompt.md`.
-- **Later, not designed here**: array-valued geo columns; additional geo column types (`line`,
-  `polygon`) and their own operators (`within`, bounding-box search) if more geo operations beyond
-  "nearby" are wanted, matching the owner's own framing ("geo operations like nearby *first*"); a
-  returned `$distance` value alongside `orderNear` results (a natural adjacent feature — most
-  nearby-search UIs show "2.3 km away" — deliberately left out of Phase 2 to keep that phase to
-  exactly one slice: order, not a new payload shape).
+- **Phase 3 — `$distance` + `withinBox`**: the returned distance value and a viewport/bounding-box
+  filter. Both are things Appwrite does *not* have (see "Competitive position" below), which is why
+  they're sequenced ahead of the parity work. Designed below, kickoff:
+  `docs/handoff/geo-nearby-phase-3-prompt.md`.
+- **Phase 4 — `polygon` and `line` column types, `within`/`intersects`/`contains`** (not designed
+  here — needs its own doc): the geofencing capability gap, and the expensive one. New wire shapes for
+  multi-coordinate geometry, a console editor that is a real UI problem rather than a form field, and
+  codegen decisions none of Phases 1-3 had to make. `polygon` and `line` belong in one phase because
+  they share almost all of that plumbing.
+- **Phase 5 — the parity tail** (not designed here): `crosses`/`touches`/`overlaps` and their negations,
+  plus array-valued geo columns. Array-geo is last deliberately: relationships (shipped 2026-09-01)
+  already model "one record, many locations" better, and `line` covers the ordered-path case more
+  meaningfully — it's in scope because the owner asked for the full sweep, not because the modeling
+  need is otherwise unmet.
+
+## Competitive position — checked 2026-09-02, not assumed
+
+The owner's stated goal for Phases 3-5 is to offer more than Appwrite. Verified against Appwrite's own
+spatial-columns announcement rather than memory, because it changes the sequencing:
+
+**Appwrite already ships** `point`, `line`, and `polygon` column types with twelve predicates —
+`crosses`/`notCrosses`, `intersects`/`notIntersects`, `overlaps`/`notOverlaps`, `touches`/`notTouches`,
+and `distanceEqual`/`distanceNotEqual`/`distanceGreaterThan`/`distanceLessThan`. So Praxy's `line`/
+`polygon`/`within` work is **catch-up to parity, not differentiation** — worth knowing before spending
+the largest phase on it.
+
+**What Appwrite's announcement never mentions**: ordering by distance. All four of its distance
+operators are filters, not sorts — there is no nearest-first, no KNN, and no returned distance value.
+Praxy's `orderNear` (Phase 2, shipped 2026-09-02) is therefore already the differentiator, and Phase 3's
+`$distance` extends the same lead.
+
+Two further places Phases 1-2 already chose better defaults, both worth keeping in any comparison:
+- Appwrite's geo queries **silently full-scan without a spatial index** ("queries without a spatial
+  index will work, but won't perform well at scale"). Praxy rejects them with an actionable error
+  naming the missing index — the `never a silent sequential scan` rule `CompileSearch` established.
+- Appwrite represents coordinates as `[longitude, latitude]` arrays. Praxy's `{"lat","lng"}` object was
+  chosen in Phase 1 specifically to kill that ordering footgun.
+
+## Phase 3 — `$distance` and `withinBox`
+
+Two independent additions that share no code, batched into one phase because both are small and both
+are competitive differentiators.
+
+### `$distance` — the computed distance, returned
+
+A new system field alongside `$id`/`$createdAt`/`$updatedAt`/`$permissions`, in **meters** (matching
+`near`'s `radiusMeters` and PostGIS's own geography unit).
+
+**Emitted only when `orderNear` is present, measured from `orderNear`'s query point.** This is the
+design doc's earlier open question ("what units? what key name? does it apply to bare `near()` too?")
+settled deliberately:
+- `orderNear` already computes this distance for its `ORDER BY`, so the value is essentially free there
+  and answers the question the sort itself raises ("sorted by distance — how far?").
+- `orderNear` is single and first-wins, so "which point is this measured from?" has exactly one answer.
+  A bare `near()` filter can legitimately appear more than once in a query (different columns, or an
+  `or` branch), which would make the same field ambiguous.
+- Not emitting it for bare `near()` is additive to revisit later; emitting it ambiguously is not.
+
+**Compute it with `ST_Distance`, not by reusing the `<->` value.** `<->` is what the `ORDER BY` uses
+because it is the index-accelerated KNN operator, but its exact return value for `geography` has
+historically differed between sphere and spheroid across PostGIS versions. `$distance` is a number an
+app will display to a user, so it should be the explicit, documented, spheroid-by-default
+`ST_Distance(col, point)`. That means two distance computations per returned row rather than one — a
+cost worth paying, and bounded by the page limit rather than the table size. **The implementing session
+must confirm the two agree closely enough that ordering never disagrees with the displayed values** (a
+row shown as nearer must never sort after a row shown as farther); if they can disagree, prefer
+`ST_Distance` in both places and accept the plan change.
+
+**Plumbing** — the ordinal-safety point matters more than it looks:
+- Append the distance expression to the **end** of `BuildSelectList`'s select list, never the middle.
+  `RowsService.BuildRowJson` walks result ordinals positionally from 3, advancing by **2** for geo
+  columns and 1 for everything else; a trailing column is the only placement that cannot disturb that.
+- `CompiledListQuery` carries a flag saying the distance column is present (it already carries
+  `SelectedKeys`/`Reversed` for the same kind of reason). `BuildRowJson` reads
+  `reader.GetFieldValue<double>(ordinal)` once after its column loop, where `ordinal` is already exactly
+  the count of consumed columns.
+- `select(...)` does not suppress it. `BuildSelectList` already emits `_id`/`_created_at`/`_updated_at`
+  unconditionally regardless of `select`, and `$distance` is a system field of the same kind.
+- `Create`/`Get` never pass the flag — only `List` can carry an `orderNear`.
+
+### `withinBox(minLat, minLng, maxLat, maxLng)` — the viewport filter
+
+A 4-arity filter method: every point inside an axis-aligned rectangle. This is what a map UI needs on
+every pan and zoom, and today the only approximation is an oversized `near()` radius plus client-side
+filtering.
+
+```sql
+ST_Intersects({col}, ST_MakeEnvelope(@minLng, @minLat, @maxLng, @maxLat, 4326)::geography)
+```
+
+- **Named `withinBox`, not `within`** — `within` is deliberately reserved for Phase 4's polygon
+  containment, which is the operation developers will expect that word to mean.
+- **Values are lat-first**, matching `near(lat, lng, ...)`'s existing convention; the compiler reorders
+  them into `ST_MakeEnvelope`'s x/y (lng/lat) argument order, exactly as `CompileNear` already does for
+  `ST_MakePoint`. Never expose PostGIS's axis order on the wire.
+- **Requires a declared spatial index**, same rule and same error shape as `near`/`orderNear`.
+  Confirmed: PostGIS's named predicates (`ST_Intersects` included) use a GiST index automatically when
+  one exists — the `&&` bounding-box operator does not need to be written out alongside it, and `&&` is
+  a geometry operator anyway, not a geography one.
+- **Validation**: `minLat < maxLat` required. `minLng > maxLng` means a box crossing the antimeridian,
+  which `ST_MakeEnvelope` cannot express — **reject it with a clear error in v1** rather than silently
+  producing an inverted envelope that matches nothing. Splitting into two envelopes is the real fix and
+  is additive later; a wrong answer is not.
+- **A geography envelope's edges follow great circles, not parallels.** Negligible for a map viewport,
+  visible for a box spanning many degrees of latitude. The implementing session should verify against
+  real coordinates and document the behavior rather than discover it in a bug report.
+
+**Coordinate-range validation is a consistency decision, not a `withinBox` detail**: `near` does not
+currently reject a latitude of 200. Adding range checks to `withinBox` alone would make the two
+inconsistent, so either add `[-90,90]`/`[-180,180]` validation to both or to neither. Recommend both —
+it is a small, purely-additive way to catch an obvious caller error, and the error shape already exists.
 
 ## Phase 2 — distance-sorting (`orderNear`)
 
