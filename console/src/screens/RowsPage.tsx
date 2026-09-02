@@ -292,6 +292,79 @@ function parseScalar(type: ColumnType, raw: string): unknown {
   return raw;
 }
 
+function sortIndicator(sort: SortState | null, key: string): ReactNode {
+  if (!sort || sort.attribute !== key) return null;
+  return sort.direction === "near" ? "📍" : sort.direction === "asc" ? "↑" : "↓";
+}
+
+/**
+ * A `geo` column's sort entry point. The plain header click-to-toggle-asc/desc affordance doesn't
+ * fit here — a near-point sort needs two numeric inputs, not a toggle — so this is a dedicated
+ * popover instead, opened from the column header itself.
+ */
+function GeoSortHeader({
+  column, sort, onApply, onClear,
+}: {
+  column: ColumnSchema;
+  sort: SortState | null;
+  onApply: (lat: number, lng: number) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const active = sort?.attribute === column.key && sort.direction === "near";
+
+  function toggleOpen() {
+    setLat(active && sort.direction === "near" ? String(sort.lat) : "");
+    setLng(active && sort.direction === "near" ? String(sort.lng) : "");
+    setOpen((v) => !v);
+  }
+
+  const valid = lat !== "" && lng !== "" && !Number.isNaN(Number(lat)) && !Number.isNaN(Number(lng));
+
+  return (
+    <div className="relative flex items-center gap-1 uppercase">
+      <button type="button" className="flex items-center gap-1" onClick={toggleOpen} title="Sort nearest to…">
+        {column.key} {sortIndicator(sort, column.key)}
+      </button>
+      {active ? (
+        <button
+          type="button"
+          className="normal-case text-ink-500 hover:text-coral-400"
+          onClick={(e) => { e.stopPropagation(); onClear(); }}
+          title="Clear sort"
+        >
+          ✕
+        </button>
+      ) : null}
+      {open ? (
+        <div
+          className="absolute top-full left-0 z-20 mt-1.5 w-56 space-y-2 rounded-lg border border-ink-700 bg-ink-900 p-3 normal-case shadow-xl shadow-black/40"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-xs text-ink-400">Sort nearest to…</p>
+          <div className="flex gap-1.5">
+            <input className="input-base py-1 text-xs" type="number" step="any" placeholder="lat" value={lat} onChange={(e) => setLat(e.target.value)} />
+            <input className="input-base py-1 text-xs" type="number" step="any" placeholder="lng" value={lng} onChange={(e) => setLng(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setOpen(false)}>Cancel</button>
+            <button
+              type="button"
+              className="btn-primary px-2 py-1 text-xs"
+              disabled={!valid}
+              onClick={() => { onApply(Number(lat), Number(lng)); setOpen(false); }}
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function RowsPage() {
   const { projectId, databaseId, tableId } = useParams({ strict: false }) as {
     projectId: string; databaseId: string; tableId: string;
@@ -370,16 +443,23 @@ export function RowsPage() {
       id: "$id",
       header: () => (
         <button type="button" className="flex items-center gap-1 uppercase" onClick={() => toggleSort("$id")}>
-          $id {sort?.attribute === "$id" ? (sort.direction === "asc" ? "↑" : "↓") : null}
+          $id {sortIndicator(sort, "$id")}
         </button>
       ),
       cell: ({ row }) => <span className="font-mono text-xs text-ink-500">{row.original.$id.slice(0, 12)}…</span>,
     },
     ...cols.map((column): DataGridColumn<Row> => ({
       id: column.key,
-      header: () => (
+      header: () => column.type === "geo" ? (
+        <GeoSortHeader
+          column={column}
+          sort={sort}
+          onApply={(lat, lng) => setSort({ attribute: column.key, direction: "near", lat, lng })}
+          onClear={() => setSort(null)}
+        />
+      ) : (
         <button type="button" className="flex items-center gap-1 uppercase" onClick={() => toggleSort(column.key)}>
-          {column.key} {sort?.attribute === column.key ? (sort.direction === "asc" ? "↑" : "↓") : null}
+          {column.key} {sortIndicator(sort, column.key)}
         </button>
       ),
       cell: ({ row }) => (

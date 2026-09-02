@@ -32,7 +32,7 @@ public static class QueryDsl
     [
         "equal", "notEqual", "lessThan", "lessThanEqual", "greaterThan", "greaterThanEqual", "between",
         "isNull", "isNotNull", "startsWith", "endsWith", "contains", "search", "near",
-        "select", "orderAsc", "orderDesc", "limit", "offset", "cursorAfter", "cursorBefore", "and", "or",
+        "select", "orderAsc", "orderDesc", "orderNear", "limit", "offset", "cursorAfter", "cursorBefore", "and", "or",
     ];
 
     public static List<ParsedQuery> Parse(IReadOnlyList<string> raw)
@@ -105,6 +105,7 @@ public static class QueryDsl
                 or "startsWith" or "endsWith" or "contains" or "search" => count == 1,
             "between" => count == 2,
             "near" => count == 3, // lat, lng, radiusMeters
+            "orderNear" => count == 2, // lat, lng
             "equal" or "notEqual" => count >= 1,
             "select" => count is >= 1 and <= MaxSelectFields,
             "limit" or "offset" or "cursorAfter" or "cursorBefore" => count == 1,

@@ -48,6 +48,7 @@ public static class QueryCompiler
         string[]? selectFields = null;
         ColumnDef? sortColumn = null;
         var orderAscending = true;
+        (double Lat, double Lng)? sortNearPoint = null;
         int? limit = null;
         int? offset = null;
         string? cursorAfterId = null;
@@ -61,11 +62,24 @@ public static class QueryCompiler
                 case "select":
                     selectFields = MergeSelect(selectFields, q.Values);
                     break;
-                case "orderAsc" or "orderDesc":
+                case "orderAsc" or "orderDesc" or "orderNear":
                     if (sortColumn is null) // first order query wins; architecture.md's cursor tuple is single-column
                     {
                         sortColumn = ResolveColumn(entry, q.Attribute!);
-                        orderAscending = q.Method == "orderAsc";
+                        if (q.Method == "orderNear")
+                        {
+                            if (sortColumn.Type != ColumnTypes.Geo)
+                                throw QueryDsl.Invalid($"'orderNear' isn't supported on '{sortColumn.Key}'.", "queries",
+                                    "'orderNear' only works on 'geo' attributes.");
+                            _ = entry.SpatialIndexFor(sortColumn.Key)
+                                ?? throw QueryDsl.Invalid($"'{sortColumn.Key}' has no spatial index.", "queries",
+                                    $"Create a spatial index on '{sortColumn.Key}' before using 'orderNear' — never a silent sequential scan.");
+                            sortNearPoint = (RequireNearValue(q.Values[0], "lat"), RequireNearValue(q.Values[1], "lng"));
+                        }
+                        else
+                        {
+                            orderAscending = q.Method == "orderAsc";
+                        }
                     }
                     break;
                 case "limit":
@@ -109,6 +123,25 @@ public static class QueryCompiler
         var scanAscending = reversed ? !orderAscending : orderAscending;
 
         var select = new Builder(entry);
+
+        // AddParam exactly once each for lat/lng — the returned "@pN" names are reused verbatim
+        // everywhere the near-point expression is needed (subselect, tuple-compare, ORDER BY), since
+        // Npgsql binds parameters by name.
+        string? nearPointExpr = null;
+        if (sortNearPoint is { } near)
+        {
+            var lngParam = select.AddParam(near.Lng);
+            var latParam = select.AddParam(near.Lat);
+            nearPointExpr = $"ST_MakePoint({lngParam}, {latParam})::geography";
+        }
+
+        // For a plain column sort this is just the quoted column reference (today's behavior,
+        // unchanged); for orderNear it's the KNN distance expression. `alias` is "" in the unaliased
+        // cursor subselect and "t." in the two aliased sites (tuple-compare, ORDER BY).
+        string SortKeyExpr(string alias) => nearPointExpr is null
+            ? $"{alias}{sortColQuoted}"
+            : $"{alias}{sortColQuoted} <-> {nearPointExpr}";
+
         var wherePredicate = select.FullPredicate(filterNodes, "read", callerRoles, bypassPermissions);
 
         var cursorId = cursorAfterId ?? cursorBeforeId;
@@ -119,14 +152,14 @@ public static class QueryCompiler
                     "The cursor must be a valid row id.");
             var cursorParam = select.AddParam(cursorGuid);
             var cmp = scanAscending ? ">" : "<";
-            var subSelect = $"(SELECT {sortColQuoted} FROM {qualifiedTable} WHERE {idColQuoted} = {cursorParam})";
+            var subSelect = $"(SELECT {SortKeyExpr("")} FROM {qualifiedTable} WHERE {idColQuoted} = {cursorParam})";
             wherePredicate =
-                $"{wherePredicate} AND ((t.{sortColQuoted}, t.{idColQuoted}) {cmp} ({subSelect}, {cursorParam}))";
+                $"{wherePredicate} AND (({SortKeyExpr("t.")}, t.{idColQuoted}) {cmp} ({subSelect}, {cursorParam}))";
         }
 
         var (selectList, selectedKeys) = BuildSelectList(entry, selectFields);
         var dir = scanAscending ? "ASC" : "DESC";
-        var orderClause = $"ORDER BY t.{sortColQuoted} {dir}, t.{idColQuoted} {dir}";
+        var orderClause = $"ORDER BY {SortKeyExpr("t.")} {dir}, t.{idColQuoted} {dir}";
         var limitParam = select.AddParam(effectiveLimit);
         var sql = $"SELECT {selectList} FROM {qualifiedTable} AS t WHERE {wherePredicate} {orderClause} LIMIT {limitParam}";
         if (cursorId is null)
@@ -300,16 +333,19 @@ public static class QueryCompiler
             var radiusMeters = RequireNearValue(values[2], "radiusMeters");
             return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)})";
         }
-
-        private static double RequireNearValue(JsonElement value, string label)
-        {
-            if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var d))
-                throw QueryDsl.Invalid("'near' requires numeric values.", "queries", $"'near' {label} must be a number.");
-            return d;
-        }
     }
 
     // ---- helpers --------------------------------------------------------------------------------
+
+    /// <summary>Shared by <c>near</c>'s filter and <c>orderNear</c>'s sort-key — both parse a query point's
+    /// lat/lng as plain doubles rather than routing through <see cref="ConvertValue"/>, since neither is a
+    /// value *of* the column's own type.</summary>
+    private static double RequireNearValue(JsonElement value, string label)
+    {
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var d))
+            throw QueryDsl.Invalid("'near' requires numeric values.", "queries", $"'near' {label} must be a number.");
+        return d;
+    }
 
     private static ColumnDef ResolveColumn(CatalogEntry entry, string attribute) => attribute switch
     {
