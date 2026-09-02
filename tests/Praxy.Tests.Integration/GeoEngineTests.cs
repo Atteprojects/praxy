@@ -374,8 +374,13 @@ public class GeoEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     // Exact ST_Distance figures from City Hall, measured directly against a real
     // postgis/postgis:17-3.6-alpine instance (not made-up numbers) — City Hall to Ferry Building
     // 3217.59194446m, City Hall to Golden Gate Bridge 7201.19456517m.
-    private const double CityHallToFerryBuildingMeters = 3217.59194446;
-    private const double CityHallToGoldenGateMeters = 7201.19456517;
+    // The *sphere* distances, matching the model the whole geo surface uses (docs/research/
+    // geo-nearby.md's "Distance model"): <-> orders by sphere, so $distance and near()'s ST_DWithin
+    // both pin sphere explicitly to agree with it. The spheroid figures for the same two pairs are
+    // 3217.59194446 and 7201.19456517 — ~0.8m and ~2.5m larger. If these constants ever need to become
+    // the spheroid ones again, that means the distance model changed; read that section first.
+    private const double CityHallToFerryBuildingMeters = 3216.7850916;
+    private const double CityHallToGoldenGateMeters = 7198.65628903;
 
     [Fact]
     public async Task WithinBox_includes_and_excludes_the_right_real_world_landmarks()

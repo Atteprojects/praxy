@@ -137,22 +137,27 @@ public static class QueryCompiler
         }
 
         // For a plain column sort this is just the quoted column reference (today's behavior,
-        // unchanged); for orderNear it's the distance expression. `alias` is "" in the unaliased
+        // unchanged); for orderNear it's the KNN distance expression. `alias` is "" in the unaliased
         // cursor subselect and "t." in the two aliased sites (tuple-compare, ORDER BY).
         //
-        // ST_Distance, not the GiST-index-accelerated <-> KNN operator — a deliberate departure from
-        // the original Phase 3 design doc, which assumed the two would agree closely enough to mix
-        // (<-> for ordering, ST_Distance for the returned $distance). Verified directly, not assumed
-        // (see docs/handoff/geo-nearby-phase-3-report.md): <-> computes geography's *sphere* distance
-        // while ST_Distance defaults to the spheroid, and they disagree often enough on ordering near
-        // ties (584 of the 2000 nearest rows inverted in a 50k-row test, up to ~23m apart) that mixing
-        // them would violate "a row shown as nearer must never sort after one shown as farther." Using
-        // ST_Distance for both loses <->'s KNN index-acceleration for the sort itself — the GiST index
-        // still accelerates any near()/withinBox() WHERE clause combined with orderNear, just not the
-        // ORDER BY in isolation. Correctness over speed here; see the report for the measured cost.
+        // <-> is the GiST-index-accelerated KNN operator, and it is the ONLY form Postgres can use the
+        // spatial index to order by — any function call, ST_Distance included, degrades to a full scan
+        // plus sort (measured: Index Scan reading 25 rows vs Parallel Seq Scan reading 200,000).
+        // Keeping it here is what makes nearest-first fast, so don't "simplify" this into ST_Distance
+        // to match DistanceExpr below without reading docs/research/geo-nearby.md's "Distance model"
+        // section first. The two are numerically identical by construction — see DistanceExpr.
         string SortKeyExpr(string alias) => nearPointExpr is null
             ? $"{alias}{sortColQuoted}"
-            : $"ST_Distance({alias}{sortColQuoted}, {nearPointExpr})";
+            : $"{alias}{sortColQuoted} <-> {nearPointExpr}";
+
+        // The returned $distance. <-> can't be aliased into a select list as a stable number to hand
+        // back (it's an operator whose geography semantics are the *sphere* model), so this spells the
+        // same computation out as ST_Distance's explicit sphere variant — `use_spheroid => false`.
+        // That third argument is the whole point: ST_Distance's *default* is the spheroid, which
+        // disagrees with <-> by metres and, worse, with a sign that flips (verified: -3.7m to +5.0m at
+        // ~2-3km), which is exactly what would let a row display as nearer while sorting as farther.
+        // With `false` the two agree to ~1e-9 m, so ordering and displayed value cannot contradict.
+        string DistanceExpr() => $"ST_Distance(t.{sortColQuoted}, {nearPointExpr}, false)";
 
         var wherePredicate = select.FullPredicate(filterNodes, "read", callerRoles, bypassPermissions);
 
@@ -172,12 +177,10 @@ public static class QueryCompiler
         var (selectList, selectedKeys) = BuildSelectList(entry, selectFields);
         // $distance is a system field like $id/$createdAt — select(...) never suppresses it. Appended
         // to the *end* of the select list, never the middle: BuildRowJson walks result ordinals
-        // positionally, and a trailing column is the only placement that can't shift them. Reuses
-        // SortKeyExpr("t.") verbatim — the exact same expression the ORDER BY already computes — so
-        // the displayed value and the sort order can never disagree even at the float level.
+        // positionally, and a trailing column is the only placement that can't shift them.
         var hasDistance = nearPointExpr is not null;
         if (hasDistance)
-            selectList += $", {SortKeyExpr("t.")} AS \"$distance\"";
+            selectList += $", {DistanceExpr()} AS \"$distance\"";
         var dir = scanAscending ? "ASC" : "DESC";
         var orderClause = $"ORDER BY {SortKeyExpr("t.")} {dir}, t.{idColQuoted} {dir}";
         var limitParam = select.AddParam(effectiveLimit);
@@ -353,7 +356,12 @@ public static class QueryCompiler
             var lat = RequireLat(values[0], "lat", "near");
             var lng = RequireLng(values[1], "lng", "near");
             var radiusMeters = RequireNearValue(values[2], "radiusMeters", "near");
-            return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)})";
+            // `false` = the sphere model, matching <-> (orderNear's sort) and $distance's explicit
+            // sphere ST_Distance. ST_DWithin's default is the spheroid, which would put near()'s
+            // radius on a different model than the distance shown for the same row — a point at
+            // sphere-3002.267m / spheroid-2996.797m is inside a spheroid near(...,3000) while
+            // displaying as 3002m. One model everywhere; see docs/research/geo-nearby.md.
+            return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)}, false)";
         }
 
         /// <summary>

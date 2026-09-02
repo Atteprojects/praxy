@@ -208,15 +208,61 @@ settled deliberately:
   `or` branch), which would make the same field ambiguous.
 - Not emitting it for bare `near()` is additive to revisit later; emitting it ambiguously is not.
 
-**Compute it with `ST_Distance`, not by reusing the `<->` value.** `<->` is what the `ORDER BY` uses
-because it is the index-accelerated KNN operator, but its exact return value for `geography` has
-historically differed between sphere and spheroid across PostGIS versions. `$distance` is a number an
-app will display to a user, so it should be the explicit, documented, spheroid-by-default
-`ST_Distance(col, point)`. That means two distance computations per returned row rather than one — a
-cost worth paying, and bounded by the page limit rather than the table size. **The implementing session
-must confirm the two agree closely enough that ordering never disagrees with the displayed values** (a
-row shown as nearer must never sort after a row shown as farther); if they can disagree, prefer
-`ST_Distance` in both places and accept the plan change.
+**Compute it with `ST_Distance(col, point, false)` — the explicit *sphere* variant.** See "Distance
+model" below for why that third argument is the whole ballgame. Two distance computations per returned
+row rather than one, bounded by the page limit rather than the table size.
+
+## Distance model — sphere everywhere, decided 2026-09-02
+
+This section supersedes an earlier draft of the `$distance` design that said to use `ST_Distance`'s
+default and, if it disagreed with `<->`, to switch the `ORDER BY` to `ST_Distance` too. That
+instruction was written without knowing what it cost. Phase 3's implementation followed it, measured
+the cost, and the measurement changed the decision. **All of the following was verified against a real
+PostGIS 3.6.4, not reasoned about.**
+
+Three facts, in the order they matter:
+
+1. **`<->` on `geography` is exactly `ST_Distance(a, b, false)`** — the sphere model. Sampled rows
+   agree to between `0` and `4e-9` metres. It is `ST_Distance`'s *default* that differs, because that
+   default is the **spheroid**: −3.7m to +5.0m at ~2-3km, **with the sign flipping** between rows. That
+   sign flip is the whole problem — it's what lets one row display as nearer while sorting as farther,
+   and it's what Phase 3 correctly caught (584 of 2000 adjacent pairs inverted in a 50k-row test).
+2. **`<->` is the only form the GiST index can order by.** Any function call degrades to a full scan —
+   *including the sphere variant*. So sphere-vs-spheroid is not what costs the index; operator-vs-function
+   is. Measured on 200,000 rows, `ORDER BY … LIMIT 25`:
+
+   | expression | plan | rows read | cost |
+   |---|---|---|---|
+   | `g <-> point` | Index Scan | 25 | 8.72 |
+   | `ST_Distance(g, point, false)` | Parallel Seq Scan | 200,000 | 1,477,811 |
+
+3. **`ST_DWithin`'s default is also the spheroid**, so `near()` inherits the same split. A point at
+   sphere-3002.267m / spheroid-2996.797m is *inside* a spheroid `near(…, 3000)` — and would display as
+   3002m if `$distance` were sphere. A radius and a distance on different models contradict each other
+   at the boundary.
+
+**The decision: one model everywhere, and that model is sphere**, because it is the only one that can
+be both index-accelerated and self-consistent:
+- `orderNear`'s `ORDER BY` and cursor comparisons use `<->` — index-accelerated, sphere.
+- `$distance` is `ST_Distance(col, point, false)` — the same number to ~1e-9 m, so ordering and
+  displayed value cannot contradict.
+- `near()` is `ST_DWithin(col, point, radius, false)` — so the radius that selects a row is on the same
+  model as the distance reported for it.
+
+The cost is accuracy against the true WGS84 spheroid: ~0.1-0.2%, about 6m at 3km. That is invisible in
+the "2.3 km away" UI this field exists to feed, and it buys back a 30x difference in plan cost on the
+product's headline geo feature. PostGIS itself makes exactly this trade — its KNN operator is sphere
+while its `ST_Distance` default is spheroid.
+
+**This is a trap for future sessions**, because both the wrong versions look right: `ST_Distance(a, b)`
+and `ST_DWithin(a, b, r)` are the natural things to write, and each silently switches that call to the
+spheroid. `QueryCompilerTests.Near_and_distance_both_pin_the_sphere_model_explicitly` exists to fail
+loudly if either `false` is dropped.
+
+**Still open, not addressed here**: an unbounded `orderNear` on a very large table is fine *now* (the
+index scan is back), but a caller who pairs `orderNear` with a non-spatial filter that excludes most
+rows can still make Postgres walk a long way down the index. Whether that deserves a warning or a
+required-bound mode is a product question for a later phase.
 
 **Plumbing** — the ordinal-safety point matters more than it looks:
 - Append the distance expression to the **end** of `BuildSelectList`'s select list, never the middle.

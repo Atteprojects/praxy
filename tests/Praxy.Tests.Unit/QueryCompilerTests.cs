@@ -225,22 +225,26 @@ public class QueryCompilerTests
     }
 
     /// <summary>
-    /// Ordering compiles to ST_Distance, not the GiST-index-accelerated &lt;-&gt; KNN operator —
-    /// verified in Phase 3 (docs/handoff/geo-nearby-phase-3-report.md) that the two can disagree on
-    /// ordering near ties, which the design doc's own instructions say to resolve by using
-    /// ST_Distance for both the sort and the returned $distance.
+    /// Ordering compiles to the GiST-index-accelerated &lt;-&gt; KNN operator — the only form Postgres
+    /// can use the spatial index to order by. $distance is spelled out separately as ST_Distance's
+    /// explicit *sphere* variant, which is numerically identical to &lt;-&gt; (docs/research/
+    /// geo-nearby.md's "Distance model"), so ordering and displayed value can never contradict.
     /// </summary>
     [Fact]
-    public void OrderNear_with_an_available_spatial_index_compiles_to_ST_Distance_ordering()
+    public void OrderNear_orders_by_the_knn_operator_and_returns_distance_as_sphere_ST_Distance()
     {
         var entry = BuildEntry(indexes: [SpatialIndex()]);
         var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
         var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
         Assert.Contains("loc_x1", compiled.Sql);
-        Assert.Contains("ST_Distance", compiled.Sql);
-        Assert.DoesNotContain("<->", compiled.Sql);
         Assert.Contains("ST_MakePoint", compiled.Sql);
         Assert.Contains("::geography", compiled.Sql);
+        // The ORDER BY must use <->, or the spatial index can't accelerate it at all.
+        Assert.Contains("<-> ST_MakePoint", compiled.Sql);
+        Assert.Matches(@"ORDER BY t\.""loc_x1"" <->", compiled.Sql);
+        // $distance must be the *sphere* variant — the `false` third argument is what makes it agree
+        // with <->. Without it ST_Distance defaults to the spheroid and the two disagree by metres.
+        Assert.Contains(", false) AS \"$distance\"", compiled.Sql);
     }
 
     /// <summary>
@@ -267,7 +271,7 @@ public class QueryCompilerTests
             """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
         var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
         Assert.Contains("ST_DWithin", compiled.Sql);
-        Assert.Contains("ST_Distance", compiled.Sql);
+        Assert.Contains("<->", compiled.Sql);
     }
 
     /// <summary>First order method sent wins — same rule across orderAsc/orderDesc/orderNear.</summary>
@@ -280,7 +284,8 @@ public class QueryCompilerTests
             """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
         var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
         Assert.Contains("title_x1", compiled.Sql);
-        Assert.DoesNotContain("ST_Distance", compiled.Sql);
+        Assert.DoesNotContain("<->", compiled.Sql);
+        Assert.DoesNotContain("$distance", compiled.Sql);
         Assert.False(compiled.HasDistance);
     }
 
@@ -291,7 +296,7 @@ public class QueryCompilerTests
         var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
         var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
         Assert.DoesNotContain("ST_DWithin", compiled.Sql);
-        Assert.Contains("ST_Distance", compiled.Sql);
+        Assert.Contains("<->", compiled.Sql);
     }
 
     /// <summary>
@@ -361,6 +366,29 @@ public class QueryCompilerTests
         Assert.Contains("AS \"$distance\"", compiled.Sql);
         Assert.Equal(["title"], compiled.SelectedKeys!);
     }
+
+    /// <summary>
+    /// The whole geo surface must stay on ONE distance model, or a row can display a distance that
+    /// contradicts the radius that selected it (verified against real PostGIS: a point at
+    /// sphere-3002.267m / spheroid-2996.797m is inside a spheroid <c>near(...,3000)</c> while
+    /// displaying as 3002m). Sphere is the model, because it's the only one <c>&lt;-&gt;</c> can order
+    /// by using the spatial index. That means <c>near</c>'s ST_DWithin and <c>$distance</c>'s
+    /// ST_Distance both need their explicit <c>false</c> argument — the default for both is spheroid,
+    /// so dropping it is a silent, plausible-looking regression this test exists to catch.
+    /// </summary>
+    [Fact]
+    public void Near_and_distance_both_pin_the_sphere_model_explicitly()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q(
+            """{"method":"near","attribute":"loc","values":[37.7749,-122.4194,3000]}""",
+            """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Matches(@"ST_DWithin\(.*?\)::geography, @p\d+, false\)", compiled.Sql);
+        Assert.Matches(@"ST_Distance\(.*?\)::geography, false\) AS ""\$distance""", compiled.Sql);
+        Assert.DoesNotContain("ST_Distance(t.\"loc_x1\", ST_MakePoint(@p0, @p1)::geography)", compiled.Sql);
+    }
+
 
     // ---- withinBox (Phase 3) ----------------------------------------------------------------------
 

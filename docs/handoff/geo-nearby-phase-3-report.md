@@ -1,59 +1,56 @@
 # Geo, Phase 3 (`$distance` + `withinBox`) — report
 
-**Status: complete, with one plan change from the design doc** (see below — `orderNear`'s ordering now
-uses `ST_Distance` instead of the GiST-index-accelerated `<->` KNN operator, a real performance
-tradeoff, not a caveat). `dotnet test` green: **431 unit, 265 integration** (real PostGIS-enabled
-Postgres via Testcontainers), including 20 new unit test cases and 8 new integration tests for this
-phase. Console
+**Status: complete, with one plan change from the design doc** (see below — the distance model, which
+was revised twice: this session moved `orderNear`'s ordering off `<->` to fix a real correctness bug,
+and owner review then found a third option that fixes it without losing the index. Final state: sphere
+everywhere, `<->` retained for ordering). `dotnet test` green: **432 unit, 265 integration** (real
+PostGIS-enabled Postgres via Testcontainers), including 21 new unit test cases and 8 new integration
+tests for this phase. Console
 `tsc -b && vite build` clean. Flutter (`dart analyze .`, `dart test`) and JS/Next.js SDK
 (`typecheck`/`test` on `@praxy/core`, `@praxy/react`, `@praxy/nextjs`) all clean. Owner-tested
 end-to-end against the shared canonical local dev instance (see
 [Owner-test checklist](#owner-test-checklist)).
 
-## Plan change: `orderNear` now orders by `ST_Distance`, not `<->`
+## Plan change: the distance model, revised twice
 
-The design doc's own instruction: verify first that `<->` (used for the KNN `ORDER BY`) and
-`ST_Distance` (used for the returned `$distance`) agree closely enough that "a row shown as nearer
-must never sort after one shown as farther"; if they can disagree, use `ST_Distance` for both and
-treat it as a plan change, not a caveat. **They disagree, measurably.** Verified against a real
-`postgis/postgis:17-3.6-alpine` container (50,000 points spread over ~1°×1°, plus 500 points clustered
-within ~50m of a query point, matching the design doc's own dense-cluster concern):
+**Final state: sphere everywhere.** `orderNear` orders by `<->` (index-accelerated), `$distance` is
+`ST_Distance(col, point, false)`, and `near()` is `ST_DWithin(col, point, radius, false)`. Full
+reasoning and measurements: `docs/research/geo-nearby.md`'s "Distance model" section.
 
-- `<->`'s returned value matches `ST_Distance(a, b, use_spheroid=false)` (the **sphere** distance) —
-  confirmed by comparing `<->`'s output against both spheroid and sphere `ST_Distance` variants for the
-  same rows; it matches sphere to float precision, spheroid diverges by a consistent, non-trivial margin.
-- `ST_Distance`'s **default** (no third argument, what a caller writing `ST_Distance(a, b)` gets) is the
-  **spheroid** distance — the accurate, documented one the design doc specifically wanted for the
-  displayed value.
-- Ordering the nearest 2000 rows by `<->` and checking whether `ST_Distance` is monotonically
-  non-decreasing across that same order: **584 of 2000 adjacent pairs inverted**, up to **~23.5m** apart
-  in `ST_Distance`, ~0.24% max relative difference. Not floating-point noise — a real algorithmic
-  difference (sphere vs. spheroid) that shows up whenever two candidates are close enough that the two
-  models' different bearing-dependent error terms flip their relative order.
+How it got there, because the intermediate step is worth not repeating:
 
-Per the design doc's own contingency, `orderNear`'s `ORDER BY` (and the cursor subselect/tuple-compare
-that reuse the same expression) now use `ST_Distance`, identically to `$distance` — in fact the same
-literal SQL expression is reused for both (`QueryCompiler.cs`'s `SortKeyExpr` local function), so the
-sort order and the displayed number can never disagree even at the float level, and the "two distance
-computations per row" the design doc anticipated collapsed into one.
+**This session's finding (correct, and it stands):** the design doc said to use `ST_Distance`'s default
+for `$distance` and `<->` for the sort, and to verify they agree. They do not. `<->` computes
+geography's *sphere* distance while `ST_Distance` defaults to the *spheroid*; ordering the nearest 2000
+rows by `<->` and checking `ST_Distance` monotonicity across that order inverted **584 of 2000 adjacent
+pairs**, up to **~23.5m** apart, ~0.24% max relative difference. Not float noise — a real
+bearing-dependent difference between the two models. Mixing them would have violated "a row shown as
+nearer must never sort after one shown as farther."
 
-**The real cost: `orderNear` alone (no `near()`/`withinBox()` filter) loses GiST index-acceleration for
-the sort itself.** Verified via `EXPLAIN ANALYZE` against 200,000 seeded rows with a GiST spatial index:
+**This session's fix, since superseded:** per the design doc's own contingency, `ORDER BY` was switched
+to `ST_Distance` so both sides used one expression. That restored consistency but cost the GiST
+index-acceleration: a bare `orderNear` became a `Parallel Seq Scan` (~2.6s over 200k rows vs Phase 2's
+~87ms), with the index only still helping when a `near()`/`withinBox()` filter bounded the candidate
+set first (~192ms).
 
-- Bare `orderNear`, no radius filter: **`Parallel Seq Scan`**, ~2.6s (JIT-compilation-inflated; ~700ms
-  of actual scan per worker). The GiST index plays no role — Postgres has no way to use it to accelerate
-  an `ORDER BY` on an arbitrary function's output, only the specific `<->` KNN operator class gets that
-  treatment, and geography has no spheroid-distance KNN operator to substitute.
-- `orderNear` combined with `near()`'s radius filter: **`Bitmap Index Scan on ix_places_location`**
-  still bounds the candidate set via `ST_DWithin` (200,000 rows → ~2,746 candidates), then sorts just
-  that bounded set — ~192ms, close to Phase 2's original `<->`-only figure (~87ms) and nowhere near the
-  unbounded case. `withinBox()`'s `ST_Intersects` bounds the same way.
+**Superseded in owner review, before merge.** The contingency was written without knowing that cost,
+and it missed a third option: `<->` is *exactly* `ST_Distance(a, b, false)` — the sphere variant —
+agreeing to ~1e-9 m. So the sort can keep `<->` (and its index scan) while `$distance` spells out the
+same computation as an explicit sphere `ST_Distance`. Verified against real PostGIS that
+sphere-vs-spheroid is not what costs the index — *operator-vs-function* is; even
+`ST_Distance(g, p, false)` seq-scans (Index Scan reading 25 rows, cost 8.72, vs Parallel Seq Scan
+reading 200,000, cost 1,477,811).
 
-**Guidance worth carrying forward, not implemented here (out of scope for a bug-fix-shaped finding)**: a
-bare, unbounded `orderNear` over a large table is now a real performance cliff. Pairing `orderNear` with
-`near()` or `withinBox()` keeps it fast; nothing in this phase enforces that pairing or warns about it.
-Whether to address this (a size-based warning, a required-radius mode, a hybrid over-fetch-then-rerank
-strategy) is a product decision for a future phase, not something to improvise here.
+`near()`'s `ST_DWithin` moved to sphere in the same change, since its default is spheroid too and a
+radius on a different model than the reported distance contradicts it at the boundary (a point at
+sphere-3002.267m / spheroid-2996.797m sits inside a spheroid `near(…,3000)` while displaying as 3002m).
+
+Net cost of the final state: all distances are sphere-model, ~0.1-0.2% (about 6m at 3km) from the true
+spheroid — invisible in the UI this field feeds, and it keeps nearest-first index-accelerated. The
+integration tests' expected-distance constants moved to the sphere figures accordingly (the spheroid
+ones are recorded next to them). `QueryCompilerTests.Near_and_distance_both_pin_the_sphere_model_explicitly`
+guards both `false` arguments, since `ST_Distance(a,b)` and `ST_DWithin(a,b,r)` are the natural things
+to write and each silently reverts to the spheroid.
 
 ## What shipped
 
@@ -188,8 +185,10 @@ undesigned — it needs its own design pass first, the same way Phase 2's and Ph
 preceded their own implementation.
 
 Two things worth the owner's attention before or during that design pass, neither addressed here:
-1. **The bare-`orderNear`-is-a-full-scan performance cliff** (see the plan-change section above) — worth
-   deciding whether Phase 4 or a dedicated follow-up should add guidance, a warning, or a different
-   strategy for large tables.
+1. ~~**The bare-`orderNear`-is-a-full-scan performance cliff**~~ — **resolved in owner review** by
+   keeping `<->` for the ordering (see the plan-change section). The index scan is back, so there is no
+   cliff. A narrower version remains: pairing `orderNear` with a *non-spatial* filter that excludes most
+   rows can still make Postgres walk a long way down the index. Whether that deserves a warning or a
+   required-bound mode is a genuine question, just a much smaller one than it was.
 2. **The console's `retry: 1` error-surfacing gap** — hit twice now (Phase 2's missing-spatial-index
    case, this phase's antimeridian case), tracked as its own background task already.
