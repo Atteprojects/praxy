@@ -109,6 +109,39 @@ This is the single most likely thing to be missed in Phase 1.
 to make it easy, but shipping it in v1 would mean getting partial-content semantics right on top of
 everything else that's new.
 
+## Downloads are never renderable — a security control, not an ergonomics choice
+
+**This section corrects the original design, which got it wrong.** The first version of this doc
+listed "correct `Content-Disposition` inline-vs-attachment handling" as a Phase 2 nicety, alongside
+`Range`. That framing is what led Phase 1 to ship a download endpoint that echoed the uploader's own
+`Content-Type` back with no `Content-Disposition` and no `nosniff` — caught in review before merge.
+
+The chain that makes it exploitable, and why it is not theoretical:
+1. A file's stored MIME type is whatever `Content-Type` the *uploader* sent (`MimeTypes.Normalize`
+   accepts any well-formed `type/subtype`, `text/html` and `image/svg+xml` included).
+2. A bucket's `allowed_mime_types` is null — any type — by default.
+3. The console is served from the **same origin as the API** (`UseStaticFiles` +
+   `MapFallbackToFile("index.html")`), and the operator session cookie is `SameSite=Lax`.
+
+So an uploaded `text/html` file, opened by an operator, runs script **same-origin with the console**.
+`HttpOnly` stops that script reading the cookie; it does not stop a same-origin `fetch('/v1/console/…')`
+from sending it. A bucket granting `read("any")` — the obvious configuration for avatars or public
+assets — makes the URL reachable by anyone.
+
+**The rule: every download is `Content-Disposition: attachment` plus `X-Content-Type-Options: nosniff`.**
+The real `Content-Type` is still reported, because it is useful metadata and harmless once the
+response cannot become an active document. The attachment header stops rendering; `nosniff` stops the
+browser sniffing its way back to rendering.
+
+**Inline serving is a Phase 2 feature that must be opt-in and allowlisted** — a per-bucket flag plus a
+list of types that are safe to render (images and video, never `text/html`, never `image/svg+xml`,
+which carries script). It must never arrive by simply dropping the two headers above.
+
+**The file name is a header-injection boundary**, since it goes into `Content-Disposition`. Defended
+on both sides: `FilesService.ValidateName` rejects control characters as a class (not just NUL), and
+`ContentDisposition.Attachment` drops everything outside printable ASCII from the quoted form while
+carrying the real name percent-encoded in `filename*` (RFC 6266).
+
 ## Quotas
 
 Three new dimensions on the existing `QuotaOptions` record (and therefore, for free, overridable
@@ -139,7 +172,9 @@ prefix rather than a new mechanism.
   **Non-goals**: no per-file permissions, no Range requests, no image transforms, no resumable uploads,
   no encryption at rest, no antivirus.
 - **Phase 2 — access control and serving**: per-file permissions (the row-security analogue, same
-  opt-in flag + side table), HTTP Range, correct `Content-Disposition` inline-vs-attachment handling.
+  opt-in flag + side table), HTTP Range, and *opt-in* inline serving with a safe-type allowlist —
+  see "Downloads are never renderable" below for why inline is opt-in rather than the default,
+  and why this bullet used to be wrong.
 - **Phase 3 — image transforms**: on-the-fly resize/crop/format/quality with a cached derivative. This
   is the one Appwrite parity item in Storage that developers actually ask for by name, and it is its
   own design problem (which library, where derivatives live, how they're invalidated) rather than a

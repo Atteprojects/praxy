@@ -59,6 +59,25 @@ internal static class StorageTransfer
     /// chunks are copied straight through — the whole file is never materialized, which is the
     /// only reason a multi-gigabyte download is affordable at all.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Downloads are always served as attachments, never rendered.</b> A file's
+    /// <see cref="StoredFile.MimeType"/> comes from whatever <c>Content-Type</c> the uploader sent,
+    /// and buckets accept any type by default — so echoing it back on a document the browser will
+    /// render is stored XSS. The console is served from this same origin
+    /// (<c>UseStaticFiles</c>/<c>MapFallbackToFile</c> in <c>Program.cs</c>), and the operator
+    /// session cookie is <c>SameSite=Lax</c>, so a script in an uploaded <c>text/html</c> file would
+    /// run same-origin with the console and could drive the console API as that operator —
+    /// <c>HttpOnly</c> stops it reading the cookie, not from sending it.
+    /// </para>
+    /// <para>
+    /// Two headers close that: <c>Content-Disposition: attachment</c> so the browser saves rather
+    /// than renders, and <c>nosniff</c> so it cannot MIME-sniff its way back to rendering. The real
+    /// <c>Content-Type</c> is still reported, because it is useful metadata and harmless once the
+    /// response can't become an active document. Opt-in inline serving is Phase 2's job and needs a
+    /// safe-type allowlist; it must not arrive by simply dropping these headers.
+    /// </para>
+    /// </remarks>
     public static async Task<IResult> DownloadAsync(
         HttpContext http, StoredFile file, Stream content, CancellationToken ct)
     {
@@ -66,8 +85,11 @@ internal static class StorageTransfer
         {
             http.Response.ContentType = file.MimeType;
             http.Response.ContentLength = file.SizeBytes;
+            http.Response.Headers.ContentDisposition = ContentDisposition.Attachment(file.Name);
+            http.Response.Headers.XContentTypeOptions = "nosniff";
             await content.CopyToAsync(http.Response.Body, ct);
         }
         return Results.Empty;
     }
+
 }

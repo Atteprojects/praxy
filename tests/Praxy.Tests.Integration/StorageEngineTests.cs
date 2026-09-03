@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Npgsql;
 using Praxy.Core.Errors;
@@ -50,6 +51,51 @@ public class StorageEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
             WHERE n.nspname = 'praxy' AND c.relname = 'file_chunks' AND a.attname = 'data'
             """, conn);
         Assert.Equal('e', (char)(await cmd.ExecuteScalarAsync())!);
+    }
+
+    // ---- download is never renderable (found in Phase 1 review) ---------------------------------
+
+    /// <summary>
+    /// A file's stored MIME type is whatever the uploader sent, and buckets accept any type by
+    /// default — so a download that echoes it back on a renderable document is stored XSS, and the
+    /// console is served from this very origin with a SameSite=Lax operator cookie. Every download
+    /// must therefore be an attachment with nosniff, whatever the type claims.
+    /// </summary>
+    [Fact]
+    public async Task An_uploaded_html_file_is_served_as_a_non_renderable_attachment()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var evil = Encoding.UTF8.GetBytes("<script>fetch('/v1/console/projects')</script>");
+
+        var uploaded = await UploadAsync(ctx, "payload.html", evil, "text/html");
+        var fileId = uploaded.GetProperty("id").GetString()!;
+
+        var download = await Client.SendAsync(DataPlane(
+            HttpMethod.Get, $"/v1/storage/buckets/{ctx.BucketId}/files/{fileId}/download",
+            ctx.ProjectId, sessionToken: ctx.UserToken));
+
+        Assert.Equal(200, (int)download.StatusCode);
+        // The type is still reported honestly — it is harmless once the response can't be rendered.
+        Assert.Equal("text/html", download.Content.Headers.ContentType?.MediaType);
+        // These two are what stop it being rendered.
+        Assert.Equal("attachment", download.Content.Headers.ContentDisposition?.DispositionType);
+        Assert.Contains("nosniff", download.Headers.GetValues("X-Content-Type-Options"));
+        Assert.Equal(evil, await download.Content.ReadAsByteArrayAsync());
+    }
+
+    /// <summary>
+    /// The other half: a name carrying CR/LF must never be storable, since it lands in a response
+    /// header. ValidateName rejects control characters as a class, not just NUL.
+    /// </summary>
+    [Theory]
+    [InlineData("evil\r\nX-Injected: yes.txt")]
+    [InlineData("evil\nSet-Cookie: a=1.txt")]
+    [InlineData("evil\u0000.txt")]
+    public async Task A_file_name_with_control_characters_is_rejected(string name)
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var response = await UploadResponseAsync(ctx, name, Payload(64));
+        Assert.Equal(400, (int)response.StatusCode);
     }
 
     // ---- round trip ---------------------------------------------------------------------------

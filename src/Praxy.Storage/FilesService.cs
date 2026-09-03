@@ -236,16 +236,21 @@ public sealed class FilesService(
     private static string ValidateName(string? name)
     {
         var trimmed = name?.Trim();
-        // Path separators and NUL are rejected rather than sanitized: a name is a label, never a
-        // filesystem path here, and silently rewriting it would make the stored name differ from
-        // what the caller believes it uploaded.
+        // Path separators and control characters are rejected rather than sanitized: a name is a
+        // label, never a filesystem path here, and silently rewriting it would make the stored name
+        // differ from what the caller believes it uploaded. Control characters are excluded as a
+        // class rather than just NUL — a name carrying CR/LF that reaches a response header is
+        // header injection, and `StorageTransfer` puts the name in `Content-Disposition`. That
+        // header builder defends itself too; this is the other half, so a bad name is never stored
+        // in the first place and no future consumer has to remember.
         if (string.IsNullOrEmpty(trimmed) || trimmed.Length > 255 ||
-            trimmed.Contains('/') || trimmed.Contains('\\') || trimmed.Contains('\0'))
+            trimmed.Contains('/') || trimmed.Contains('\\') ||
+            trimmed.Any(char.IsControl))
         {
             throw PraxyException.ArgumentInvalid("Invalid file name.",
                 new Dictionary<string, string[]>
                 {
-                    ["name"] = ["Must be 1-255 characters and contain no path separators."],
+                    ["name"] = ["Must be 1-255 characters with no path separators or control characters."],
                 });
         }
         return trimmed;

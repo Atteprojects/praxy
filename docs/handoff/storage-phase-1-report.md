@@ -311,6 +311,45 @@ outbox held the file create/delete events on the new channel.
   Documented in both READMEs at the method.
 - **Renaming a file is API-only** — no console UI and no SDK method for it.
 
+## Fixed in review, before merge: downloads were renderable
+
+**A stored-XSS hole, and the design doc's fault rather than this session's.** `docs/research/storage.md`
+listed `Content-Disposition` handling as a Phase 2 ergonomics item next to `Range`, so Phase 1
+implemented the download endpoint exactly as designed: `Content-Type` set from the metadata row, no
+`Content-Disposition`, no `nosniff`. The design has been corrected too — see its new "Downloads are
+never renderable" section.
+
+Why it was exploitable, every link verified against the code rather than assumed:
+1. A file's MIME type is whatever `Content-Type` the uploader sent — `MimeTypes.Normalize` accepts any
+   well-formed `type/subtype`, `text/html` and `image/svg+xml` included.
+2. A bucket's `allowed_mime_types` defaults to null, i.e. any type.
+3. The console is served from the **same origin as the API** (`UseStaticFiles` +
+   `MapFallbackToFile("index.html")` in `Program.cs`), and the operator cookie is `SameSite=Lax`.
+
+An uploaded `text/html` file, opened by an operator, therefore ran script same-origin with the console.
+`HttpOnly` stops that script *reading* the cookie; it does not stop a same-origin
+`fetch('/v1/console/…')` from *sending* it. A bucket granting `read("any")` — the natural config for
+avatars — made the URL publicly reachable.
+
+**The fix:** every download now sets `Content-Disposition: attachment` and
+`X-Content-Type-Options: nosniff`. The real `Content-Type` is still reported — useful metadata, and
+harmless once the response can't be an active document. Inline serving becomes an opt-in, allowlisted
+Phase 2 feature rather than the accidental default.
+
+**And the file name turned out to be a header-injection boundary**, since it now lands in a header.
+`ValidateName` rejected `/`, `\` and NUL but not CR/LF — harmless while nothing emitted the name into
+a header, and a live injection the moment this fix did. Closed on both sides: `ValidateName` now
+rejects control characters as a class, and the new `ContentDisposition.Attachment`
+(`src/Praxy.Storage/`, beside `MimeTypes` — same HTTP-shaped edge, and unit-testable, unlike the
+`internal` endpoint class) drops everything outside printable ASCII from the quoted form while
+carrying the real name percent-encoded in `filename*` per RFC 6266.
+
+Regression coverage: `ContentDispositionTests` (6 unit cases — CR/LF, tab, quote/backslash escaping,
+non-ASCII, and an all-non-ASCII name that would otherwise emit `filename=""`), plus
+`StorageEngineTests.An_uploaded_html_file_is_served_as_a_non_renderable_attachment` and
+`A_file_name_with_control_characters_is_rejected`, which assert the actual HTTP response rather than
+just that the helper builds a string.
+
 ## Commands
 
 Nothing new is required at runtime — Storage adds no Docker/network/CLI dependency. New knobs:
