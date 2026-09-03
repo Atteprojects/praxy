@@ -5,8 +5,13 @@ session per phase.
 
 ## Session start — do this first
 
-1. Read `docs/handoff/` — the highest-numbered `phase-N-prompt.md` without a matching `phase-N-report.md` is
-   the current phase. Its prompt defines your scope.
+1. Read `docs/handoff/`. **Your scope is whichever prompt the owner names when starting the session** —
+   named-initiative prompts (`storage-phase-1-prompt.md`, `geo-nearby-phase-2-prompt.md`, …) are the
+   normal shape now, and the original numbered `phase-N` sequence is complete. Don't infer the live
+   prompt from "which one lacks a matching report": several completed initiatives never had a report
+   written, so that scan produces false positives. Completed prompts carry a
+   `> **Status: shipped.**` banner under their title — a prompt without one, that the owner has
+   pointed you at, is the live one.
 2. Read `docs/roadmap.md` for that phase's scope and owner-test checklist.
 3. Consult `docs/research/dotnet-stack.md` before adding any package — it holds **machine-verified pins and
    API corrections**. Do not upgrade past the pins or trust memory over that file.

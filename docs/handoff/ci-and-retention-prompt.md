@@ -1,5 +1,9 @@
 # Session task — CI, and a retention job for the tables that grow forever
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `.github/workflows/ci.yml` and `src/Praxy.Api/Infrastructure/RetentionSweeper.cs`/`RetentionOptions.cs`.
+> No `ci-and-retention-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 There is no `.github/` directory. Roughly 470 tests (`dotnet test`) and a tagged

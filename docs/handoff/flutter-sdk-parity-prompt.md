@@ -1,5 +1,9 @@
 # Session task — Teams, Functions and Messaging services for the Flutter SDK
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `sdk/flutter/praxy_core/lib/src/services/{account,teams,functions}_service.dart`. No `MessagingService` — the prompt's own scope item 4 excluded it deliberately (messaging endpoints are console-only), so its absence is correct, not a gap.
+> No `flutter-sdk-parity-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 `praxy_core` exposes exactly two services — `AccountService` and

@@ -1,5 +1,9 @@
 # Session task — show which organization owns the projects (API + console)
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `console/src/screens/OrganizationPage.tsx` and the org-scoped project listing.
+> No `org-scoped-console-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 Appwrite's console auto-selects the operator's organization, puts its id in the

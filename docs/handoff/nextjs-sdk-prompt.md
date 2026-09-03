@@ -1,5 +1,9 @@
 # Session task — Next.js/TypeScript SDK, v1
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `sdk/js/packages/nextjs` (plus `core`/`react`), built and tested in CI.
+> No `nextjs-sdk-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 Praxy has one SDK today (Flutter). The owner wants a Next.js SDK next, as groundwork for an eventual

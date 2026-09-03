@@ -1,5 +1,9 @@
 # Session task — Sites console polish (deploy flow & create-site modal)
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `CreateSiteModal` in `SitesPage.tsx` and the build-log viewer in `SiteDeploymentsPage.tsx`.
+> No `sites-console-polish-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 Sites Phase 1 (`docs/handoff/sites-phase-1-report.md`) shipped functional but plain: the create-site
