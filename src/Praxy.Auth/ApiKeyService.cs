@@ -38,9 +38,15 @@ public static class ApiKeyScopes
     /// </summary>
     public const string ExecutionWrite = "execution.write";
 
+    /// <summary>Read buckets and their permissions, list/download files.</summary>
+    public const string StorageRead = "storage.read";
+
+    /// <summary>Create/update/delete buckets and their permissions, upload/rename/delete files.</summary>
+    public const string StorageWrite = "storage.write";
+
     public static readonly IReadOnlyList<string> All =
         [UsersRead, UsersWrite, TeamsRead, TeamsWrite, DatabasesRead, DatabasesWrite,
-         FunctionsRead, FunctionsWrite, ExecutionRead, ExecutionWrite];
+         FunctionsRead, FunctionsWrite, ExecutionRead, ExecutionWrite, StorageRead, StorageWrite];
 }
 
 /// <summary>

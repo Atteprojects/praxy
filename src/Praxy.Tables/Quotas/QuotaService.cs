@@ -88,6 +88,42 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
             throw Exceeded("project", "sites", max);
     }
 
+    // ---- storage (Storage Phase 1) --------------------------------------------------------------
+
+    public async Task EnsureBucketQuotaAsync(string projectId, CancellationToken ct)
+    {
+        if (await OrgIdForProjectAsync(projectId, ct) is not { } orgId) return;
+        var limits = await GetOrgLimitsAsync(orgId, ct);
+        var max = limits.MaxBucketsPerProject ?? defaults.MaxBucketsPerProject;
+        var used = await db.Buckets.CountAsync(x => x.ProjectId == projectId, ct);
+        if (used >= max)
+            throw Exceeded("project", "buckets", max);
+    }
+
+    /// <summary>
+    /// The two byte-valued storage dimensions, resolved together because an upload has to enforce
+    /// both against the *same* org lookup: the per-file ceiling (also what Kestrel's request-body
+    /// limit is raised to) and how much of the project's total storage budget is still free.
+    /// Returned rather than thrown so the upload path can enforce them mid-stream — a streaming
+    /// upload can pass a start-of-request check and still exceed either limit halfway through, and
+    /// the correct answer there is a clean rejection plus rollback, not a truncated file.
+    /// </summary>
+    public async Task<StorageBudget> GetStorageBudgetAsync(string projectId, CancellationToken ct)
+    {
+        var orgId = await OrgIdForProjectAsync(projectId, ct);
+        var limits = orgId is { } id ? await GetOrgLimitsAsync(id, ct) : OrganizationLimits.Unlimited;
+        var maxFile = limits.MaxFileSizeBytes ?? defaults.MaxFileSizeBytes;
+        var maxTotal = limits.MaxStorageBytesPerProject ?? defaults.MaxStorageBytesPerProject;
+        var used = await UsedStorageBytesAsync(projectId, ct);
+        return new StorageBudget(maxFile, maxTotal, used);
+    }
+
+    /// <summary>Sum of every stored file's size in the project. No denormalized counter to drift — the files themselves are the record.</summary>
+    public async Task<long> UsedStorageBytesAsync(string projectId, CancellationToken ct) =>
+        await db.Files
+            .Where(f => db.Buckets.Where(x => x.ProjectId == projectId).Select(x => x.Id).Contains(f.BucketId))
+            .SumAsync(f => (long?)f.SizeBytes, ct) ?? 0L;
+
     /// <summary>
     /// Sites Phase 2: caps concurrent on-demand preview containers per project. Checked on the
     /// request path (a cold preview start), not against a durable counter table like every other
@@ -152,6 +188,8 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
             .OrderDescending().FirstOrDefaultAsync(ct);
 
         var sitesUsed = await db.Sites.CountAsync(s => s.ProjectId == projectId, ct);
+        var bucketsUsed = await db.Buckets.CountAsync(x => x.ProjectId == projectId, ct);
+        var storageUsed = await UsedStorageBytesAsync(projectId, ct);
 
         return new QuotaSnapshot(
             projectsUsed, limits.MaxProjects ?? defaults.MaxProjects,
@@ -159,7 +197,9 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
             busiestDatabaseTables, limits.MaxTablesPerDatabase ?? defaults.MaxTablesPerDatabase,
             busiestTableColumns, limits.MaxColumnsPerTable ?? defaults.MaxColumnsPerTable,
             busiestTableIndexes, limits.MaxIndexesPerTable ?? defaults.MaxIndexesPerTable,
-            sitesUsed, limits.MaxSitesPerProject ?? defaults.MaxSitesPerProject);
+            sitesUsed, limits.MaxSitesPerProject ?? defaults.MaxSitesPerProject,
+            bucketsUsed, limits.MaxBucketsPerProject ?? defaults.MaxBucketsPerProject,
+            storageUsed, limits.MaxStorageBytesPerProject ?? defaults.MaxStorageBytesPerProject);
     }
 
     private static PraxyException Exceeded(string scope, string dimension, int max) =>
@@ -174,4 +214,15 @@ public sealed record QuotaSnapshot(
     int BusiestDatabaseTables, int TablesPerDatabaseMax,
     int BusiestTableColumns, int ColumnsPerTableMax,
     int BusiestTableIndexes, int IndexesPerTableMax,
-    int SitesUsed, int SitesMax);
+    int SitesUsed, int SitesMax,
+    int BucketsUsed, int BucketsMax,
+    long StorageBytesUsed, long StorageBytesMax);
+
+/// <summary>
+/// One project's resolved storage limits plus what it has already used. <see cref="Remaining"/> is
+/// what an in-flight upload may still write before <c>MaxStorageBytesPerProject</c> is exceeded.
+/// </summary>
+public sealed record StorageBudget(long MaxFileSizeBytes, long MaxTotalBytes, long UsedBytes)
+{
+    public long Remaining => Math.Max(0, MaxTotalBytes - UsedBytes);
+}

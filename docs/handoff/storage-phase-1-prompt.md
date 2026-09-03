@@ -1,5 +1,7 @@
 # Session task — Storage, Phase 1 (the primitive)
 
+> **Status: shipped.** 2026-09-03 — see `docs/handoff/storage-phase-1-report.md`.
+
 ## Why this exists
 
 Praxy has no file storage at all — this phase adds the pillar. Read `docs/research/storage.md` in full

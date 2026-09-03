@@ -1,13 +1,14 @@
 import { AccountService } from "./services/account.js";
 import { FunctionsService } from "./services/functions.js";
 import { RealtimeService } from "./services/realtime.js";
+import { StorageService } from "./services/storage.js";
 import { TablesService } from "./services/tables.js";
 import { TeamsService } from "./services/teams.js";
 import type { ErrorEnvelope } from "./errors.js";
 import { PraxyDecodeError, PraxyNetworkError, mapApiError } from "./errors.js";
 import type { RealtimeTicket } from "./models.js";
 import { FetchTransport } from "./transport.js";
-import type { Transport } from "./transport.js";
+import type { Transport, TransportResponse } from "./transport.js";
 
 export interface PraxyConfig {
   endpoint: string;
@@ -22,6 +23,10 @@ export interface PraxyConfig {
 export interface RequestOptions {
   query?: Record<string, string[]>;
   body?: unknown;
+  /** A raw byte body — a storage upload. Never set together with `body`. */
+  bodyBytes?: Uint8Array;
+  /** The `content-type` for `bodyBytes`; ignored otherwise. */
+  contentType?: string;
 }
 
 /**
@@ -35,6 +40,7 @@ export class Praxy {
   readonly teams: TeamsService;
   readonly functions: FunctionsService;
   readonly realtime: RealtimeService;
+  readonly storage: StorageService;
 
   readonly endpoint: string;
   readonly projectId: string;
@@ -54,6 +60,7 @@ export class Praxy {
     this.teams = new TeamsService(this);
     this.functions = new FunctionsService(this);
     this.realtime = new RealtimeService(this);
+    this.storage = new StorageService(this);
   }
 
   /** The credential this client authenticates with, for callers that need to forward it (e.g. minting a realtime ticket). */
@@ -65,6 +72,32 @@ export class Praxy {
 
   /** Internal — used by the service classes. Not part of the public surface. */
   async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+    const response = await this.send(method, path, options);
+
+    if (response.status === 204 || response.body.length === 0) {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(response.body) as T;
+    } catch {
+      throw new PraxyDecodeError(`Could not parse response body from ${method} ${path} as JSON.`);
+    }
+  }
+
+  /**
+   * Internal — a response whose body is a file rather than JSON (a storage download). Shares every
+   * header and error-mapping rule with `request()`; only the success path differs.
+   */
+  async requestBytes(method: string, path: string, options: RequestOptions = {}): Promise<Uint8Array> {
+    const response = await this.send(method, path, { ...options, expect: "bytes" });
+    return response.bodyBytes ?? new Uint8Array();
+  }
+
+  private async send(
+    method: string,
+    path: string,
+    options: RequestOptions & { expect?: "text" | "bytes" },
+  ): Promise<TransportResponse> {
     const headers: Record<string, string> = {
       accept: "application/json",
       "X-Praxy-Project": this.projectId,
@@ -80,20 +113,16 @@ export class Praxy {
         headers,
         query: options.query,
         body: options.body,
+        bodyBytes: options.bodyBytes,
+        contentType: options.contentType,
+        expect: options.expect,
       });
     } catch (cause) {
       throw new PraxyNetworkError("Network request failed.", cause);
     }
 
     if (response.status >= 200 && response.status < 300) {
-      if (response.status === 204 || response.body.length === 0) {
-        return undefined as T;
-      }
-      try {
-        return JSON.parse(response.body) as T;
-      } catch {
-        throw new PraxyDecodeError(`Could not parse response body from ${method} ${path} as JSON.`);
-      }
+      return response;
     }
 
     let envelope: ErrorEnvelope;

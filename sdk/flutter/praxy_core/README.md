@@ -48,6 +48,21 @@ await px.teams.createMembership(team.id, email: 'teammate@example.com', url: 'ht
 final execution = await px.functions.createExecution('function-id', path: '/hello');
 print(execution.responseBody);
 
+// Storage — files live in buckets, and a bucket denies everyone until an operator grants
+// a role in the console (a 401 on a fresh bucket is expected, not a bug). The whole file
+// goes in one request; the server streams it into storage inside a single transaction, so a
+// failed or over-quota upload leaves nothing behind rather than a partial file.
+final stored = await px.storage.createFile(
+  'bucket-id',
+  name: 'avatar.png',
+  bytes: await File('avatar.png').readAsBytes(),
+  mimeType: 'image/png',
+);
+print('${stored.sizeBytes} bytes, sha256 ${stored.checksum}'); // checksum computed as it streamed
+final page2 = await px.storage.listFiles('bucket-id', limit: 25);
+final bytes = await px.storage.getFileDownload('bucket-id', stored.id); // buffered whole
+await px.storage.deleteFile('bucket-id', stored.id);
+
 // Typed rows — write a small RowCodec<T> once per table, no build step required.
 final class Todo {
   // id is null for a not-yet-created Todo — decode always fills it in from RowMeta,
@@ -85,6 +100,10 @@ Errors are a sealed hierarchy rooted at `PraxyException` — `PraxyAuthException
   never opens one itself.
 - **OAuth.** Google sign-in needs a browser-based redirect flow that's inherently platform-specific;
   `praxy_flutter`'s `PraxyOAuth` builds on this package's session/account primitives to provide it.
+- **Bucket management.** Creating buckets and editing their permission matrix is a console/operator
+  concern, the same line this package draws against schema management. Renaming a stored file is an
+  API route this package deliberately doesn't wrap yet; HTTP `Range` requests and image transforms
+  don't exist server-side (Storage Phase 2/3).
 - **Codegen.** `TableRef`/`RowCodec` work with hand-written codecs; see
   [`praxy_codegen`](https://github.com/<your-fork-or-org>/praxy/tree/main/sdk/flutter/praxy_codegen)
   if you'd rather generate typed `Col<T>` column constants from your live schema.

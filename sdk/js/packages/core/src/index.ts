@@ -28,6 +28,7 @@ export { TablesService } from "./services/tables.js";
 export { TeamsService } from "./services/teams.js";
 export { FunctionsService } from "./services/functions.js";
 export { RealtimeService } from "./services/realtime.js";
+export { StorageService } from "./services/storage.js";
 export type { ConnectionState, Unsubscribe, RowChangeEvent, AccountChangeEvent } from "./services/realtime.js";
 
 export type {
@@ -46,5 +47,7 @@ export type {
   Row,
   RowList,
   FunctionExecution,
+  StoredFile,
+  StoredFileList,
   RealtimeTicket,
 } from "./models.js";

@@ -7,6 +7,8 @@ final class TransportRequest {
     this.headers = const {},
     this.query = const {},
     this.body,
+    this.bodyBytes,
+    this.contentType,
   });
 
   final String method;
@@ -16,6 +18,15 @@ final class TransportRequest {
 
   /// JSON-encodable request body, or `null` for no body.
   final Object? body;
+
+  /// A raw byte body — a storage upload, where the bytes *are* the request. Never
+  /// set together with [body]; a [Transport] sends these verbatim rather than
+  /// JSON-encoding anything.
+  final List<int>? bodyBytes;
+
+  /// The `content-type` for [bodyBytes]. Meaningless for a JSON [body], which is
+  /// always `application/json`.
+  final String? contentType;
 }
 
 final class TransportResponse {

@@ -126,6 +126,86 @@ namespace Praxy.Persistence.Migrations
                     b.ToTable("audit_log", "praxy");
                 });
 
+            modelBuilder.Entity("Praxy.Persistence.Entities.Bucket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.PrimitiveCollection<string[]>("AllowedMimeTypes")
+                        .HasColumnType("text[]")
+                        .HasColumnName("allowed_mime_types");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<bool>("FileSecurity")
+                        .HasColumnType("boolean")
+                        .HasColumnName("file_security");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<long>("MaxFileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("max_file_size_bytes");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ProjectId")
+                        .IsRequired()
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_buckets");
+
+                    b.HasIndex("ProjectId", "Key")
+                        .IsUnique()
+                        .HasDatabaseName("ix_buckets_project_id_key");
+
+                    b.ToTable("buckets", "praxy");
+                });
+
+            modelBuilder.Entity("Praxy.Persistence.Entities.BucketPermission", b =>
+                {
+                    b.Property<Guid>("BucketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bucket_id");
+
+                    b.Property<string>("Action")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("role");
+
+                    b.HasKey("BucketId", "Action", "Role")
+                        .HasName("pk_bucket_permissions");
+
+                    b.ToTable("bucket_permissions", "praxy");
+                });
+
             modelBuilder.Entity("Praxy.Persistence.Entities.ColumnDef", b =>
                 {
                     b.Property<Guid>("Id")
@@ -263,6 +343,27 @@ namespace Praxy.Persistence.Migrations
                         .HasDatabaseName("ix_databases_project_id_key");
 
                     b.ToTable("databases", "praxy");
+                });
+
+            modelBuilder.Entity("Praxy.Persistence.Entities.FileChunk", b =>
+                {
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_id");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("integer")
+                        .HasColumnName("index");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("data");
+
+                    b.HasKey("FileId", "Index")
+                        .HasName("pk_file_chunks");
+
+                    b.ToTable("file_chunks", "praxy");
                 });
 
             modelBuilder.Entity("Praxy.Persistence.Entities.FunctionDef", b =>
@@ -1805,6 +1906,64 @@ namespace Praxy.Persistence.Migrations
                     b.ToTable("site_requests", "praxy");
                 });
 
+            modelBuilder.Entity("Praxy.Persistence.Entities.StoredFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BucketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bucket_id");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<int>("ChunkCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("chunk_count");
+
+                    b.Property<int>("ChunkSizeBytes")
+                        .HasColumnType("integer")
+                        .HasColumnName("chunk_size_bytes");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("mime_type");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("name");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_files");
+
+                    b.HasIndex("BucketId", "CreatedAt")
+                        .HasDatabaseName("ix_files_bucket_id_created_at");
+
+                    b.ToTable("files", "praxy");
+                });
+
             modelBuilder.Entity("Praxy.Persistence.Entities.TableDef", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2262,6 +2421,26 @@ namespace Praxy.Persistence.Migrations
                         .HasConstraintName("fk_api_keys_projects_project_id");
                 });
 
+            modelBuilder.Entity("Praxy.Persistence.Entities.Bucket", b =>
+                {
+                    b.HasOne("Praxy.Persistence.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_buckets_projects_project_id");
+                });
+
+            modelBuilder.Entity("Praxy.Persistence.Entities.BucketPermission", b =>
+                {
+                    b.HasOne("Praxy.Persistence.Entities.Bucket", null)
+                        .WithMany()
+                        .HasForeignKey("BucketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bucket_permissions_buckets_bucket_id");
+                });
+
             modelBuilder.Entity("Praxy.Persistence.Entities.ColumnDef", b =>
                 {
                     b.HasOne("Praxy.Persistence.Entities.TableDef", null)
@@ -2286,6 +2465,16 @@ namespace Praxy.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_databases_projects_project_id");
+                });
+
+            modelBuilder.Entity("Praxy.Persistence.Entities.FileChunk", b =>
+                {
+                    b.HasOne("Praxy.Persistence.Entities.StoredFile", null)
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_chunks_files_file_id");
                 });
 
             modelBuilder.Entity("Praxy.Persistence.Entities.FunctionDef", b =>
@@ -2570,6 +2759,16 @@ namespace Praxy.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_site_requests_sites_site_id");
+                });
+
+            modelBuilder.Entity("Praxy.Persistence.Entities.StoredFile", b =>
+                {
+                    b.HasOne("Praxy.Persistence.Entities.Bucket", null)
+                        .WithMany()
+                        .HasForeignKey("BucketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_files_buckets_bucket_id");
                 });
 
             modelBuilder.Entity("Praxy.Persistence.Entities.TableDef", b =>

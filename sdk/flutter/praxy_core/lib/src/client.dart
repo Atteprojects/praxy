@@ -7,6 +7,7 @@ import 'json_utils.dart';
 import 'models.dart';
 import 'services/account_service.dart';
 import 'services/functions_service.dart';
+import 'services/storage_service.dart';
 import 'services/tables_service.dart';
 import 'services/teams_service.dart';
 import 'session_store.dart';
@@ -25,6 +26,7 @@ final class Praxy {
     tables = TablesService(this);
     teams = TeamsService(this);
     functions = FunctionsService(this);
+    storage = StorageService(this);
   }
 
   final Uri endpoint;
@@ -36,37 +38,31 @@ final class Praxy {
   late final TablesService tables;
   late final TeamsService teams;
   late final FunctionsService functions;
+  late final StorageService storage;
 
   /// Sends one API call and returns the decoded JSON body (`null` for a 204 or an
   /// empty body). Every header/error-mapping rule lives here so service methods stay
   /// pure wire-shape translation.
+  ///
+  /// [bodyBytes]/[contentType] send a raw byte body instead of JSON — a storage
+  /// upload, where the bytes *are* the request. Set at most one of [body] and
+  /// [bodyBytes].
   Future<Map<String, dynamic>?> request({
     required String method,
     required String path,
     Map<String, List<String>> query = const {},
     Object? body,
+    List<int>? bodyBytes,
+    String? contentType,
   }) async {
-    final session = await sessionStore.read();
-    final headers = <String, String>{
-      'accept': 'application/json',
-      'x-praxy-project': projectId,
-      if (session != null) 'x-praxy-session': session.secret,
-    };
-
-    TransportResponse response;
-    try {
-      response = await _transport.send(
-        TransportRequest(method: method, path: path, headers: headers, query: query, body: body),
-      );
-    } on PraxyException {
-      rethrow;
-    } catch (error, stackTrace) {
-      throw PraxyNetworkException(cause: error, stackTrace: stackTrace, isTimeout: error is TimeoutException);
-    }
-
-    if (response.statusCode >= 400) {
-      throw _mapError(response);
-    }
+    final response = await _send(
+      method: method,
+      path: path,
+      query: query,
+      body: body,
+      bodyBytes: bodyBytes,
+      contentType: contentType,
+    );
     if (response.bodyBytes.isEmpty) return null;
 
     final Object? decoded;
@@ -84,6 +80,56 @@ final class Praxy {
       Map<String, dynamic> m => m,
       _ => throw PraxyDecodeException(field: path, expected: 'a JSON object', message: 'The response body was not a JSON object.'),
     };
+  }
+
+  /// Sends one API call and returns the response body as raw bytes — a storage
+  /// download, whose body is a file rather than JSON. Shares every header and
+  /// error-mapping rule with [request]; only the success path differs.
+  Future<List<int>> requestBytes({
+    required String method,
+    required String path,
+    Map<String, List<String>> query = const {},
+  }) async =>
+      (await _send(method: method, path: path, query: query)).bodyBytes;
+
+  Future<TransportResponse> _send({
+    required String method,
+    required String path,
+    Map<String, List<String>> query = const {},
+    Object? body,
+    List<int>? bodyBytes,
+    String? contentType,
+  }) async {
+    final session = await sessionStore.read();
+    final headers = <String, String>{
+      'accept': 'application/json',
+      'x-praxy-project': projectId,
+      if (session != null) 'x-praxy-session': session.secret,
+    };
+
+    TransportResponse response;
+    try {
+      response = await _transport.send(
+        TransportRequest(
+          method: method,
+          path: path,
+          headers: headers,
+          query: query,
+          body: body,
+          bodyBytes: bodyBytes,
+          contentType: contentType,
+        ),
+      );
+    } on PraxyException {
+      rethrow;
+    } catch (error, stackTrace) {
+      throw PraxyNetworkException(cause: error, stackTrace: stackTrace, isTimeout: error is TimeoutException);
+    }
+
+    if (response.statusCode >= 400) {
+      throw _mapError(response);
+    }
+    return response;
   }
 
   /// Mints a single-use, 60s realtime ticket (`POST /v1/realtime/ticket`) for the

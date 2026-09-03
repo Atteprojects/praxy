@@ -147,6 +147,11 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Quotas:MaxIndexesPerTable` | 64 | Indexes per table (org-overridable). |
 | `Praxy:Quotas:MaxSitesPerProject` | 20 | Sites per project (org-overridable). |
 | `Praxy:Quotas:MaxPreviewContainersPerProject` | 10 | Concurrent on-demand preview containers per project (org-overridable) — see [Preview URLs and idle sweep](#preview-urls-and-idle-sweep). |
+| `Praxy:Quotas:MaxBucketsPerProject` | 20 | Storage buckets per project (org-overridable). |
+| `Praxy:Quotas:MaxFileSizeBytes` | 52428800 (50 MB) | Per-file upload ceiling (org-overridable). **Kestrel's request-body limit is derived from this same value** — raising one raises the other, which is why they can never disagree at a size nobody configured. A bucket may narrow it, never widen it. |
+| `Praxy:Quotas:MaxStorageBytesPerProject` | 5368709120 (5 GB) | Total stored bytes per project (org-overridable). **This is what bounds how large your backups get** — see [Storage and backup size](#storage-and-backup-size). |
+| `Praxy:Storage:ChunkSizeBytes` | 524288 (512 KiB) | Size of each row a file's bytes are split across. A tuning constant: it is recorded on every file as it is written, so changing it affects only *new* uploads and can never invalidate a byte already stored. |
+| `Praxy:Storage:DefaultBucketMaxFileSizeBytes` | 52428800 (50 MB) | Per-file ceiling given to a bucket created without one of its own. Always clamped to `Praxy:Quotas:MaxFileSizeBytes`. |
 | `Praxy:Tables:SchemaJobs:PollIntervalSeconds` | 2 | `CREATE INDEX CONCURRENTLY` / type-change job runner cadence. |
 | `Praxy:Tables:SchemaJobs:IndexBuildTimeoutSeconds` | 1800 | Job wall-clock timeout before it's marked failed. |
 | `Praxy:Realtime:MaxConnectionsPerProject` | 1000 | WebSocket connection quota. |
@@ -430,13 +435,50 @@ library) — the `api` container image installs it for this reason; if you're ru
 the build worker, in a fresh temporary directory deleted once the build finishes — success or
 failure — the same discipline an uploaded tar's bytes already follow.
 
+## Storage and backup size
+
+**Stored files live in Postgres.** Praxy has no second datastore and nothing on disk: a file's bytes
+are split into fixed-size chunk rows in `praxy.file_chunks`, in the same `praxy` schema as everything
+else. That is a deliberate design decision (`docs/research/storage.md`), and it has one operational
+consequence worth knowing *before* you meet it:
+
+> **Every stored byte lands in every backup.** `backup.sh` runs `pg_dump` over the `praxy` schema, so
+> a project holding 5 GB of files produces 5 GB of dump, every run. This is inherent to keeping files
+> in the database — no amount of cleverness removes it. It is *managed*, not engineered away.
+
+The control is **`Praxy:Quotas:MaxStorageBytesPerProject`** (5 GB per project by default, and
+overridable per organization like every other quota). Set it to what your backup storage and backup
+window can actually absorb, multiplied by how many projects the instance hosts. An upload that would
+cross it is rejected cleanly with `general_resource_limit_exceeded` — mid-stream if necessary, rolled
+back whole, never a truncated file. Each project's current usage against that limit is on its
+Overview page in the console, and on the Storage screen itself.
+
+Two related knobs:
+
+- **`Praxy:Quotas:MaxFileSizeBytes`** (50 MB) is the per-file ceiling. Kestrel's own request-body
+  limit is derived from this same value, so raising it is a single change rather than two settings
+  that can disagree. A bucket can set a smaller limit of its own; it can never set a larger one.
+- **`Praxy:Storage:ChunkSizeBytes`** (512 KiB) is how many bytes each `file_chunks` row holds. It is
+  recorded per file at upload time, so retuning it changes nothing about files already stored.
+
+There is deliberately **no flag to skip the chunk table during backup** in v1: a backup that silently
+omits data is worse than a large one. If you back files up separately and want that trade, it is a
+reasonable future addition — but make it an explicit, documented choice, not a default.
+
+Deleting large files leaves substantial dead tuples behind. That is ordinary autovacuum territory,
+but worth saying out loud since no other Praxy table churns at this volume — if you delete files in
+bulk and want the disk back promptly, a manual `VACUUM (FULL) praxy.file_chunks` during a quiet
+window will do it (it takes an exclusive lock; plan accordingly).
+
 ## Backup and restore
 
 Two things need backing up, because they live in different Postgres schemas and neither one alone is
 useful without the other:
 
-- **`praxy`** — the system catalog: organizations, projects, users, sessions, and every database's
-  metadata (`praxy.databases`/`tables`/`columns`/`indexes`/…). One schema, whole-instance.
+- **`praxy`** — the system catalog: organizations, projects, users, sessions, every database's
+  metadata (`praxy.databases`/`tables`/`columns`/`indexes`/…), **and every stored file's bytes**
+  (`praxy.file_chunks`). One schema, whole-instance — and the reason a dump's size tracks how much
+  file storage is in use, see [Storage and backup size](#storage-and-backup-size).
 - **`px_<database-id>`** — the actual rows and tables for one database, one schema per database
   (architecture.md §4.1). A project with three databases has three of these.
 
@@ -455,7 +497,8 @@ Writes `praxy.dump` and one `px_<id>.dump` per existing database schema into
 repo, on a volume that actually gets backed up elsewhere). Each `pg_dump` runs in its own consistent
 snapshot transaction, so this is safe to run against a live instance — no downtime, no need to stop
 the `api` container first. Run it on a schedule (cron, systemd timer, whatever the host already has)
-pointed at storage that isn't the same disk as the Postgres volume.
+pointed at storage that isn't the same disk as the Postgres volume. Size these dumps against your
+project storage quotas, not against your catalog: stored files are in `praxy.dump`.
 
 ### Restoring
 

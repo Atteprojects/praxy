@@ -23,6 +23,8 @@ const DESTINATIONS = [
   { key: "w", label: "Go to webhooks", to: "/project/$projectId/webhooks" },
   { key: "f", label: "Go to functions", to: "/project/$projectId/functions" },
   { key: "i", label: "Go to sites", to: "/project/$projectId/sites" },
+  // `b` for buckets: `s` is already auth settings.
+  { key: "b", label: "Go to storage", to: "/project/$projectId/storage" },
   { key: "m", label: "Go to messaging", to: "/project/$projectId/messaging" },
   { key: "k", label: "Go to API keys", to: "/project/$projectId/api-keys" },
   { label: "Go to platforms", to: "/project/$projectId/platforms" },

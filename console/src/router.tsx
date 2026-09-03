@@ -9,6 +9,8 @@ import { ErrorNote } from "./components/ui";
 import { ApiKeysPage } from "./screens/ApiKeysPage";
 import { AuditLogPage } from "./screens/AuditLogPage";
 import { AuthSettingsPage } from "./screens/AuthSettingsPage";
+import { BucketFilesPage } from "./screens/BucketFilesPage";
+import { BucketSettingsPage } from "./screens/BucketSettingsPage";
 import { ColumnsPage } from "./screens/ColumnsPage";
 import { DatabaseIndexPage, DatabaseLayout } from "./screens/DatabaseLayout";
 import { DatabasesPage } from "./screens/DatabasesPage";
@@ -33,6 +35,7 @@ import { SiteDeploymentsPage } from "./screens/SiteDeploymentsPage";
 import { SiteLogsPage } from "./screens/SiteLogsPage";
 import { SiteSettingsPage } from "./screens/SiteSettingsPage";
 import { SitesPage } from "./screens/SitesPage";
+import { StoragePage } from "./screens/StoragePage";
 import { TableSettingsPage } from "./screens/TableSettingsPage";
 import { TeamDetailPage, TeamsPage } from "./screens/TeamsPage";
 import { TopicSubscribersPage } from "./screens/TopicSubscribersPage";
@@ -234,6 +237,24 @@ const siteSettingsRoute = createRoute({
   component: SiteSettingsPage,
 });
 
+const storageRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "storage",
+  component: StoragePage,
+});
+
+const bucketFilesRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "storage/$bucketId",
+  component: BucketFilesPage,
+});
+
+const bucketSettingsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "storage/$bucketId/settings",
+  component: BucketSettingsPage,
+});
+
 const messagesRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "messaging",
@@ -315,6 +336,9 @@ const routeTree = rootRoute.addChildren([
       siteDeploymentsRoute,
       siteLogsRoute,
       siteSettingsRoute,
+      storageRoute,
+      bucketFilesRoute,
+      bucketSettingsRoute,
       messagesRoute,
       messagingTopicsRoute,
       messagingTopicSubscribersRoute,

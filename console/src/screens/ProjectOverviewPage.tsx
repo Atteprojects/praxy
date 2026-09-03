@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ApiError } from "../api/client";
 import { useConnectionCount, useDeleteProject, useProject, useQuotas, useUpdateProject } from "../api/queries";
 import { ErrorNote, FullPageSpinner, IdChip, InlineEditableTitle, PageHeader, Spinner } from "../components/ui";
+import { formatBytes } from "./storageFormat";
 
 export function ProjectOverviewPage() {
   const { projectId } = useParams({ strict: false }) as { projectId: string };
@@ -96,13 +97,22 @@ function QuotaCard({ projectId }: { projectId: string }) {
   const quotas = useQuotas(projectId);
   if (!quotas.data) return null;
 
-  const rows: Array<{ label: string; used: number; max: number }> = [
+  const rows: Array<{ label: string; used: number; max: number; format?: (value: number) => string }> = [
     { label: "Projects (organization)", used: quotas.data.projectsUsed, max: quotas.data.projectsMax },
     { label: "Databases", used: quotas.data.databasesUsed, max: quotas.data.databasesMax },
     { label: "Tables (busiest database)", used: quotas.data.busiestDatabaseTables, max: quotas.data.tablesPerDatabaseMax },
     { label: "Columns (busiest table)", used: quotas.data.busiestTableColumns, max: quotas.data.columnsPerTableMax },
     { label: "Indexes (busiest table)", used: quotas.data.busiestTableIndexes, max: quotas.data.indexesPerTableMax },
     { label: "Sites", used: quotas.data.sitesUsed, max: quotas.data.sitesMax },
+    { label: "Buckets", used: quotas.data.bucketsUsed, max: quotas.data.bucketsMax },
+    // Bytes rather than a count: this is the dimension that bounds how large every backup gets,
+    // since stored files live in the schema deploy/backup.sh dumps (docs/self-host.md).
+    {
+      label: "Stored files",
+      used: quotas.data.storageBytesUsed,
+      max: quotas.data.storageBytesMax,
+      format: formatBytes,
+    },
   ];
 
   return (
@@ -117,7 +127,17 @@ function QuotaCard({ projectId }: { projectId: string }) {
   );
 }
 
-function QuotaRow({ label, used, max }: { label: string; used: number; max: number }) {
+function QuotaRow({
+  label,
+  used,
+  max,
+  format = (value: number) => String(value),
+}: {
+  label: string;
+  used: number;
+  max: number;
+  format?: (value: number) => string;
+}) {
   const ratio = max > 0 ? used / max : 0;
   const barColor = ratio >= 1 ? "bg-red-500" : ratio >= 0.8 ? "bg-amber-400" : "bg-mint-400";
   const textColor = ratio >= 1 ? "text-red-400" : ratio >= 0.8 ? "text-amber-400" : "text-ink-300";
@@ -127,7 +147,7 @@ function QuotaRow({ label, used, max }: { label: string; used: number; max: numb
       <div className="mb-1 flex items-center justify-between text-sm">
         <span className="text-ink-400">{label}</span>
         <span className={`tabular-nums ${textColor}`}>
-          {used} / {max}
+          {format(used)} / {format(max)}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">

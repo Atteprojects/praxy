@@ -145,6 +145,17 @@ export function TablesIcon(props: IconProps) {
   );
 }
 
+/** A stack of drives — the storage bucket list and its file browser. */
+export function StorageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <ellipse cx="8" cy="3.75" rx="5.25" ry="2" stroke="currentColor" />
+      <path d="M2.75 3.75v8.5c0 1.1 2.35 2 5.25 2s5.25-.9 5.25-2v-8.5" stroke="currentColor" />
+      <path d="M2.75 8c0 1.1 2.35 2 5.25 2s5.25-.9 5.25-2" stroke="currentColor" />
+    </Icon>
+  );
+}
+
 export function SitesIcon(props: IconProps) {
   return (
     <Icon {...props}>

@@ -13,6 +13,9 @@ public static class ChannelGrammar
 {
     private static readonly string[] RowActions = ["create", "update", "delete"];
 
+    /// <summary>Storage Phase 1: file events use the same three actions as rows.</summary>
+    private static readonly string[] FileActions = RowActions;
+
     /// <summary>Server-side rewrite at subscribe time: the bare <c>account</c> channel becomes <c>account.&lt;userId&gt;</c>. Guests and keys have no id to rewrite to, so the channel is left as-is (and stays permanently inert).</summary>
     public static string[] NormalizeForSubscribe(IReadOnlyList<string> requested, Guid? userId)
     {
@@ -38,6 +41,18 @@ public static class ChannelGrammar
             var rowId = parts[5];
             var action = parts[6];
             return [basePrefix, $"{basePrefix}.{rowId}", $"{basePrefix}.{action}", $"{basePrefix}.{rowId}.{action}"];
+        }
+
+        // Storage Phase 1: `buckets.<bucketId>.files.<fileId>.<action>` — the same four variants a
+        // row event fans out on, one level shallower. A new prefix on the existing mechanism, not a
+        // second grammar (docs/research/storage.md).
+        if (parts.Length == 5 && parts[0] == "buckets" && parts[2] == "files" &&
+            IsHexId(parts[1]) && IsHexId(parts[3]) && FileActions.Contains(parts[4]))
+        {
+            var basePrefix = $"buckets.{parts[1]}.files";
+            var fileId = parts[3];
+            var action = parts[4];
+            return [basePrefix, $"{basePrefix}.{fileId}", $"{basePrefix}.{action}", $"{basePrefix}.{fileId}.{action}"];
         }
 
         if (parts.Length >= 2 && parts[0] == "users" && IsHexId(parts[1]))

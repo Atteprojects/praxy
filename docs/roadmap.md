@@ -433,7 +433,8 @@ The resource model deliberately mirrors Tables — bucket ≈ table, file ≈ ro
 `TablePermission`'s exact shape — so the one-role-resolver and deny-by-default cross-phase rules apply
 unchanged, and no second authorization concept is introduced.
 
-- **Phase 1 — the primitive** (kickoff: `docs/handoff/storage-phase-1-prompt.md`) — the
+- **Phase 1 — the primitive** — **shipped 2026-09-03** (kickoff:
+  `docs/handoff/storage-phase-1-prompt.md`, report: `docs/handoff/storage-phase-1-report.md`) — the
   `Praxy.Storage` project, bucket CRUD + permissions, streaming upload, full-file download, delete, the
   chunk store behind its interface, three new quota dimensions, outbox events, console screens, and
   Flutter/JS SDK upload+download.

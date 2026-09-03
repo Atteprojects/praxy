@@ -40,6 +40,7 @@ final class PraxyFlutter {
   AccountService get account => core.account;
   TeamsService get teams => core.teams;
   FunctionsService get functions => core.functions;
+  StorageService get storage => core.storage;
   SessionStore get sessionStore => core.sessionStore;
   Uri get endpoint => core.endpoint;
 
