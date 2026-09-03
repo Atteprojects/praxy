@@ -70,6 +70,27 @@ public sealed class FilesService(
             Checksum = "",
         };
 
+        try
+        {
+            await StreamIntoStorageAsync(bucket, file, body, maxFileSize, budget, ct);
+        }
+        catch
+        {
+            // The transaction rolled the row back, but EF still tracks it as saved — unlike every
+            // other write in this engine, this one can fail *after* a successful SaveChanges (a
+            // quota tripped mid-stream). Detaching keeps a later SaveChanges on this same scoped
+            // context from resurrecting a file that does not exist.
+            db.Entry(file).State = EntityState.Detached;
+            throw;
+        }
+
+        await PublishAsync(bucket, "create", file.Id, ct);
+        return file;
+    }
+
+    private async Task StreamIntoStorageAsync(
+        Bucket bucket, StoredFile file, Stream body, long maxFileSize, StorageBudget budget, CancellationToken ct)
+    {
         await SchemaDdl.InTransactionAsync(db, async () =>
         {
             // The chunk rows FK to this row, so the metadata goes in first with placeholder
@@ -107,9 +128,6 @@ public sealed class FilesService(
 
             await WriteOutboxAsync(bucket, "create", file.Id, ct);
         }, ct);
-
-        await PublishAsync(bucket, "create", file.Id, ct);
-        return file;
     }
 
     // ---- read -------------------------------------------------------------------------------

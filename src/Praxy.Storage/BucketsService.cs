@@ -28,6 +28,8 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 128)
             fields["name"] = ["Must be between 1 and 128 characters."];
         var normalizedMimeTypes = NormalizeMimeTypes(allowedMimeTypes, fields);
+        if (maxFileSizeBytes is < 1)
+            fields["maxFileSizeBytes"] = ["Must be at least 1 byte."];
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid bucket payload.", fields);
 
@@ -74,21 +76,25 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
         Bucket bucket, string? name, bool? enabled, long? maxFileSizeBytes, string[]? allowedMimeTypes,
         bool clearAllowedMimeTypes, CancellationToken ct)
     {
+        // Validate everything before touching the entity: a rejected update must leave the tracked
+        // bucket exactly as it was, not half-applied and relying on nobody calling SaveChanges after.
         var fields = new Dictionary<string, string[]>();
-        if (name is not null)
-        {
-            if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 128)
-                fields["name"] = ["Must be between 1 and 128 characters."];
-            else
-                bucket.Name = name.Trim();
-        }
-        if (allowedMimeTypes is not null)
-            bucket.AllowedMimeTypes = NormalizeMimeTypes(allowedMimeTypes, fields);
-        else if (clearAllowedMimeTypes)
-            bucket.AllowedMimeTypes = null;
+        if (name is not null && (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 128))
+            fields["name"] = ["Must be between 1 and 128 characters."];
+        var normalizedMimeTypes = allowedMimeTypes is not null
+            ? NormalizeMimeTypes(allowedMimeTypes, fields)
+            : null;
+        if (maxFileSizeBytes is < 1)
+            fields["maxFileSizeBytes"] = ["Must be at least 1 byte."];
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid bucket payload.", fields);
 
+        if (name is not null)
+            bucket.Name = name.Trim();
+        if (allowedMimeTypes is not null)
+            bucket.AllowedMimeTypes = normalizedMimeTypes;
+        else if (clearAllowedMimeTypes)
+            bucket.AllowedMimeTypes = null;
         if (enabled is not null)
             bucket.Enabled = enabled.Value;
         if (maxFileSizeBytes is { } max)
@@ -166,14 +172,10 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
     /// A bucket may narrow the instance/org ceiling but never widen it — otherwise a per-bucket
     /// setting would silently outrank the quota, and Kestrel's request-body limit (derived from
     /// the same quota) would reject the upload anyway at a size the bucket claimed to accept.
+    /// Callers validate the lower bound alongside their other fields, so this only clamps.
     /// </summary>
-    private static long ClampFileSize(long requested, StorageBudget budget)
-    {
-        if (requested < 1)
-            throw PraxyException.ArgumentInvalid("Invalid bucket payload.",
-                new Dictionary<string, string[]> { ["maxFileSizeBytes"] = ["Must be at least 1 byte."] });
-        return Math.Min(requested, budget.MaxFileSizeBytes);
-    }
+    private static long ClampFileSize(long requested, StorageBudget budget) =>
+        Math.Min(requested, budget.MaxFileSizeBytes);
 
     /// <summary>Empty means "any type", which is stored as null so there is one representation of "no restriction".</summary>
     private static string[]? NormalizeMimeTypes(string[]? patterns, Dictionary<string, string[]> fields)

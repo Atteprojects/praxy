@@ -105,6 +105,16 @@ Filled in as phases land — keep this section current.
   so logging never adds request-path latency, and retention-eligible from day one
   (`Praxy:Retention:SiteRequestsMaxAgeDays`, default 7 — much shorter than the other retention windows
   given this table's expected volume) — see `docs/handoff/sites-request-logs-report.md`.
+- Storage (post-v0.1.0 initiative, Phase 1, 2026-09-03): file bytes live in Postgres, split across
+  `praxy.file_chunks` rows behind an `IFileStore` seam (`src/Praxy.Storage`) — no second datastore,
+  nothing on disk. Needs no extra runtime dependency. Tunable via `Praxy:Storage:ChunkSizeBytes`
+  (512 KiB; recorded per file, so retuning never invalidates stored bytes) and
+  `Praxy:Storage:DefaultBucketMaxFileSizeBytes`. The three quotas that matter are
+  `Praxy:Quotas:MaxBucketsPerProject` / `MaxFileSizeBytes` / `MaxStorageBytesPerProject` —
+  **Kestrel's request-body limit is derived from `MaxFileSizeBytes`**, so never configure the two
+  apart. **Every stored byte lands in every backup** (`backup.sh` dumps the `praxy` schema);
+  `MaxStorageBytesPerProject` is the control — see `docs/self-host.md`'s "Storage and backup size"
+  and `docs/handoff/storage-phase-1-report.md`.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)

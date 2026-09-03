@@ -6,22 +6,31 @@ namespace Praxy.Tests.Integration;
 
 /// <summary>
 /// The landmine the design doc calls out by name: it is very easy to write code that *looks*
-/// streaming but buffers. These tests move a file far larger than any incidental buffer through
-/// the real pipeline — generated on the fly and hashed on the way back, so the test itself never
-/// holds it either — and watch the managed heap while it happens. A <c>ReadToEndAsync</c> anywhere
-/// on the path, or a buffered response, shows up here as a heap that grows with the file.
+/// streaming but buffers. These tests move files far larger than any incidental buffer through the
+/// real pipeline — generated on the fly and hashed on the way back, so the test itself never holds
+/// one either — and watch the managed heap while it happens.
+///
+/// The assertion is deliberately about **growth with respect to file size**, not an absolute
+/// number of megabytes. An absolute bound is not a stable gate: the same round trip measured 19 MB
+/// in isolation and 65 MB when run after 285 other integration tests, because
+/// <c>GC.GetTotalMemory(false)</c> counts whatever garbage the rest of the suite left uncollected.
+/// What *is* stable — and is the actual property being claimed — is that quadrupling the file does
+/// not quadruple the memory. A <c>ReadToEndAsync</c> anywhere on the path, or a buffered response,
+/// fails that immediately; noise cannot.
 /// </summary>
 public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
-    private const long FileBytes = 128L * 1024 * 1024;
+    private const long SmallBytes = 32L * 1024 * 1024;
+    private const long LargeBytes = 128L * 1024 * 1024;
 
     /// <summary>
-    /// Generously loose on purpose, and well below <see cref="FileBytes"/> — that is the whole
-    /// assertion: an implementation holding the file cannot come in under a third of its size. A
-    /// streaming one holds a chunk (512 KiB) plus transport buffers; the rest of the headroom is
-    /// uncollected garbage from moving 128 MB, which <c>GC.GetTotalMemory(false)</c> counts.
+    /// How much extra peak heap the 96 MB of *additional* file is allowed to cost. A buffering
+    /// implementation holds the whole file, so it would spend the full extra 96 MB (more, with a
+    /// doubling MemoryStream); a streaming one spends about nothing, because its working set is a
+    /// chunk plus transport buffers either way. Half the difference is generous room for GC noise
+    /// while still failing a buffered path decisively.
     /// </summary>
-    private const long AcceptableHeapGrowthBytes = 48L * 1024 * 1024;
+    private const long AcceptableExtraGrowthBytes = 48L * 1024 * 1024;
 
     protected override IDictionary<string, string?>? ExtraSettings =>
         new Dictionary<string, string?>(base.ExtraSettings!)
@@ -32,32 +41,57 @@ public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(p
         };
 
     [Fact]
-    public async Task A_128MB_file_round_trips_exactly_without_ever_being_held_in_memory()
+    public async Task Files_round_trip_exactly_and_memory_does_not_grow_with_their_size()
     {
         var (operatorToken, projectId) = await SetupProjectAsync();
         var bucketId = await CreateBucketAsync(operatorToken, projectId);
 
-        var expectedHash = HashOfGeneratedBytes(FileBytes);
+        var small = await RoundTripAsync(operatorToken, projectId, bucketId, "small.bin", SmallBytes);
+        var large = await RoundTripAsync(operatorToken, projectId, bucketId, "large.bin", LargeBytes);
+
+        // Correctness first: both files came back byte-for-byte, with the server's own streamed
+        // checksum matching one taken independently, and the expected number of 512 KiB chunks.
+        Assert.Equal(64, small.ChunkCount);
+        Assert.Equal(256, large.ChunkCount);
+
+        var extra = large.PeakGrowthBytes - small.PeakGrowthBytes;
+        Assert.True(extra < AcceptableExtraGrowthBytes,
+            $"A {(LargeBytes - SmallBytes) / 1024 / 1024} MB larger file cost {extra / 1024 / 1024} MB more "
+            + $"peak heap ({small.PeakGrowthBytes / 1024 / 1024} MB -> {large.PeakGrowthBytes / 1024 / 1024} MB). "
+            + "Memory is tracking file size, so something on the upload or download path is buffering "
+            + "rather than streaming.");
+    }
+
+    // ---- one measured round trip ---------------------------------------------------------------
+
+    private sealed record RoundTrip(int ChunkCount, long PeakGrowthBytes);
+
+    /// <summary>
+    /// Uploads a generated file, downloads it back hashing as it arrives, asserts it is identical,
+    /// and reports the peak managed-heap growth over a freshly settled baseline.
+    /// </summary>
+    private async Task<RoundTrip> RoundTripAsync(
+        string operatorToken, string projectId, string bucketId, string name, long length)
+    {
+        var expectedHash = HashOfGeneratedBytes(length);
         var baseline = SettledHeapBytes();
         using var peak = new HeapPeakSampler();
 
-        // ---- upload: a generated stream, never a byte[] ----
         var upload = Authed(
             HttpMethod.Post,
-            $"/v1/console/projects/{projectId}/storage/buckets/{bucketId}/files?name=large.bin",
+            $"/v1/console/projects/{projectId}/storage/buckets/{bucketId}/files?name={name}",
             operatorToken);
-        upload.Content = new StreamContent(new GeneratedStream(FileBytes));
+        upload.Content = new StreamContent(new GeneratedStream(length));
         upload.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        upload.Content.Headers.ContentLength = FileBytes;
+        upload.Content.Headers.ContentLength = length;
 
-        var uploaded = await ReadJson(await Client.SendAsync(upload));
+        var uploadResponse = await Client.SendAsync(upload);
+        Assert.Equal(201, (int)uploadResponse.StatusCode);
+        var uploaded = await ReadJson(uploadResponse);
         var fileId = uploaded.GetProperty("id").GetString()!;
-        Assert.Equal(FileBytes, uploaded.GetProperty("sizeBytes").GetInt64());
-        // The server's own checksum, computed while streaming, matches one taken independently.
+        Assert.Equal(length, uploaded.GetProperty("sizeBytes").GetInt64());
         Assert.Equal(expectedHash, uploaded.GetProperty("checksum").GetString());
-        Assert.Equal(256, uploaded.GetProperty("chunkCount").GetInt32()); // 128 MB / 512 KiB
 
-        // ---- download: read the body incrementally and hash it as it arrives ----
         var download = await Client.SendAsync(
             Authed(HttpMethod.Get,
                 $"/v1/console/projects/{projectId}/storage/buckets/{bucketId}/files/{fileId}/download",
@@ -65,26 +99,24 @@ public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(p
             HttpCompletionOption.ResponseHeadersRead);
 
         Assert.Equal(200, (int)download.StatusCode);
-        Assert.Equal(FileBytes, download.Content.Headers.ContentLength);
+        Assert.Equal(length, download.Content.Headers.ContentLength);
 
-        await using var body = await download.Content.ReadAsStreamAsync();
-        using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var buffer = new byte[65_536];
-        long total = 0;
-        int read;
-        while ((read = await body.ReadAsync(buffer)) > 0)
+        await using (var body = await download.Content.ReadAsStreamAsync())
         {
-            hasher.AppendData(buffer.AsSpan(0, read));
-            total += read;
+            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var buffer = new byte[65_536];
+            long total = 0;
+            int read;
+            while ((read = await body.ReadAsync(buffer)) > 0)
+            {
+                hasher.AppendData(buffer.AsSpan(0, read));
+                total += read;
+            }
+            Assert.Equal(length, total);
+            Assert.Equal(expectedHash, Convert.ToHexStringLower(hasher.GetHashAndReset()));
         }
 
-        Assert.Equal(FileBytes, total);
-        Assert.Equal(expectedHash, Convert.ToHexStringLower(hasher.GetHashAndReset()));
-
-        var growth = peak.PeakBytes - baseline;
-        Assert.True(growth < AcceptableHeapGrowthBytes,
-            $"Managed heap grew by {growth / 1024 / 1024} MB moving a {FileBytes / 1024 / 1024} MB file — "
-            + "something on the upload or download path is buffering it rather than streaming.");
+        return new RoundTrip(uploaded.GetProperty("chunkCount").GetInt32(), peak.PeakBytes - baseline);
     }
 
     // ---- helpers -------------------------------------------------------------------------------
@@ -155,7 +187,7 @@ public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(p
 
     /// <summary>
     /// A read-only stream that synthesizes deterministic bytes on demand. Nothing of the "file"
-    /// exists anywhere — so if the heap grows by its size, the growth is the server's, not the
+    /// exists anywhere — so if the heap grows with its size, the growth is the server's, not the
     /// test's.
     /// </summary>
     private sealed class GeneratedStream(long length) : Stream

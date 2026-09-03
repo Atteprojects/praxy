@@ -46,7 +46,10 @@ public static class StorageEndpoints
         group.MapGet("/buckets/{bucketId}/files", ListFiles).Produces<FileListResponse>();
         group.MapGet("/buckets/{bucketId}/files/{fileId}", GetFile).Produces<FileResponse>();
         group.MapGet("/buckets/{bucketId}/files/{fileId}/download", DownloadFile)
-            .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream");
+            // `Produces<Stream>`, not a bare `Produces(200, contentType: …)`: without a response
+            // *type* the generator emits no `content` block at all, and the endpoint reads as
+            // undocumented (caught by OpenApiDocumentTests, which exists for exactly this).
+            .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream");
         group.MapPatch("/buckets/{bucketId}/files/{fileId}", UpdateFile).Produces<FileResponse>();
         group.MapDelete("/buckets/{bucketId}/files/{fileId}", DeleteFile).Produces(StatusCodes.Status204NoContent);
     }
