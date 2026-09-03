@@ -2,7 +2,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
 import { useAccount, useCapabilities, useClaim, useLogin } from "../api/queries";
-import { ErrorNote, Field, FullPageSpinner, Logo } from "../components/ui";
+import { ErrorNote, Field, Footer, FullPageSpinner, Logo } from "../components/ui";
 
 /**
  * Claim-or-login. A fresh instance shows the claim (register) form; once claimed the
@@ -40,8 +40,11 @@ export function LoginPage() {
 
 function CenterCard({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center p-4">
-      <div className="surface w-full max-w-sm p-8">{children}</div>
+    <div className="flex min-h-dvh flex-col">
+      <div className="grid flex-1 place-items-center p-4">
+        <div className="surface w-full max-w-sm p-8">{children}</div>
+      </div>
+      <Footer />
     </div>
   );
 }

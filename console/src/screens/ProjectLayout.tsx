@@ -86,9 +86,9 @@ export function ProjectLayout() {
   const collapsed = Boolean(databaseId);
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex flex-1">
       <nav
-        className={`sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 py-4 md:flex ${
+        className={`sticky top-14 hidden shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 py-4 md:flex ${
           collapsed ? "w-16 items-center gap-1" : "w-52 px-3"
         }`}
         aria-label="Project"

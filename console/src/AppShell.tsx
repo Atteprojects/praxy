@@ -1,7 +1,7 @@
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAccount, useLogout, useProject } from "./api/queries";
-import { FullPageSpinner, IdChip, Kbd, Logo } from "./components/ui";
+import { COMMAND_SHORTCUT_LABEL, Footer, FullPageSpinner, IdChip, Kbd, Logo } from "./components/ui";
 import { CommandPalette } from "./palette/CommandPalette";
 
 /** Layout for everything behind auth: top bar, palette, and the session guard. */
@@ -27,8 +27,8 @@ export function AppShell() {
   if (account.data === null) return <FullPageSpinner />;
 
   return (
-    <div className="min-h-dvh">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-ink-800 bg-ink-950/80 px-4 backdrop-blur sm:px-5">
+    <div className="flex min-h-dvh flex-col">
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-ink-800 bg-ink-950/80 px-4 backdrop-blur sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Link to="/" aria-label="Home">
             <Logo />
@@ -38,7 +38,7 @@ export function AppShell() {
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span className="hidden items-center gap-1.5 text-xs text-ink-500 sm:flex">
-            <Kbd>⌘K</Kbd> commands
+            <Kbd>{COMMAND_SHORTCUT_LABEL}</Kbd> commands
           </span>
           <span className="hidden max-w-48 truncate text-sm text-ink-400 sm:block">{account.data.email}</span>
           <button
@@ -53,7 +53,15 @@ export function AppShell() {
           </button>
         </div>
       </header>
-      <Outlet />
+      {/* A flex container itself (not just a flex item) so a page's own root can grow to fill it
+          via its own `flex-1` — a plain height:100% here wouldn't reliably resolve, since this
+          div's height only becomes definite through flex layout, not a set CSS height. That lets a
+          page-local rail's height come from stretching against this (sized against the footer
+          below it), rather than an independent dvh calc that ignores the footer's existence. */}
+      <div className="flex flex-1 flex-col">
+        <Outlet />
+      </div>
+      <Footer />
       <CommandPalette />
     </div>
   );
