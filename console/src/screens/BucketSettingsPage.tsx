@@ -102,7 +102,7 @@ export function BucketSettingsPage() {
           />
           <p className="mt-4 text-xs text-ink-500">
             Files up to <span className="font-medium text-ink-300">{formatBytes(bucket.data.maxFileSizeBytes)}</span>,{" "}
-            {bucket.data.allowedMimeTypes === null ? (
+            {bucket.data.allowedMimeTypes == null ? (
               "any type accepted"
             ) : (
               <>

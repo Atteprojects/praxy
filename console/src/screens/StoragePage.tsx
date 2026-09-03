@@ -63,7 +63,9 @@ export function StoragePage() {
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-ink-400">{formatBytes(bucket.maxFileSizeBytes)}</td>
               <td className="px-4 py-3 text-xs text-ink-400">
-                {bucket.allowedMimeTypes === null ? (
+                {/* `== null`, not `===`: the API omits null fields (WhenWritingNull), so this
+                    arrives undefined rather than null. See the type's own note. */}
+                {bucket.allowedMimeTypes == null ? (
                   <span className="text-ink-500">any type</span>
                 ) : (
                   <span className="font-mono">{bucket.allowedMimeTypes.join(", ")}</span>
