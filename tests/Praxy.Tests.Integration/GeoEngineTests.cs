@@ -369,6 +369,191 @@ public class GeoEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.Equal(["p1", "p2", "p3", "p4", "p5"], seen);
     }
 
+    // ---- withinBox and $distance (Phase 3, docs/handoff/geo-nearby-phase-3-prompt.md) -----------
+
+    // Exact ST_Distance figures from City Hall, measured directly against a real
+    // postgis/postgis:17-3.6-alpine instance (not made-up numbers) — City Hall to Ferry Building
+    // 3217.59194446m, City Hall to Golden Gate Bridge 7201.19456517m.
+    // The *sphere* distances, matching the model the whole geo surface uses (docs/research/
+    // geo-nearby.md's "Distance model"): <-> orders by sphere, so $distance and near()'s ST_DWithin
+    // both pin sphere explicitly to agree with it. The spheroid figures for the same two pairs are
+    // 3217.59194446 and 7201.19456517 — ~0.8m and ~2.5m larger. If these constants ever need to become
+    // the spheroid ones again, that means the distance model changed; read that section first.
+    private const double CityHallToFerryBuildingMeters = 3216.7850916;
+    private const double CityHallToGoldenGateMeters = 7198.65628903;
+
+    [Fact]
+    public async Task WithinBox_includes_and_excludes_the_right_real_world_landmarks()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "City Hall", location = new { lat = CityHallLat, lng = CityHallLng } } });
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Ferry Building", location = new { lat = FerryBuildingLat, lng = FerryBuildingLng } } });
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Golden Gate Bridge", location = new { lat = GoldenGateLat, lng = GoldenGateLng } } });
+
+        // Covers City Hall (37.7749,-122.4194) and Ferry Building (37.7955,-122.3937); excludes
+        // Golden Gate Bridge (37.8199,-122.4783) on both axes (lat above maxLat, lng below minLng).
+        var query = """{"method":"withinBox","attribute":"location","values":[37.77,-122.45,37.80,-122.38]}""";
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?queries[]={Uri.EscapeDataString(query)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var names = (await ReadJson(response)).GetProperty("rows").EnumerateArray()
+            .Select(r => r.GetProperty("name").GetString()).ToHashSet();
+        Assert.Equal(2, names.Count);
+        Assert.Contains("City Hall", names);
+        Assert.Contains("Ferry Building", names);
+        Assert.DoesNotContain("Golden Gate Bridge", names);
+    }
+
+    [Fact]
+    public async Task WithinBox_composes_with_orderNear()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Ferry Building", location = new { lat = FerryBuildingLat, lng = FerryBuildingLng } } });
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "City Hall", location = new { lat = CityHallLat, lng = CityHallLng } } });
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Golden Gate Bridge", location = new { lat = GoldenGateLat, lng = GoldenGateLng } } });
+
+        var box = """{"method":"withinBox","attribute":"location","values":[37.77,-122.45,37.80,-122.38]}""";
+        var orderNear = $$"""{"method":"orderNear","attribute":"location","values":[{{CityHallLat}},{{CityHallLng}}]}""";
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?" +
+                  $"queries[]={Uri.EscapeDataString(box)}&queries[]={Uri.EscapeDataString(orderNear)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var names = (await ReadJson(response)).GetProperty("rows").EnumerateArray()
+            .Select(r => r.GetProperty("name").GetString()!).ToArray();
+        // Golden Gate Bridge excluded by the box; the remaining two sorted nearest-first from City Hall.
+        Assert.Equal(["City Hall", "Ferry Building"], names);
+    }
+
+    [Fact]
+    public async Task WithinBox_without_a_spatial_index_is_rejected_with_a_clear_error()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        var query = """{"method":"withinBox","attribute":"location","values":[37.77,-122.45,37.80,-122.38]}""";
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?queries[]={Uri.EscapeDataString(query)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        await AssertError(response, 400, ErrorTypes.GeneralQueryInvalid);
+    }
+
+    [Fact]
+    public async Task WithinBox_crossing_the_antimeridian_is_a_clean_error_not_an_empty_result()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+        var query = """{"method":"withinBox","attribute":"location","values":[10,170,20,-170]}"""; // minLng > maxLng
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?queries[]={Uri.EscapeDataString(query)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        await AssertError(response, 400, ErrorTypes.GeneralQueryInvalid);
+    }
+
+    [Fact]
+    public async Task Distance_is_present_and_numerically_correct_for_an_orderNear_query()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Golden Gate Bridge", location = new { lat = GoldenGateLat, lng = GoldenGateLng } } });
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "City Hall", location = new { lat = CityHallLat, lng = CityHallLng } } });
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Ferry Building", location = new { lat = FerryBuildingLat, lng = FerryBuildingLng } } });
+
+        var query = $$"""{"method":"orderNear","attribute":"location","values":[{{CityHallLat}},{{CityHallLng}}]}""";
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?queries[]={Uri.EscapeDataString(query)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var rows = (await ReadJson(response)).GetProperty("rows").EnumerateArray().ToArray();
+
+        var byName = rows.ToDictionary(r => r.GetProperty("name").GetString()!, r => r.GetProperty("$distance").GetDouble());
+        Assert.Equal(0.0, byName["City Hall"], precision: 2);
+        Assert.Equal(CityHallToFerryBuildingMeters, byName["Ferry Building"], precision: 2);
+        Assert.Equal(CityHallToGoldenGateMeters, byName["Golden Gate Bridge"], precision: 2);
+    }
+
+    [Fact]
+    public async Task Distance_is_absent_for_a_bare_near_query_and_for_a_plain_unsorted_list()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "City Hall", location = new { lat = CityHallLat, lng = CityHallLng } } });
+
+        var nearQuery = $$"""{"method":"near","attribute":"location","values":[{{CityHallLat}},{{CityHallLng}},5000]}""";
+        var nearUrl = $"/v1/databases/{databaseId}/tables/{placesId}/rows?queries[]={Uri.EscapeDataString(nearQuery)}";
+        var nearRows = (await ReadJson(await Client.SendAsync(DataPlane(HttpMethod.Get, nearUrl, projectId, apiKey: apiKey))))
+            .GetProperty("rows").EnumerateArray().ToArray();
+        Assert.False(nearRows[0].TryGetProperty("$distance", out _));
+
+        var plainUrl = $"/v1/databases/{databaseId}/tables/{placesId}/rows";
+        var plainRows = (await ReadJson(await Client.SendAsync(DataPlane(HttpMethod.Get, plainUrl, projectId, apiKey: apiKey))))
+            .GetProperty("rows").EnumerateArray().ToArray();
+        Assert.False(plainRows[0].TryGetProperty("$distance", out _));
+    }
+
+    [Fact]
+    public async Task Distance_survives_select_narrowing()
+    {
+        var (projectId, apiKey, databaseId, placesId) = await SetupAsync();
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "City Hall", location = new { lat = CityHallLat, lng = CityHallLng } } });
+
+        var select = """{"method":"select","values":["name"]}""";
+        var orderNear = $$"""{"method":"orderNear","attribute":"location","values":[{{CityHallLat}},{{CityHallLng}}]}""";
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?" +
+                  $"queries[]={Uri.EscapeDataString(select)}&queries[]={Uri.EscapeDataString(orderNear)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var row = (await ReadJson(response)).GetProperty("rows").EnumerateArray().First();
+        Assert.Equal(0.0, row.GetProperty("$distance").GetDouble(), precision: 2);
+        Assert.False(row.TryGetProperty("location", out _)); // select narrowed it away, unlike $distance
+    }
+
+    /// <summary>
+    /// The ordinal landmine the design doc calls out by name: BuildRowJson walks result ordinals
+    /// positionally, advancing by 2 for a geo column and 1 otherwise. A table whose geo column is
+    /// *not* last (unlike every other test in this file, which happens to put `location` last) is
+    /// the only way to catch a regression that shifts every column after it.
+    /// </summary>
+    [Fact]
+    public async Task Distance_is_correct_when_the_geo_column_is_followed_by_other_columns()
+    {
+        var (projectId, apiKey, databaseId) = await SetupBareAsync();
+        var placesId = await CreateTableAsync(projectId, apiKey, databaseId, "places");
+        await CreateColumnAsync(projectId, apiKey, databaseId, placesId, "string", new { key = "name", size = 200, required = true });
+        await CreateColumnAsync(projectId, apiKey, databaseId, placesId, "geo", new { key = "location" });
+        await CreateColumnAsync(projectId, apiKey, databaseId, placesId, "integer", new { key = "views", required = true });
+        await CreateColumnAsync(projectId, apiKey, databaseId, placesId, "boolean", new { key = "featured", required = true });
+        await GrantPublicAsync(projectId, apiKey, databaseId, placesId);
+        await CreateAvailableSpatialIndexAsync(projectId, apiKey, databaseId, placesId, "location");
+
+        await CreateRowAsync(projectId, apiKey, databaseId, placesId,
+            new { data = new { name = "Ferry Building", location = new { lat = FerryBuildingLat, lng = FerryBuildingLng }, views = 42, featured = true } });
+
+        var query = $$"""{"method":"orderNear","attribute":"location","values":[{{CityHallLat}},{{CityHallLng}}]}""";
+        var url = $"/v1/databases/{databaseId}/tables/{placesId}/rows?queries[]={Uri.EscapeDataString(query)}";
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Get, url, projectId, apiKey: apiKey));
+        Assert.Equal(200, (int)response.StatusCode);
+        var row = (await ReadJson(response)).GetProperty("rows").EnumerateArray().First();
+
+        // Every column after `location` must land in the right property, not shifted by $distance.
+        Assert.Equal("Ferry Building", row.GetProperty("name").GetString());
+        Assert.Equal(FerryBuildingLat, row.GetProperty("location").GetProperty("lat").GetDouble(), precision: 9);
+        Assert.Equal(42, row.GetProperty("views").GetInt32());
+        Assert.True(row.GetProperty("featured").GetBoolean());
+        Assert.Equal(CityHallToFerryBuildingMeters, row.GetProperty("$distance").GetDouble(), precision: 2);
+    }
+
     // ---- setup helpers ------------------------------------------------------------------------
 
     private async Task<(string ProjectId, string ApiKey, string DatabaseId, string PlacesId)> SetupAsync()

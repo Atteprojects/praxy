@@ -96,6 +96,8 @@ export interface RowMeta {
   $createdAt: string;
   $updatedAt: string;
   $permissions: string[];
+  /** Meters from an `orderNear` query's point — present only when the request carried `orderNear`. */
+  $distance?: number;
 }
 
 export type Row<T> = RowMeta & T;

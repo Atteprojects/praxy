@@ -224,16 +224,27 @@ public class QueryCompilerTests
         Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
     }
 
+    /// <summary>
+    /// Ordering compiles to the GiST-index-accelerated &lt;-&gt; KNN operator — the only form Postgres
+    /// can use the spatial index to order by. $distance is spelled out separately as ST_Distance's
+    /// explicit *sphere* variant, which is numerically identical to &lt;-&gt; (docs/research/
+    /// geo-nearby.md's "Distance model"), so ordering and displayed value can never contradict.
+    /// </summary>
     [Fact]
-    public void OrderNear_with_an_available_spatial_index_compiles_to_the_knn_operator()
+    public void OrderNear_orders_by_the_knn_operator_and_returns_distance_as_sphere_ST_Distance()
     {
         var entry = BuildEntry(indexes: [SpatialIndex()]);
         var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
         var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
         Assert.Contains("loc_x1", compiled.Sql);
-        Assert.Contains("<->", compiled.Sql);
         Assert.Contains("ST_MakePoint", compiled.Sql);
         Assert.Contains("::geography", compiled.Sql);
+        // The ORDER BY must use <->, or the spatial index can't accelerate it at all.
+        Assert.Contains("<-> ST_MakePoint", compiled.Sql);
+        Assert.Matches(@"ORDER BY t\.""loc_x1"" <->", compiled.Sql);
+        // $distance must be the *sphere* variant — the `false` third argument is what makes it agree
+        // with <->. Without it ST_Distance defaults to the spheroid and the two disagree by metres.
+        Assert.Contains(", false) AS \"$distance\"", compiled.Sql);
     }
 
     /// <summary>
@@ -274,6 +285,8 @@ public class QueryCompilerTests
         var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
         Assert.Contains("title_x1", compiled.Sql);
         Assert.DoesNotContain("<->", compiled.Sql);
+        Assert.DoesNotContain("$distance", compiled.Sql);
+        Assert.False(compiled.HasDistance);
     }
 
     [Fact]
@@ -305,5 +318,162 @@ public class QueryCompilerTests
         Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
         Assert.Equal($"'{method}' requires numeric values.", ex.Message);
         Assert.Contains($"'{method}' {label} must be a number.", ex.Fields!["queries"]);
+    }
+
+    // ---- $distance (Phase 3, docs/handoff/geo-nearby-phase-3-prompt.md) --------------------------
+
+    [Fact]
+    public void OrderNear_marks_HasDistance_and_appends_a_trailing_distance_column()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.True(compiled.HasDistance);
+        Assert.Contains("AS \"$distance\"", compiled.Sql);
+        // Appended at the very end of the select list — the ordinal-safety rule BuildRowJson relies on.
+        Assert.True(compiled.Sql.IndexOf("AS \"$distance\"", StringComparison.Ordinal) >
+                     compiled.Sql.IndexOf("loc_x1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_bare_near_filter_has_no_distance()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"near","attribute":"loc","values":[37.7749,-122.4194,5000]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.False(compiled.HasDistance);
+        Assert.DoesNotContain("$distance", compiled.Sql);
+    }
+
+    [Fact]
+    public void A_plain_unsorted_list_has_no_distance()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var compiled = QueryCompiler.CompileList(entry, [], ["any"], true, false);
+        Assert.False(compiled.HasDistance);
+        Assert.DoesNotContain("$distance", compiled.Sql);
+    }
+
+    [Fact]
+    public void Distance_survives_select_narrowing()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q(
+            """{"method":"select","values":["title"]}""",
+            """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.True(compiled.HasDistance);
+        Assert.Contains("AS \"$distance\"", compiled.Sql);
+        Assert.Equal(["title"], compiled.SelectedKeys!);
+    }
+
+    /// <summary>
+    /// The whole geo surface must stay on ONE distance model, or a row can display a distance that
+    /// contradicts the radius that selected it (verified against real PostGIS: a point at
+    /// sphere-3002.267m / spheroid-2996.797m is inside a spheroid <c>near(...,3000)</c> while
+    /// displaying as 3002m). Sphere is the model, because it's the only one <c>&lt;-&gt;</c> can order
+    /// by using the spatial index. That means <c>near</c>'s ST_DWithin and <c>$distance</c>'s
+    /// ST_Distance both need their explicit <c>false</c> argument — the default for both is spheroid,
+    /// so dropping it is a silent, plausible-looking regression this test exists to catch.
+    /// </summary>
+    [Fact]
+    public void Near_and_distance_both_pin_the_sphere_model_explicitly()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q(
+            """{"method":"near","attribute":"loc","values":[37.7749,-122.4194,3000]}""",
+            """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Matches(@"ST_DWithin\(.*?\)::geography, @p\d+, false\)", compiled.Sql);
+        Assert.Matches(@"ST_Distance\(.*?\)::geography, false\) AS ""\$distance""", compiled.Sql);
+        Assert.DoesNotContain("ST_Distance(t.\"loc_x1\", ST_MakePoint(@p0, @p1)::geography)", compiled.Sql);
+    }
+
+
+    // ---- withinBox (Phase 3) ----------------------------------------------------------------------
+
+    [Fact]
+    public void WithinBox_on_a_non_geo_column_is_rejected()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"withinBox","attribute":"title","values":[37.7,-122.5,37.8,-122.4]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    [Fact]
+    public void WithinBox_on_a_geo_column_with_no_spatial_index_is_rejected()
+    {
+        var entry = BuildEntry();
+        var queries = Q("""{"method":"withinBox","attribute":"loc","values":[37.7,-122.5,37.8,-122.4]}""");
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    /// <summary>
+    /// Wire values are lat-first (minLat, minLng, maxLat, maxLng); ST_MakeEnvelope takes x/y
+    /// (lng, lat) pairs. The compiler must reorder them — checked by asserting the actual bound
+    /// parameter values in call order, not just that the SQL text contains the right function names.
+    /// </summary>
+    [Fact]
+    public void WithinBox_reorders_lat_first_wire_values_into_st_makeenvelopes_lng_lat_order()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"withinBox","attribute":"loc","values":[10,20,30,40]}"""); // minLat,minLng,maxLat,maxLng
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Contains("ST_Intersects", compiled.Sql);
+        Assert.Contains("ST_MakeEnvelope", compiled.Sql);
+        Assert.Contains("::geography", compiled.Sql);
+
+        var doubleParams = compiled.Params.Where(p => p.Value is double).Select(p => (double)p.Value).ToList();
+        Assert.Equal([20.0, 10.0, 40.0, 30.0], doubleParams); // minLng, minLat, maxLng, maxLat
+    }
+
+    [Fact]
+    public void WithinBox_rejects_minLat_greater_or_equal_to_maxLat()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"withinBox","attribute":"loc","values":[37.8,-122.5,37.7,-122.4]}"""); // minLat > maxLat
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    [Fact]
+    public void WithinBox_rejects_a_box_crossing_the_antimeridian()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q("""{"method":"withinBox","attribute":"loc","values":[37.7,170,37.8,-170]}"""); // minLng > maxLng
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, queries, ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
+    }
+
+    [Fact]
+    public void WithinBox_composes_with_orderNear()
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var queries = Q(
+            """{"method":"withinBox","attribute":"loc","values":[37.7,-122.5,37.8,-122.4]}""",
+            """{"method":"orderNear","attribute":"loc","values":[37.7749,-122.4194]}""");
+        var compiled = QueryCompiler.CompileList(entry, queries, ["any"], true, false);
+        Assert.Contains("ST_Intersects", compiled.Sql);
+        Assert.True(compiled.HasDistance);
+    }
+
+    // ---- coordinate-range validation (Phase 3) — consistent across near/orderNear/withinBox ------
+
+    [Theory]
+    [InlineData("""{"method":"near","attribute":"loc","values":[200,-122.4194,5000]}""")] // lat > 90
+    [InlineData("""{"method":"near","attribute":"loc","values":[37.7749,-200,5000]}""")] // lng < -180
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":[-91,-122.4194]}""")]
+    [InlineData("""{"method":"orderNear","attribute":"loc","values":[37.7749,181]}""")]
+    [InlineData("""{"method":"withinBox","attribute":"loc","values":[91,-122.5,37.8,-122.4]}""")]
+    [InlineData("""{"method":"withinBox","attribute":"loc","values":[37.7,-181,37.8,-122.4]}""")]
+    [InlineData("""{"method":"withinBox","attribute":"loc","values":[37.7,-122.5,91,-122.4]}""")]
+    [InlineData("""{"method":"withinBox","attribute":"loc","values":[37.7,-122.5,37.8,181]}""")]
+    public void Out_of_range_coordinates_are_rejected_for_near_orderNear_and_withinBox(string query)
+    {
+        var entry = BuildEntry(indexes: [SpatialIndex()]);
+        var ex = Assert.Throws<PraxyException>(() => QueryCompiler.CompileList(entry, Q(query), ["any"], true, false));
+        Assert.Equal(ErrorTypes.GeneralQueryInvalid, ex.Type);
     }
 }

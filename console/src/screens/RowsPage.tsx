@@ -17,11 +17,14 @@ import { TableDetailHeader } from "./TableDetailHeader";
 // relationship's entry is the array-column superset (adds "contains") — describeFilter only needs
 // it for label lookup; FilterPicker below re-derives the array-conditioned list per column
 // instance, since eligibility depends on that column's own `array` flag, not just its type.
-const OPERATORS_BY_TYPE: Partial<Record<ColumnType, { value: string; label: string; arity: 0 | 1 | 2 }[]>> = {
+const OPERATORS_BY_TYPE: Partial<Record<ColumnType, { value: string; label: string; arity: 0 | 1 | 4 }[]>> = {
   string: textOps(), email: textOps(), url: textOps(), ip: textOps(), enum: equalityOps(),
   integer: numericOps(), float: numericOps(), datetime: numericOps(),
   boolean: equalityOps(),
   relationship: relationshipOps(true),
+  // near() itself still has no FilterPicker entry (Phase 1 non-goal, unchanged) — withinBox is the
+  // first geo filter with one, so this list starts from scratch rather than extending near's.
+  geo: [{ value: "withinBox", label: "within box", arity: 4 as const }],
 };
 
 function equalityOps() {
@@ -293,6 +296,12 @@ function parseScalar(type: ColumnType, raw: string): unknown {
   return raw;
 }
 
+/** Meters under 1000 shown as whole meters, otherwise kilometres to 2 decimal places — plausible
+ * at both the "walk to the corner store" and "which city is this" ends of an orderNear result set. */
+function formatDistance(meters: number): string {
+  return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(2)} km`;
+}
+
 function sortIndicator(sort: SortState | null, key: string): ReactNode {
   if (!sort || sort.attribute !== key) return null;
   return sort.direction === "near" ? "📍" : sort.direction === "asc" ? "↑" : "↓";
@@ -458,7 +467,8 @@ export function RowsPage() {
   if (rows.isError) throw rows.error;
 
   const cols = columns.data.columns;
-  const headers = ["", "$id", ...cols.map((c) => c.key), ""];
+  const showDistance = sort?.direction === "near";
+  const headers = ["", "$id", ...(showDistance ? ["$distance"] : []), ...cols.map((c) => c.key), ""];
 
   function toggleSort(key: string) {
     setSort((current) => {
@@ -506,6 +516,11 @@ export function RowsPage() {
       ),
       cell: ({ row }) => <span className="font-mono text-xs text-ink-500">{row.original.$id.slice(0, 12)}…</span>,
     },
+    ...(showDistance ? [{
+      id: "$distance",
+      header: () => <span className="uppercase">$distance</span>,
+      cell: ({ row }) => row.original.$distance != null ? formatDistance(row.original.$distance) : null,
+    } satisfies DataGridColumn<Row>] : []),
     ...cols.map((column): DataGridColumn<Row> => ({
       id: column.key,
       header: () => column.type === "geo" ? (
@@ -667,6 +682,8 @@ export function RowsPage() {
   );
 }
 
+const BOX_FIELDS = ["minLat", "minLng", "maxLat", "maxLng"] as const;
+
 function FilterPicker({
   columns, onAdd, onClose,
 }: {
@@ -677,6 +694,7 @@ function FilterPicker({
   const [attribute, setAttribute] = useState(columns[0]?.key ?? "");
   const [method, setMethod] = useState("equal");
   const [value, setValue] = useState("");
+  const [box, setBox] = useState({ minLat: "", minLng: "", maxLat: "", maxLng: "" });
   const column = columns.find((c) => c.key === attribute);
   const ops = column ? (column.type === "relationship" ? relationshipOps(column.array) : (OPERATORS_BY_TYPE[column.type] ?? [])) : [];
   const op = ops.find((o) => o.value === method) ?? ops[0];
@@ -688,7 +706,11 @@ function FilterPicker({
 
   function submit() {
     if (!column || !op) return;
-    const values = op.arity === 0 ? undefined : [column.type === "integer" || column.type === "float" ? Number(value) : value];
+    const values = op.arity === 0
+      ? undefined
+      : op.arity === 4
+        ? BOX_FIELDS.map((f) => Number(box[f]))
+        : [column.type === "integer" || column.type === "float" ? Number(value) : value];
     onAdd({ method: op.value, attribute: column.key, values });
   }
 
@@ -702,6 +724,21 @@ function FilterPicker({
       </select>
       {op?.arity === 1 ? (
         <input className="input-base text-xs" value={value} onChange={(e) => setValue(e.target.value)} placeholder="value" />
+      ) : null}
+      {op?.arity === 4 ? (
+        <div className="grid grid-cols-2 gap-1.5">
+          {BOX_FIELDS.map((f) => (
+            <input
+              key={f}
+              className="input-base py-1 text-xs"
+              type="number"
+              step="any"
+              placeholder={f}
+              value={box[f]}
+              onChange={(e) => setBox((b) => ({ ...b, [f]: e.target.value }))}
+            />
+          ))}
+        </div>
       ) : null}
       <div className="flex justify-end gap-2">
         <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={onClose}>Cancel</button>

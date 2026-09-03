@@ -10,7 +10,7 @@ public readonly record struct SqlParam(string Name, object Value);
 public sealed record CompiledListQuery(
     string Sql, IReadOnlyList<SqlParam> Params,
     string? CountSql, IReadOnlyList<SqlParam>? CountParams,
-    string[]? SelectedKeys, bool Reversed);
+    string[]? SelectedKeys, bool Reversed, bool HasDistance);
 
 public sealed record CompiledPredicate(string Sql, IReadOnlyList<SqlParam> Params);
 
@@ -74,8 +74,8 @@ public static class QueryCompiler
                             _ = entry.SpatialIndexFor(sortColumn.Key)
                                 ?? throw QueryDsl.Invalid($"'{sortColumn.Key}' has no spatial index.", "queries",
                                     $"Create a spatial index on '{sortColumn.Key}' before using 'orderNear' — never a silent sequential scan.");
-                            sortNearPoint = (RequireNearValue(q.Values[0], "lat", "orderNear"),
-                                RequireNearValue(q.Values[1], "lng", "orderNear"));
+                            sortNearPoint = (RequireLat(q.Values[0], "lat", "orderNear"),
+                                RequireLng(q.Values[1], "lng", "orderNear"));
                         }
                         else
                         {
@@ -139,9 +139,25 @@ public static class QueryCompiler
         // For a plain column sort this is just the quoted column reference (today's behavior,
         // unchanged); for orderNear it's the KNN distance expression. `alias` is "" in the unaliased
         // cursor subselect and "t." in the two aliased sites (tuple-compare, ORDER BY).
+        //
+        // <-> is the GiST-index-accelerated KNN operator, and it is the ONLY form Postgres can use the
+        // spatial index to order by — any function call, ST_Distance included, degrades to a full scan
+        // plus sort (measured: Index Scan reading 25 rows vs Parallel Seq Scan reading 200,000).
+        // Keeping it here is what makes nearest-first fast, so don't "simplify" this into ST_Distance
+        // to match DistanceExpr below without reading docs/research/geo-nearby.md's "Distance model"
+        // section first. The two are numerically identical by construction — see DistanceExpr.
         string SortKeyExpr(string alias) => nearPointExpr is null
             ? $"{alias}{sortColQuoted}"
             : $"{alias}{sortColQuoted} <-> {nearPointExpr}";
+
+        // The returned $distance. <-> can't be aliased into a select list as a stable number to hand
+        // back (it's an operator whose geography semantics are the *sphere* model), so this spells the
+        // same computation out as ST_Distance's explicit sphere variant — `use_spheroid => false`.
+        // That third argument is the whole point: ST_Distance's *default* is the spheroid, which
+        // disagrees with <-> by metres and, worse, with a sign that flips (verified: -3.7m to +5.0m at
+        // ~2-3km), which is exactly what would let a row display as nearer while sorting as farther.
+        // With `false` the two agree to ~1e-9 m, so ordering and displayed value cannot contradict.
+        string DistanceExpr() => $"ST_Distance(t.{sortColQuoted}, {nearPointExpr}, false)";
 
         var wherePredicate = select.FullPredicate(filterNodes, "read", callerRoles, bypassPermissions);
 
@@ -159,6 +175,12 @@ public static class QueryCompiler
         }
 
         var (selectList, selectedKeys) = BuildSelectList(entry, selectFields);
+        // $distance is a system field like $id/$createdAt — select(...) never suppresses it. Appended
+        // to the *end* of the select list, never the middle: BuildRowJson walks result ordinals
+        // positionally, and a trailing column is the only placement that can't shift them.
+        var hasDistance = nearPointExpr is not null;
+        if (hasDistance)
+            selectList += $", {DistanceExpr()} AS \"$distance\"";
         var dir = scanAscending ? "ASC" : "DESC";
         var orderClause = $"ORDER BY {SortKeyExpr("t.")} {dir}, t.{idColQuoted} {dir}";
         var limitParam = select.AddParam(effectiveLimit);
@@ -176,7 +198,7 @@ public static class QueryCompiler
             countParams = count.Params;
         }
 
-        return new CompiledListQuery(sql, select.Params, countSql, countParams, selectedKeys, reversed);
+        return new CompiledListQuery(sql, select.Params, countSql, countParams, selectedKeys, reversed, hasDistance);
     }
 
     // ---- shared predicate/filter compilation -------------------------------------------------
@@ -262,6 +284,8 @@ public static class QueryCompiler
                     return CompileSearch(column, q.Values[0]);
                 case "near":
                     return CompileNear(column, colSql, q.Values);
+                case "withinBox":
+                    return CompileWithinBox(column, colSql, q.Values);
                 default:
                     throw QueryDsl.Invalid($"'{q.Method}' can't be used as a filter.", "queries",
                         $"'{q.Method}' is a pagination/select/order method, not a filter.");
@@ -329,10 +353,51 @@ public static class QueryCompiler
                 ?? throw QueryDsl.Invalid($"'{column.Key}' has no spatial index.", "queries",
                     $"Create a spatial index on '{column.Key}' before using 'near' — never a silent sequential scan.");
 
-            var lat = RequireNearValue(values[0], "lat", "near");
-            var lng = RequireNearValue(values[1], "lng", "near");
+            var lat = RequireLat(values[0], "lat", "near");
+            var lng = RequireLng(values[1], "lng", "near");
             var radiusMeters = RequireNearValue(values[2], "radiusMeters", "near");
-            return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)})";
+            // `false` = the sphere model, matching <-> (orderNear's sort) and $distance's explicit
+            // sphere ST_Distance. ST_DWithin's default is the spheroid, which would put near()'s
+            // radius on a different model than the distance shown for the same row — a point at
+            // sphere-3002.267m / spheroid-2996.797m is inside a spheroid near(...,3000) while
+            // displaying as 3002m. One model everywhere; see docs/research/geo-nearby.md.
+            return $"ST_DWithin({colSql}, ST_MakePoint({AddParam(lng)}, {AddParam(lat)})::geography, {AddParam(radiusMeters)}, false)";
+        }
+
+        /// <summary>
+        /// <c>withinBox(minLat, minLng, maxLat, maxLng)</c> — every point inside an axis-aligned
+        /// rectangle, for a map viewport's pan/zoom. Wire values are lat-first (matching <c>near</c>'s
+        /// convention); reordered here into <c>ST_MakeEnvelope</c>'s x/y (lng/lat) argument order,
+        /// exactly as <see cref="CompileNear"/> already does for <c>ST_MakePoint</c> — PostGIS's axis
+        /// order never leaks onto the wire. Same column-type and spatial-index gating as <c>near</c>;
+        /// <c>ST_Intersects</c> uses a GiST index automatically when one exists, so no separate
+        /// <c>&amp;&amp;</c> bounding-box operator is needed (and <c>&amp;&amp;</c> is a geometry
+        /// operator, not a geography one — cargo-culted from geometry-column examples, not needed here).
+        /// </summary>
+        private string CompileWithinBox(ColumnDef column, string colSql, JsonElement[] values)
+        {
+            if (column.Type != ColumnTypes.Geo)
+                throw QueryDsl.Invalid($"'withinBox' isn't supported on '{column.Key}'.", "queries",
+                    "'withinBox' only works on 'geo' attributes.");
+            _ = entry.SpatialIndexFor(column.Key)
+                ?? throw QueryDsl.Invalid($"'{column.Key}' has no spatial index.", "queries",
+                    $"Create a spatial index on '{column.Key}' before using 'withinBox' — never a silent sequential scan.");
+
+            var minLat = RequireLat(values[0], "minLat", "withinBox");
+            var minLng = RequireLng(values[1], "minLng", "withinBox");
+            var maxLat = RequireLat(values[2], "maxLat", "withinBox");
+            var maxLng = RequireLng(values[3], "maxLng", "withinBox");
+
+            if (minLat >= maxLat)
+                throw QueryDsl.Invalid("'withinBox' requires minLat to be less than maxLat.", "queries",
+                    "'withinBox' minLat must be less than maxLat.");
+            if (minLng > maxLng)
+                throw QueryDsl.Invalid("'withinBox' can't cross the antimeridian.", "queries",
+                    "'withinBox' minLng must be less than or equal to maxLng — a box crossing the antimeridian " +
+                    "(minLng > maxLng) isn't supported yet; split it into two withinBox calls instead.");
+
+            return $"ST_Intersects({colSql}, ST_MakeEnvelope({AddParam(minLng)}, {AddParam(minLat)}, " +
+                   $"{AddParam(maxLng)}, {AddParam(maxLat)}, 4326)::geography)";
         }
     }
 
@@ -347,6 +412,27 @@ public static class QueryCompiler
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var d))
             throw QueryDsl.Invalid($"'{method}' requires numeric values.", "queries",
                 $"'{method}' {label} must be a number.");
+        return d;
+    }
+
+    /// <summary>Coordinate-range validation applied consistently across <c>near</c>, <c>orderNear</c>
+    /// and <c>withinBox</c> — a consistency decision, not a per-method detail (docs/research/geo-nearby.md's
+    /// Phase 3 section): adding it to one and not the others would be worse than either extreme.</summary>
+    private static double RequireLat(JsonElement value, string label, string method)
+    {
+        var d = RequireNearValue(value, label, method);
+        if (d is < -90 or > 90)
+            throw QueryDsl.Invalid($"'{method}' requires a valid latitude.", "queries",
+                $"'{method}' {label} must be between -90 and 90.");
+        return d;
+    }
+
+    private static double RequireLng(JsonElement value, string label, string method)
+    {
+        var d = RequireNearValue(value, label, method);
+        if (d is < -180 or > 180)
+            throw QueryDsl.Invalid($"'{method}' requires a valid longitude.", "queries",
+                $"'{method}' {label} must be between -180 and 180.");
         return d;
     }
 

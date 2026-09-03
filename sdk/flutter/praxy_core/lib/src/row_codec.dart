@@ -7,6 +7,8 @@ typedef RowMeta = ({
   DateTime createdAt,
   DateTime updatedAt,
   List<String> permissions,
+  /// Meters from an `orderNear` query's point — null unless the request carried `orderNear`.
+  double? distance,
 });
 
 /// One decode signature used everywhere a row is turned into a [T] — Appwrite's own

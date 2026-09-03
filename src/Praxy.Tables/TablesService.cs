@@ -23,7 +23,10 @@ public sealed class TablesService(PraxyDb db, CatalogCache cache, QuotaService q
         await quotas.EnsureTableQuotaAsync(database.ProjectId, database.Id, ct);
 
         var id = Ids.NewUuid();
-        var physicalName = PhysicalNaming.EntityName(key, id);
+        // Reserve room for the __perms side table and its own index, which SetRowSecurityAsync
+        // derives from this name — row security can be turned on at any point later, and the
+        // physical name can never change to make room for them then.
+        var physicalName = PhysicalNaming.EntityName(key, id, PhysicalNaming.RowSecuritySuffixChars);
         var table = new TableDef
         {
             Id = id,

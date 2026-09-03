@@ -31,7 +31,7 @@ public static class QueryDsl
     public static readonly string[] AllMethods =
     [
         "equal", "notEqual", "lessThan", "lessThanEqual", "greaterThan", "greaterThanEqual", "between",
-        "isNull", "isNotNull", "startsWith", "endsWith", "contains", "search", "near",
+        "isNull", "isNotNull", "startsWith", "endsWith", "contains", "search", "near", "withinBox",
         "select", "orderAsc", "orderDesc", "orderNear", "limit", "offset", "cursorAfter", "cursorBefore", "and", "or",
     ];
 
@@ -106,6 +106,7 @@ public static class QueryDsl
             "between" => count == 2,
             "near" => count == 3, // lat, lng, radiusMeters
             "orderNear" => count == 2, // lat, lng
+            "withinBox" => count == 4, // minLat, minLng, maxLat, maxLng
             "equal" or "notEqual" => count >= 1,
             "select" => count is >= 1 and <= MaxSelectFields,
             "limit" or "offset" or "cursorAfter" or "cursorBefore" => count == 1,

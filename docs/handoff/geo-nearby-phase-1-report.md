@@ -100,7 +100,10 @@ wide enough (`varchar(32)`/`varchar(16)`).
   While looking at this, noticed the *same* class of bug likely also affects fulltext indexes
   (`PhysicalNaming.IndexName` + `FulltextColumnName`'s `__fts` suffix, 5 chars) — pre-existing,
   unrelated to this phase, not fixed here; flagged as a follow-up task rather than expanding this
-  phase's scope.
+  phase's scope. **Fixed 2026-09-02** — and the sweep it prompted found a third, wider instance
+  (a table's `__perms` side table plus that table's own `_action_role_idx` index, 23 characters
+  of derived suffix against a name already allowed to fill all 63). Both were real 500s on valid
+  input. See the Phase 3 report's "Also fixed in this PR" section.
 
 **`Praxy.Api`**: no DTO changes at all — `CreateColumnRequest`/`ColumnResponse` were already fully
 type-agnostic (no per-type fields beyond what geo doesn't need: size/elements/target/default), and
