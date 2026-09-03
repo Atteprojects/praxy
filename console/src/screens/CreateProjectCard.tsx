@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
 import { useCreateProject } from "../api/queries";
-import { ErrorNote, Field, Logo } from "../components/ui";
+import { ErrorNote, Field, Footer, Logo } from "../components/ui";
 
 /**
  * The chrome-less centered create-project card — the whole screen for a fresh instance's happy
@@ -73,5 +73,12 @@ export function CreateProjectCard({ standalone = false }: { standalone?: boolean
     </div>
   );
 
-  return standalone ? <div className="grid min-h-dvh place-items-center p-4">{card}</div> : card;
+  return standalone ? (
+    <div className="flex min-h-dvh flex-col">
+      <div className="grid flex-1 place-items-center p-4">{card}</div>
+      <Footer />
+    </div>
+  ) : (
+    card
+  );
 }

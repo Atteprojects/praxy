@@ -1,4 +1,28 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { version as PACKAGE_VERSION } from "../../package.json";
+
+/** Mac shows the ⌘ glyph; every other platform reads it as a foreign key, so they get "Ctrl+K" —
+ *  the palette itself already listens for both (`CommandPalette.tsx`). */
+export const COMMAND_SHORTCUT_LABEL =
+  typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent) ? "⌘K" : "Ctrl+K";
+
+/** Bottom-of-app bar: the version and a link out to the repo, for whoever is debugging their own
+ *  self-hosted instance and wants to know what they're running or where to file an issue. */
+export function Footer() {
+  return (
+    <footer className="mt-auto flex items-center justify-between gap-3 border-t border-ink-800 px-4 py-4 text-xs text-ink-600 sm:px-5">
+      <span>Praxy v{PACKAGE_VERSION}</span>
+      <a
+        href="https://github.com/Atteprojects/praxy"
+        target="_blank"
+        rel="noreferrer"
+        className="transition-colors hover:text-ink-400"
+      >
+        GitHub
+      </a>
+    </footer>
+  );
+}
 
 export function Logo({ size = 22 }: { size?: number }) {
   return (

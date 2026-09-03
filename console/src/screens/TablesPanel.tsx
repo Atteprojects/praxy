@@ -16,7 +16,7 @@ import { STR } from "../strings";
  */
 export function TablesPanel({ projectId, databaseId }: { projectId: string; databaseId: string }) {
   return (
-    <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900/30 px-3 py-4 md:flex">
+    <aside className="sticky top-14 hidden w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900/30 px-3 py-4 md:flex">
       <TablesPanelContent projectId={projectId} databaseId={databaseId} />
     </aside>
   );

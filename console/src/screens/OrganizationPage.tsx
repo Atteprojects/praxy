@@ -1,7 +1,7 @@
 import { Link, Navigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useOrganization, useOrganizations, useProjects } from "../api/queries";
-import { FullPageSpinner, IdChip, PageHeader } from "../components/ui";
+import { Badge, FullPageSpinner, IdChip, PageHeader } from "../components/ui";
 import { STR } from "../strings";
 import { CreateProjectCard } from "./CreateProjectCard";
 
@@ -70,25 +70,24 @@ export function OrganizationPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {owned.map((project) => (
           <Link
             key={project.id}
             to="/project/$projectId"
             params={{ projectId: project.id }}
-            className="surface group block p-5 transition-colors hover:border-iris-500/60"
+            className="surface group flex flex-col p-6 transition-colors hover:border-iris-500/60"
           >
-            <div className="mb-3 flex items-start justify-between gap-2">
-              <span className="truncate text-base font-medium group-hover:text-white">{project.name}</span>
-              <span
-                className={`mt-1.5 size-2 shrink-0 rounded-full ${project.lastPingAt ? "bg-mint-400" : "bg-ink-700"}`}
-                title={project.lastPingAt ? "Connected" : "Waiting for first ping"}
-              />
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <span className="truncate text-lg font-semibold group-hover:text-white">{project.name}</span>
+              <Badge tone={project.lastPingAt ? "mint" : "ink"}>
+                {project.lastPingAt ? "Connected" : "Waiting"}
+              </Badge>
             </div>
             <div onClick={(e) => e.preventDefault()}>
               <IdChip id={project.id} />
             </div>
-            <p className="mt-3 text-xs text-ink-500">
+            <p className="mt-auto pt-6 text-xs text-ink-500">
               Created {new Date(project.createdAt).toLocaleDateString()}
             </p>
           </Link>
