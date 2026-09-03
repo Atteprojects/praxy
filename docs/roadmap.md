@@ -410,6 +410,43 @@ the differentiator, and Phase 3 extends that same lead.
 
 ---
 
+## Storage (post-v0.1.0 initiative)
+
+Design doc: `docs/research/storage.md`. The largest remaining product gap — Praxy has no file storage at
+all today, so an app has nowhere to put an avatar, an attachment or an export. Unlike relationships and
+geo (column types on an existing engine) or Sites (reusing Functions' container machinery), this is a
+genuinely new pillar with its own resource hierarchy and permission surface.
+
+**The decision it hangs off, made by the owner 2026-09-03**: file bytes live in Postgres, **split across
+fixed-size chunk rows**, behind an `IFileStore` seam. This honors the fixed "PostgreSQL only — no second
+datastore" decision and matches the existing `bytea` precedent (`FunctionDeploymentSource.Tar`,
+`SiteDeploymentSource.Tar`), while chunking fixes what a single `bytea` value cannot do: the ~1 GB
+per-value ceiling, streaming in both directions without materializing a file in memory, and cheap
+`Range` support later. The seam is what keeps a disk or S3 backend addable later without touching the
+API or the metadata model.
+
+**What that costs, recorded up front rather than discovered**: every stored byte lands in every backup,
+since `deploy/backup.sh` `pg_dump`s the schema. That is inherent to files-in-the-database and is managed
+by `MaxStorageBytesPerProject`, not engineered away.
+
+The resource model deliberately mirrors Tables — bucket ≈ table, file ≈ row, `BucketPermission` with
+`TablePermission`'s exact shape — so the one-role-resolver and deny-by-default cross-phase rules apply
+unchanged, and no second authorization concept is introduced.
+
+- **Phase 1 — the primitive** (kickoff: `docs/handoff/storage-phase-1-prompt.md`) — the
+  `Praxy.Storage` project, bucket CRUD + permissions, streaming upload, full-file download, delete, the
+  chunk store behind its interface, three new quota dimensions, outbox events, console screens, and
+  Flutter/JS SDK upload+download.
+- **Phase 2 — access control and serving** (scoped, undesigned): per-file permissions following the
+  existing row-security shape, HTTP `Range`, `Content-Disposition` handling.
+- **Phase 3 — image transforms** (scoped, undesigned): on-the-fly resize/crop/format with cached
+  derivatives. The one Storage feature developers ask for by name, and its own design problem.
+
+**Explicitly out of scope for the whole sequence**: CDN integration, signed time-limited URLs, antivirus
+scanning.
+
+---
+
 ## Rules that hold across every phase
 
 1. **DDL is synchronous and transactional**; long operations are explicit, queryable, cancellable jobs.
