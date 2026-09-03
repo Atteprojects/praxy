@@ -1,5 +1,9 @@
 # Session task — project rename/delete, database rename, membership role edit
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `useUpdateProject`/`useUpdateDatabase` (`console/src/api/queries.ts`, `databases.ts`) and membership editing in `TeamsPage.tsx`.
+> No `console-completeness-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 Three console operations exist half-finished — the read path works, the write

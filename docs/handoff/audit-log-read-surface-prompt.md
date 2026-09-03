@@ -1,5 +1,9 @@
 # Session task — make the audit log readable (API + console)
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `console/src/screens/AuditLogPage.tsx` and its API surface.
+> No `audit-log-read-surface-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 Praxy writes audit entries from eight endpoint files and **64 distinct action

@@ -195,30 +195,29 @@ rebuilding the API. Every job still *runs* and gates its steps rather than being
 with `enforce_admins` mean a job that never reports leaves a PR unmergeable with no override. The
 workflow carries a comment explaining that, and when the tidier job-level `if:` becomes safe.
 
-**What is and isn't verified about this, precisely** — three attempts to prove the skip path all
-turned out to measure something else, so the distinction matters:
-
-*Verified:* every job runs and reports on a PR to `main`, including the new `Detect changed areas` job,
-and the filters correctly resolved **all four `true`** for a PR that genuinely changes `src/`, `tests/`,
-`console/` and `ci.yml`. This is the property that protects merging — a required check that stopped
-reporting would leave `main` unmergeable with no override under `enforce_admins`, and that cannot happen
-here because no job is ever skipped.
-
-*Not verified end-to-end:* that a docs-only PR actually skips the work and saves the ~16 minutes. Every
-route to testing it from inside this repo measures something else:
+**Verified end-to-end, 2026-09-03 — including the part three attempts inside this PR could not
+reach.** Getting there is worth recording, because each failed attempt measured something other than
+what it claimed:
 1. A docs-only *commit* on this PR — `dorny/paths-filter` diffs against the **base branch** on
-   `pull_request`, not the previous commit, so it correctly sees the whole PR (which does change the
+   `pull_request`, not the previous commit, so it correctly saw the whole PR (which does change the
    API). Right behaviour, wrong test.
 2. A docs-only PR branched off `main` — `pull_request` uses the **head branch's** workflow, and `main`
-   doesn't have this one yet, so it ran the old pipeline with no filtering at all.
+   didn't have this one yet, so it ran the old pipeline with no filtering at all.
 3. A docs-only PR based on this branch — the workflow only triggers on `pull_request: branches: [main]`,
    so no run was produced whatsoever.
 
-The remaining unknown is therefore whether the *saving* materialises, not whether CI stays sound: the
-failure mode is "no time saved", not "tests silently skipped" (a filter would have to wrongly report
-`false`, and it reported `true` correctly on the one real case observed). **The first genuinely
-docs-only PR opened against `main` after this merges is the real proof** — if the API job still takes
-~16 minutes there, the filter globs need revisiting.
+The probing was then abandoned, on the grounds that the *dangerous* property was already proven (no job
+is ever skipped, so every required context always reports, and `main` can never become unmergeable
+under `enforce_admins`) while the unproven part only risked "no time saved". Both halves then confirmed
+themselves on the next two real PRs, at no extra cost:
+- **PR #51** (Storage design, docs-only): all four filters `false`, the API job ran its "No API changes"
+  step, and every required check still reported green. **~19 seconds instead of ~19 minutes.**
+- **PR #52** (console-only): the mixed case — `console` ran its real build (28s) while `api`, `flutter`
+  and `nextjs` each skipped in 2-5s.
+
+**The lesson, not the outcome:** three CI runs (~32 minutes) were spent constructing tests around a
+predicted result instead of first establishing what each test would actually measure. Waiting for the
+natural case cost nothing and proved more.
 
 ## Owner-test checklist
 

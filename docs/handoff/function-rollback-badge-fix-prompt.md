@@ -1,5 +1,9 @@
 # Session task — fix Functions' permanently-disabled rollback button
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see `console/src/screens/FunctionDeploymentsPage.tsx` now compares `row.original.id === activeDeploymentId` instead of `!d.activatedAt`.
+> No `function-rollback-badge-fix-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 `console/src/screens/FunctionDeploymentsPage.tsx` has a real, currently-broken rollback path. Its

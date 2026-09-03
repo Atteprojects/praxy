@@ -1,5 +1,9 @@
 # Session task — let a caller read back their own async function execution
 
+> **Status: shipped.** Verified 2026-09-03 against the code, not assumed — see the executions read routes in `src/Praxy.Api/Endpoints/FunctionEndpoints.cs`.
+> No `function-execution-read-report.md` was written at the time, so this prompt used to look like
+> outstanding work when scanning `docs/handoff/` for prompts without reports.
+
 ## Why this exists
 
 Found while writing the prompt for gap-analysis item #6 (Flutter SDK parity),
