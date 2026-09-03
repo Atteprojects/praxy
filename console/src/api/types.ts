@@ -754,8 +754,15 @@ export interface Bucket {
   name: string;
   enabled: boolean;
   maxFileSizeBytes: number;
-  /** Null means any type is accepted. */
-  allowedMimeTypes: string[] | null;
+  /**
+   * Absent or null means any type is accepted. **Optional on purpose**: the API sets
+   * `DefaultIgnoreCondition = WhenWritingNull` (Program.cs), so a null value is omitted from the
+   * JSON rather than serialized as `null` — the field arrives `undefined`. A `=== null` guard here
+   * silently does nothing, which crashed the Storage screens with
+   * "Cannot read properties of undefined (reading 'join')". Declaring it optional makes TypeScript
+   * reject that mistake instead of shipping it.
+   */
+  allowedMimeTypes?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

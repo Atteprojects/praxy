@@ -22,7 +22,7 @@ export function BucketDetailHeader({
       </div>
       <p className="mb-4 font-mono text-sm text-ink-500">
         {bucket.key} · max {formatBytes(bucket.maxFileSizeBytes)} per file ·{" "}
-        {bucket.allowedMimeTypes === null ? "any type" : bucket.allowedMimeTypes.join(", ")}
+        {bucket.allowedMimeTypes == null ? "any type" : bucket.allowedMimeTypes.join(", ")}
       </p>
       <div className="flex gap-1 border-b border-ink-800" role="tablist">
         <TabLink to="files" label="Files" active={active === "files"} projectId={projectId} bucketId={bucket.id} />
