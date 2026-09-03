@@ -19,6 +19,7 @@ export interface Capabilities {
     functions: boolean;
     webhooks: boolean;
     sites: boolean;
+    storage: boolean;
   };
 }
 
@@ -739,6 +740,58 @@ export interface QuotaSnapshot {
   indexesPerTableMax: number;
   sitesUsed: number;
   sitesMax: number;
+  bucketsUsed: number;
+  bucketsMax: number;
+  storageBytesUsed: number;
+  storageBytesMax: number;
+}
+
+// ---- Storage ----
+
+export interface Bucket {
+  id: string;
+  key: string;
+  name: string;
+  enabled: boolean;
+  maxFileSizeBytes: number;
+  /** Null means any type is accepted. */
+  allowedMimeTypes: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BucketList {
+  total: number;
+  buckets: Bucket[];
+}
+
+export interface BucketPermissions {
+  permissions: string[];
+}
+
+export interface StoredFile {
+  id: string;
+  bucketId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** What this file was actually written with, not what config currently says. */
+  chunkSizeBytes: number;
+  chunkCount: number;
+  checksum: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredFileList {
+  total: number;
+  files: StoredFile[];
+}
+
+export interface StorageUsage {
+  usedBytes: number;
+  maxBytes: number;
+  maxFileSizeBytes: number;
 }
 
 // ---- Audit log ----
