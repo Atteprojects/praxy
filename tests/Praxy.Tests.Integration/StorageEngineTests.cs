@@ -61,26 +61,42 @@ public class StorageEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     /// console is served from this very origin with a SameSite=Lax operator cookie. Every download
     /// must therefore be an attachment with nosniff, whatever the type claims.
     /// </summary>
+    /// <summary>
+    /// Asserted on **both** surfaces. The console one matters at least as much: it is what an
+    /// operator actually clicks, it bypasses permissions, and it is served from the same origin as
+    /// the console itself — so a renderable response there runs with the operator's own session.
+    /// </summary>
     [Fact]
     public async Task An_uploaded_html_file_is_served_as_a_non_renderable_attachment()
     {
-        var ctx = await BucketWithGrantsAsync();
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var ctx = await BucketWithGrantsAsync(operatorToken, projectId);
         var evil = Encoding.UTF8.GetBytes("<script>fetch('/v1/console/projects')</script>");
 
         var uploaded = await UploadAsync(ctx, "payload.html", evil, "text/html");
         var fileId = uploaded.GetProperty("id").GetString()!;
 
-        var download = await Client.SendAsync(DataPlane(
+        var dataPlane = await Client.SendAsync(DataPlane(
             HttpMethod.Get, $"/v1/storage/buckets/{ctx.BucketId}/files/{fileId}/download",
             ctx.ProjectId, sessionToken: ctx.UserToken));
+        AssertNotRenderable(dataPlane, evil);
 
-        Assert.Equal(200, (int)download.StatusCode);
-        // The type is still reported honestly — it is harmless once the response can't be rendered.
-        Assert.Equal("text/html", download.Content.Headers.ContentType?.MediaType);
+        var console = await Client.SendAsync(Authed(
+            HttpMethod.Get,
+            $"/v1/console/projects/{projectId}/storage/buckets/{ctx.BucketId}/files/{fileId}/download",
+            operatorToken));
+        AssertNotRenderable(console, evil);
+    }
+
+    private static void AssertNotRenderable(HttpResponseMessage response, byte[] expected)
+    {
+        Assert.Equal(200, (int)response.StatusCode);
+        // The type is still reported honestly — harmless once the response can't be rendered.
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         // These two are what stop it being rendered.
-        Assert.Equal("attachment", download.Content.Headers.ContentDisposition?.DispositionType);
-        Assert.Contains("nosniff", download.Headers.GetValues("X-Content-Type-Options"));
-        Assert.Equal(evil, await download.Content.ReadAsByteArrayAsync());
+        Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+        Assert.Contains("nosniff", response.Headers.GetValues("X-Content-Type-Options"));
+        Assert.Equal(expected, response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult());
     }
 
     /// <summary>
