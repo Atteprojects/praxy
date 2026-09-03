@@ -10,6 +10,8 @@ public class ChannelGrammarTests
     private const string Row = "2195a1b2c3d4e5f6a7b8c9d0e1f2a3b6";
     private const string Team = "3195a1b2c3d4e5f6a7b8c9d0e1f2a3b7";
     private const string User = "4195a1b2c3d4e5f6a7b8c9d0e1f2a3b8";
+    private const string Bucket = "5195a1b2c3d4e5f6a7b8c9d0e1f2a3b9";
+    private const string File = "6195a1b2c3d4e5f6a7b8c9d0e1f2a3ba";
 
     [Fact]
     public void Row_event_fans_out_on_four_channel_variants()
@@ -22,6 +24,46 @@ public class ChannelGrammarTests
             $"databases.{Db}.tables.{Table}.rows.create",
             $"databases.{Db}.tables.{Table}.rows.{Row}.create",
         ], channels);
+    }
+
+    [Fact]
+    public void File_event_fans_out_on_the_same_four_channel_variants_as_a_row()
+    {
+        var channels = ChannelGrammar.ChannelsForEvent($"buckets.{Bucket}.files.{File}.create");
+        Assert.Equal(
+        [
+            $"buckets.{Bucket}.files",
+            $"buckets.{Bucket}.files.{File}",
+            $"buckets.{Bucket}.files.create",
+            $"buckets.{Bucket}.files.{File}.create",
+        ], channels);
+    }
+
+    [Fact]
+    public void File_update_and_delete_derive_their_own_action_channels()
+    {
+        Assert.Contains($"buckets.{Bucket}.files.update",
+            ChannelGrammar.ChannelsForEvent($"buckets.{Bucket}.files.{File}.update"));
+        Assert.Contains($"buckets.{Bucket}.files.delete",
+            ChannelGrammar.ChannelsForEvent($"buckets.{Bucket}.files.{File}.delete"));
+    }
+
+    [Fact]
+    public void A_bucket_event_with_a_non_hex_id_or_unknown_action_derives_no_channels()
+    {
+        Assert.Empty(ChannelGrammar.ChannelsForEvent($"buckets.not-hex.files.{File}.create"));
+        Assert.Empty(ChannelGrammar.ChannelsForEvent($"buckets.{Bucket}.files.{File}.rename"));
+    }
+
+    [Fact]
+    public void File_event_names_expand_the_way_an_sdk_pattern_expects()
+    {
+        var type = $"buckets.{Bucket}.files.{File}.create";
+        var expanded = ChannelGrammar.ExpandEventNames(type);
+
+        Assert.Contains(type, expanded);
+        Assert.Contains("buckets.*.files.*.create", expanded);
+        Assert.Equal(4, expanded.Count); // 2 id segments -> 2^2 combinations
     }
 
     [Fact]

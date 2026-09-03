@@ -22,6 +22,7 @@
     <ProjectReference Include="..\Praxy.Functions\Praxy.Functions.csproj" />
     <ProjectReference Include="..\Praxy.Messaging\Praxy.Messaging.csproj" />
     <ProjectReference Include="..\Praxy.Sites\Praxy.Sites.csproj" />
+    <ProjectReference Include="..\Praxy.Storage\Praxy.Storage.csproj" />
   </ItemGroup>
 
 </Project>

@@ -19,7 +19,10 @@ public sealed record OrganizationLimits(
     [property: JsonPropertyName("maxColumnsPerTable")] int? MaxColumnsPerTable = null,
     [property: JsonPropertyName("maxIndexesPerTable")] int? MaxIndexesPerTable = null,
     [property: JsonPropertyName("maxSitesPerProject")] int? MaxSitesPerProject = null,
-    [property: JsonPropertyName("maxPreviewContainersPerProject")] int? MaxPreviewContainersPerProject = null)
+    [property: JsonPropertyName("maxPreviewContainersPerProject")] int? MaxPreviewContainersPerProject = null,
+    [property: JsonPropertyName("maxBucketsPerProject")] int? MaxBucketsPerProject = null,
+    [property: JsonPropertyName("maxFileSizeBytes")] long? MaxFileSizeBytes = null,
+    [property: JsonPropertyName("maxStorageBytesPerProject")] long? MaxStorageBytesPerProject = null)
 {
     public static readonly OrganizationLimits Unlimited = new();
 

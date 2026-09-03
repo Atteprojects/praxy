@@ -87,6 +87,13 @@ public static class ErrorTypes
     public const string FunctionGitRepositoryInvalid = "function_git_repository_invalid";
     public const string FunctionTemplateNotFound = "function_template_not_found";
 
+    public const string BucketNotFound = "bucket_not_found";
+    public const string BucketAlreadyExists = "bucket_already_exists";
+    public const string BucketDisabled = "bucket_disabled";
+    public const string FileNotFound = "file_not_found";
+    public const string FileSizeExceeded = "file_size_exceeded";
+    public const string FileTypeNotAllowed = "file_type_not_allowed";
+
     public const string SiteNotFound = "site_not_found";
     public const string SiteAlreadyExists = "site_already_exists";
     public const string SiteInvalid = "site_invalid";
@@ -189,6 +196,12 @@ public static class ErrorTypes
         FunctionExecutionFailed,
         FunctionGitRepositoryInvalid,
         FunctionTemplateNotFound,
+        BucketNotFound,
+        BucketAlreadyExists,
+        BucketDisabled,
+        FileNotFound,
+        FileSizeExceeded,
+        FileTypeNotAllowed,
         SiteNotFound,
         SiteAlreadyExists,
         SiteInvalid,

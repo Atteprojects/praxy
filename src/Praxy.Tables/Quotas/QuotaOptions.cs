@@ -18,4 +18,11 @@ public sealed record QuotaOptions(
     // deployment) a single project can have running at once, so a project accumulating many stale
     // `ready` deployments can't exhaust host Docker/memory capacity. Project-level, not per-site —
     // the resource being protected (the host's Docker daemon) is shared across a project's sites.
-    int MaxPreviewContainersPerProject = 10);
+    int MaxPreviewContainersPerProject = 10,
+    // Storage Phase 1. MaxFileSizeBytes is the value Kestrel's request-body limit is derived from
+    // in Program.cs — the two must never be configured independently or an upload fails at a size
+    // nobody set. MaxStorageBytesPerProject is the one that bounds backup growth: file bytes live
+    // in the praxy schema, so deploy/backup.sh dumps every one of them (docs/self-host.md).
+    int MaxBucketsPerProject = 20,
+    long MaxFileSizeBytes = 52_428_800,
+    long MaxStorageBytesPerProject = 5_368_709_120);

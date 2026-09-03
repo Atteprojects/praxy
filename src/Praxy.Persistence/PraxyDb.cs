@@ -46,6 +46,10 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<SiteDeploymentSource> SiteDeploymentSources => Set<SiteDeploymentSource>();
     public DbSet<SiteDomain> SiteDomains => Set<SiteDomain>();
     public DbSet<SiteRequestLog> SiteRequestLogs => Set<SiteRequestLog>();
+    public DbSet<Bucket> Buckets => Set<Bucket>();
+    public DbSet<BucketPermission> BucketPermissions => Set<BucketPermission>();
+    public DbSet<StoredFile> Files => Set<StoredFile>();
+    public DbSet<FileChunk> FileChunks => Set<FileChunk>();
     public DbSet<VcsInstallation> VcsInstallations => Set<VcsInstallation>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
@@ -429,6 +433,46 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             // above doesn't serve that scan, so this table (unlike audit_log) gets a standalone index
             // for it too, given how much higher-volume this table is expected to be.
             e.HasIndex(x => x.CreatedAt);
+        });
+
+        b.Entity<Bucket>(e =>
+        {
+            e.ToTable("buckets");
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProjectId, x.Key }).IsUnique();
+        });
+
+        b.Entity<BucketPermission>(e =>
+        {
+            e.ToTable("bucket_permissions");
+            e.HasKey(x => new { x.BucketId, x.Action, x.Role });
+            e.Property(x => x.Action).HasMaxLength(16);
+            e.Property(x => x.Role).HasMaxLength(128);
+            e.HasOne<Bucket>().WithMany().HasForeignKey(x => x.BucketId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<StoredFile>(e =>
+        {
+            e.ToTable("files");
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.MimeType).HasMaxLength(255);
+            e.Property(x => x.Checksum).HasMaxLength(64);
+            e.HasOne<Bucket>().WithMany().HasForeignKey(x => x.BucketId).OnDelete(DeleteBehavior.Cascade);
+            // The file browser's one real query: a bucket's files newest-first.
+            e.HasIndex(x => new { x.BucketId, x.CreatedAt });
+        });
+
+        b.Entity<FileChunk>(e =>
+        {
+            e.ToTable("file_chunks");
+            // (file_id, index) — an ordered index scan for a full read, and the seek key a Phase 2
+            // Range request needs. The FK cascade is what makes deleting a file delete its bytes
+            // in the same statement rather than needing a second pass.
+            e.HasKey(x => new { x.FileId, x.Index });
+            e.Property(x => x.Data).HasColumnType("bytea");
+            e.HasOne<StoredFile>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<VcsInstallation>(e =>

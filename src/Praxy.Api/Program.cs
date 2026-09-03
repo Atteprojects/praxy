@@ -16,6 +16,7 @@ using Praxy.Messaging;
 using Praxy.Persistence;
 using Praxy.Realtime;
 using Praxy.Sites;
+using Praxy.Storage;
 using Praxy.Tables;
 using Praxy.Tables.Quotas;
 using Praxy.Vcs;
@@ -98,8 +99,21 @@ try
         MaxColumnsPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxColumnsPerTable", 200),
         MaxIndexesPerTable: builder.Configuration.GetValue("Praxy:Quotas:MaxIndexesPerTable", 64),
         MaxSitesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxSitesPerProject", 20),
-        MaxPreviewContainersPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxPreviewContainersPerProject", 10)));
+        MaxPreviewContainersPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxPreviewContainersPerProject", 10),
+        MaxBucketsPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxBucketsPerProject", 20),
+        MaxFileSizeBytes: builder.Configuration.GetValue("Praxy:Quotas:MaxFileSizeBytes", 52_428_800L),
+        MaxStorageBytesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxStorageBytesPerProject", 5_368_709_120L)));
     builder.Services.AddScoped<QuotaService>();
+
+    // Kestrel refuses a request body over 30MB by default — long before any Praxy check runs, with
+    // a bare 413 and none of the error envelope. Storage uploads are raw bodies, so that cap has to
+    // be raised explicitly, and it is raised to *the same configured value* the per-file quota uses:
+    // two independently-configured numbers would produce a confusing failure at a size nobody set
+    // (docs/research/storage.md). StorageTransfer.UploadAsync raises it once more per request when
+    // an organization's own limits override the instance default upward.
+    builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(o =>
+        o.Limits.MaxRequestBodySize =
+            builder.Configuration.GetValue("Praxy:Quotas:MaxFileSizeBytes", 52_428_800L));
 
     // ---- Phase 2: schema engine ----
     builder.Services.AddSingleton<CatalogCache>();
@@ -261,6 +275,17 @@ try
     // destination per request from the DB + SiteContainerRegistry, so it only needs the low-level
     // IHttpForwarder adapter, not YARP's routing layer.
     builder.Services.AddHttpForwarder();
+
+    // ---- Storage (post-v0.1.0 initiative): buckets, files, chunked bytes ----
+    builder.Services.AddSingleton(new StorageOptions(
+        ChunkSizeBytes: builder.Configuration.GetValue("Praxy:Storage:ChunkSizeBytes", 524_288),
+        DefaultBucketMaxFileSizeBytes: builder.Configuration.GetValue(
+            "Praxy:Storage:DefaultBucketMaxFileSizeBytes", 52_428_800L)));
+    // Scoped, not singleton: the chunk store writes through PraxyDb's own connection so its INSERTs
+    // join the caller's ambient transaction (docs/research/storage.md's one-transaction rule).
+    builder.Services.AddScoped<IFileStore, PostgresChunkFileStore>();
+    builder.Services.AddScoped<BucketsService>();
+    builder.Services.AddScoped<FilesService>();
 
     // ---- Post-v0.1.0: retention sweep for praxy.events / webhook_deliveries / praxy.audit_log ----
     builder.Services.AddSingleton(new RetentionOptions(
@@ -465,6 +490,8 @@ try
     FunctionEndpoints.Map(app);
     MessagingEndpoints.Map(app);
     SiteEndpoints.Map(app);
+    StorageEndpoints.Map(app);
+    ConsoleStorageEndpoints.Map(app);
     VcsEndpoints.Map(app);
 
     // The console used to live under /console; keep old bookmarks/docs working.
