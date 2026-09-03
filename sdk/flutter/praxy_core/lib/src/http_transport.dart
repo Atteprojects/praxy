@@ -18,7 +18,12 @@ final class HttpTransport implements Transport {
     final uri = _resolve(request);
     final headers = {...request.headers};
     List<int>? body;
-    if (request.body != null) {
+    if (request.bodyBytes != null) {
+      // Sent verbatim: a storage upload's body *is* the file, and JSON-encoding it
+      // would corrupt it.
+      body = request.bodyBytes;
+      headers['content-type'] = request.contentType ?? 'application/octet-stream';
+    } else if (request.body != null) {
       body = utf8.encode(jsonEncode(request.body));
       headers['content-type'] = 'application/json';
     }

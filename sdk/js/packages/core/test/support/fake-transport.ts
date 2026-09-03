@@ -25,3 +25,12 @@ export function jsonResponse(status: number, body: unknown, headers: Record<stri
 export function emptyResponse(status: number, headers: Record<string, string> = {}): TransportResponse {
   return { status, headers, body: "" };
 }
+
+/** A binary body, as `FetchTransport` returns one for a request that asked for `expect: "bytes"`. */
+export function bytesResponse(
+  status: number,
+  bytes: Uint8Array,
+  headers: Record<string, string> = {},
+): TransportResponse {
+  return { status, headers, body: "", bodyBytes: bytes };
+}

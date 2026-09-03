@@ -109,6 +109,29 @@ export interface RowList<T> {
 
 // ---- functions --------------------------------------------------------------------------------
 
+// ---- storage ----------------------------------------------------------------------------------
+
+/** One stored file's metadata. The bytes come back from `getFileDownload`, never inline here. */
+export interface StoredFile {
+  id: string;
+  bucketId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** What this file was actually written with — not what the server is currently configured to use. */
+  chunkSizeBytes: number;
+  chunkCount: number;
+  /** Lowercase hex SHA-256, computed server-side while the upload streamed. */
+  checksum: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredFileList {
+  total: number;
+  files: StoredFile[];
+}
+
 // ---- realtime ---------------------------------------------------------------------------------
 
 export interface RealtimeTicket {

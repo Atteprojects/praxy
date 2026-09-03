@@ -280,6 +280,66 @@ final class RowList<T> {
   final List<T> rows;
 }
 
+/// One stored file's metadata (`FileResponse` server-side). The bytes themselves
+/// come back from `StorageService.getFileDownload`, never inline here.
+final class StoredFile {
+  const StoredFile({
+    required this.id,
+    required this.bucketId,
+    required this.name,
+    required this.mimeType,
+    required this.sizeBytes,
+    required this.chunkSizeBytes,
+    required this.chunkCount,
+    required this.checksum,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String bucketId;
+  final String name;
+  final String mimeType;
+  final int sizeBytes;
+
+  /// What this file was actually written with — not what the server is currently
+  /// configured to use, which can change without touching stored files.
+  final int chunkSizeBytes;
+  final int chunkCount;
+
+  /// Lowercase hex SHA-256, computed server-side while the upload streamed.
+  final String checksum;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory StoredFile.fromJson(Map<String, dynamic> json) => StoredFile(
+    id: json['id'] as String,
+    bucketId: json['bucketId'] as String,
+    name: json['name'] as String,
+    mimeType: json['mimeType'] as String,
+    sizeBytes: (json['sizeBytes'] as num).toInt(),
+    chunkSizeBytes: (json['chunkSizeBytes'] as num).toInt(),
+    chunkCount: (json['chunkCount'] as num).toInt(),
+    checksum: json['checksum'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    updatedAt: DateTime.parse(json['updatedAt'] as String),
+  );
+}
+
+final class StoredFileList {
+  const StoredFileList({required this.total, required this.files});
+
+  final int total;
+  final List<StoredFile> files;
+
+  factory StoredFileList.fromJson(Map<String, dynamic> json) => StoredFileList(
+    total: (json['total'] as num).toInt(),
+    files: ((json['files'] as List?) ?? const [])
+        .map((f) => StoredFile.fromJson((f as Map).cast<String, dynamic>()))
+        .toList(growable: false),
+  );
+}
+
 /// A single-use, short-lived credential for authenticating the realtime WebSocket —
 /// native clients can't attach the session cookie a browser handshake carries
 /// automatically, so they mint one of these instead (`POST /v1/realtime/ticket`).

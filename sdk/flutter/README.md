@@ -12,7 +12,7 @@ lockfile.
 
 | Package | What it is |
 |---|---|
-| [`praxy_core`](praxy_core/) | Pure-Dart client — `package:http` only, no Flutter dependency. Account/session methods, the typed table CRUD surface, teams and memberships, function invocation, query/permission builders. Works on the Dart VM as well as Flutter (server-side scripts, CLI tools). |
+| [`praxy_core`](praxy_core/) | Pure-Dart client — `package:http` only, no Flutter dependency. Account/session methods, the typed table CRUD surface, teams and memberships, function invocation, file storage, query/permission builders. Works on the Dart VM as well as Flutter (server-side scripts, CLI tools). |
 | [`praxy_flutter`](praxy_flutter/) | The Flutter layer most apps actually import: secure-storage sessions, the realtime WebSocket client (`Stream`-based, including `liveList`), and Google sign-in via `flutter_web_auth_2`. Re-exports everything from `praxy_core`. |
 | [`praxy_codegen`](praxy_codegen/) | An on-demand CLI (not a `build_runner` builder) that emits typed `Col<T>` column constants for one table into a file you commit. Optional — every method works against `TableRef`/`Col` you write by hand. |
 | [`example`](example/) | A runnable Flutter app exercising the full surface: sign-up, Google OAuth, row CRUD, and a live realtime subscription against a local Praxy instance. |
@@ -48,6 +48,11 @@ final created = await px.tables.create(todos, data: const Todo(title: 'Ship it',
 // Teams and function invocation
 final team = await px.teams.create(name: 'Engineering');
 final execution = await px.functions.createExecution('function-id', path: '/hello');
+
+// File storage — buckets deny everyone until an operator grants a role in the console.
+final stored = await px.storage.createFile(
+  'bucket-id', name: 'avatar.png', bytes: imageBytes, mimeType: 'image/png');
+final bytes = await px.storage.getFileDownload('bucket-id', stored.id);
 
 // Realtime — a live Stream, reconnects with backoff automatically.
 px.realtime.rows(todos).listen((event) {

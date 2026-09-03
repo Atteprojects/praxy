@@ -62,6 +62,12 @@ Workspace-internal only — not published to npm. From `sdk/js/`: `npm install`.
 - [Functions](#functions)
   - [Invoke synchronously](#invoke-synchronously)
   - [Invoke asynchronously](#invoke-asynchronously)
+- [Storage (files)](#storage-files)
+  - [Upload a file](#upload-a-file)
+  - [List files](#list-files)
+  - [Get a file's metadata](#get-a-files-metadata)
+  - [Download a file](#download-a-file)
+  - [Delete a file](#delete-a-file)
 - [Realtime](#realtime)
   - [Subscribe to row changes](#subscribe-to-row-changes)
   - [Subscribe to account events](#subscribe-to-account-events)
@@ -457,6 +463,62 @@ const completed = await authed.functions.getExecution(functionId, receipt.id);
 `getExecution` is scoped to the caller's own execution — reading back someone else's execution id
 404s (a deliberate cross-caller privacy boundary, not a bug).
 
+## Storage (files)
+
+Files live in buckets. A bucket is the permission boundary — like a table, it **denies everyone
+until an operator grants a role in the console**, so a `401` from any of these on a fresh bucket is
+expected, not a bug. Bucket configuration and its permission matrix are a console/operator concern
+and are deliberately not in this SDK.
+
+### Upload a file
+
+The whole file goes in one request — there's no resumable protocol — and the server streams it into
+storage inside a single transaction, so a failed or over-quota upload leaves nothing behind rather
+than a partial file. `mimeType` becomes the stored file's type and is checked against the bucket's
+allow-list; omit it and the server records `application/octet-stream`.
+
+```ts
+const bytes = new Uint8Array(await browserFile.arrayBuffer());
+const stored = await authed.storage.createFile(bucketId, {
+  name: browserFile.name,
+  bytes,
+  mimeType: browserFile.type,
+});
+console.log(stored.id, stored.sizeBytes, stored.checksum); // checksum: SHA-256, computed as it streamed
+```
+
+Two limits can reject an upload: the bucket's per-file ceiling (`file_size_exceeded`) and the
+project's total storage quota (`general_resource_limit_exceeded`). Both are enforced mid-stream, so
+an oversized upload fails cleanly instead of storing a truncated file.
+
+### List files
+
+```ts
+const { total, files } = await authed.storage.listFiles(bucketId, { limit: 25, offset: 0 });
+```
+
+### Get a file's metadata
+
+```ts
+const file = await authed.storage.getFile(bucketId, fileId);
+```
+
+### Download a file
+
+Returns the bytes buffered whole — the server streams them, but the transport hands back a complete
+response body, so a very large download is your memory to budget for.
+
+```ts
+const bytes = await authed.storage.getFileDownload(bucketId, fileId);
+const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
+```
+
+### Delete a file
+
+```ts
+await authed.storage.deleteFile(bucketId, fileId);
+```
+
 ## Realtime
 
 Client-side only — a Server Component can't hold a WebSocket across a request/response cycle. Most
@@ -513,6 +575,10 @@ authed.realtime.close();
   token storage.
 - **Google OAuth's redirect dance** — `account.createOAuth2Session()` is the token-exchange half only;
   starting the flow and handling the callback redirect is `@praxy/nextjs`'s Route Handler.
+- **Bucket management** — creating buckets and editing their permission matrix is a console/operator
+  concern, the same line this package draws against schema management.
+- **Renaming a stored file, HTTP `Range` requests, and image transforms** — the first is an API route
+  this SDK deliberately doesn't wrap yet; the other two don't exist server-side (Storage Phase 2/3).
 - **Typed row codegen** — see `@praxy/codegen`.
 - **React bindings** — see `@praxy/react`.
 
