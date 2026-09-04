@@ -172,9 +172,8 @@ prefix rather than a new mechanism.
   **Non-goals**: no per-file permissions, no Range requests, no image transforms, no resumable uploads,
   no encryption at rest, no antivirus.
 - **Phase 2 — access control and serving**: per-file permissions (the row-security analogue, same
-  opt-in flag + side table), HTTP Range, and *opt-in* inline serving with a safe-type allowlist —
-  see "Downloads are never renderable" below for why inline is opt-in rather than the default,
-  and why this bullet used to be wrong.
+  opt-in flag + side table), HTTP Range, and *opt-in* inline serving with a safe-type allowlist.
+  Designed in full below; kickoff: `docs/handoff/storage-phase-2-prompt.md`.
 - **Phase 3 — image transforms**: on-the-fly resize/crop/format/quality with a cached derivative. This
   is the one Appwrite parity item in Storage that developers actually ask for by name, and it is its
   own design problem (which library, where derivatives live, how they're invalidated) rather than a
@@ -182,6 +181,112 @@ prefix rather than a new mechanism.
 
 **Explicitly out of scope for the whole sequence**: a CDN integration, signed time-limited URLs, and
 antivirus scanning. Each is a legitimate future initiative; none is needed for Storage to be useful.
+
+## Phase 2 — designed 2026-09-04
+
+Three items that share a phase because they are all "the file is reachable, now who and how".
+
+### Per-file permissions — the row-security analogue, additively
+
+Phase 1 already reserved `bucket.file_security` in the data model for this. The escalation order is
+copied verbatim from `QueryCompiler.PermissionPredicate`, which is the shape to match rather than
+invent:
+
+```
+bypassPermissions            -> allow
+bucket grants the action     -> allow
+!bucket.file_security        -> deny
+otherwise                    -> EXISTS(file_permissions where file_id, action, role = ANY(callerRoles))
+```
+
+**The property that matters most, and the one people get wrong: this is additive, not restrictive.**
+A bucket-level `read("any")` grant means *everyone reads every file*, and no per-file grant can take
+that away — exactly how table-level grants override row security today. So the headline use case,
+"users can only read their own uploads", is configured by granting **no bucket-level read at all**,
+turning `file_security` on, and attaching `read("user:<id>")` to each file. A design that lets a
+bucket grant coexist with per-file restriction would be a *different* model from tables, and this
+codebase has one authorization concept on purpose.
+
+New table, mirroring `TablePermission`'s shape exactly:
+
+```
+FilePermission: file_id (FK -> files, cascade), action, role   -- PK (file_id, action, role)
+```
+
+**The listing path is where this gets hard, and it is not optional.** `FilesService.ListAsync` today
+does `db.Files.Where(f => f.BucketId == ...)` then `CountAsync` + `Skip`/`Take`. The permission filter
+**must go into that EF query**, not into a post-pagination filter in memory — otherwise `total` counts
+files the caller cannot see and pages come back short or empty. This is the direct analogue of the
+compiled `EXISTS` the query compiler folds into its `WHERE`:
+
+```csharp
+if (!bucketGrantsRead && bucket.FileSecurity)
+    query = query.Where(f => db.FilePermissions.Any(p =>
+        p.FileId == f.Id && p.Action == PermissionStrings.Read && callerRoles.Contains(p.Role)));
+```
+
+**`FilesService.RequireAsync` has to stop being fatal for reads.** Today it throws when the bucket
+does not grant the action — which is correct while bucket-level is the only level, and wrong the
+moment per-file grants exist: a caller with no bucket grant but a per-file grant must get their file,
+not a 403. Converting that gate from "throw" to "returns whether the bucket already allows it" is the
+single most likely place to introduce either a security hole (defaulting to allow) or a broken feature
+(keeping the throw). It deserves its own tests in both directions.
+
+**Open decision for the owner: does upload auto-grant the uploader?** Rows do not — permissions are
+explicit on create. Appwrite does. Consistency with tables says no auto-grant; ergonomics says almost
+every caller wants `read("user:<self>")` on their own upload and will write that boilerplate every
+time. Recommend following rows (explicit, no magic) and revisiting if it proves annoying, but this is
+a product call, not a technical one.
+
+### HTTP Range — push it into the seam, do not implement it above
+
+The chunk layout was chosen in Phase 1 to make this cheap, and the per-file `chunk_size_bytes` (stored
+on the row rather than read from config) is what makes the arithmetic exact even after the configured
+default is retuned:
+
+```
+firstChunk  = start / file.ChunkSizeBytes
+skipInFirst = start % file.ChunkSizeBytes
+lastChunk   = end   / file.ChunkSizeBytes
+        SELECT data FROM praxy.file_chunks
+        WHERE file_id = @id AND "index" BETWEEN @first AND @last ORDER BY "index"
+```
+
+**`IFileStore.OpenRead` must grow the range, rather than the endpoint skipping bytes off the front of
+a full stream.** Reading-and-discarding works for the Postgres backend and would quietly destroy the
+next one: an S3-compatible store serves a range with a native ranged `GET`, and a seam that cannot
+express "bytes 5,000,000-5,000,999" forces it to fetch the whole object to serve 1 KB. The seam exists
+precisely to keep that option open, so the signature becomes `OpenRead(Guid fileId, long offset,
+long? length)`.
+
+Required HTTP behaviour, all of it standard and all of it easy to half-do:
+`Accept-Ranges: bytes` advertised on full responses; `206` with `Content-Range: bytes s-e/total` for a
+satisfiable range; `416` with `Content-Range: bytes */total` for one past the end; suffix (`bytes=-500`)
+and open-ended (`bytes=500-`) forms both handled. **Multi-range (`bytes=0-99,200-299`) should be
+answered with the full `200` body** rather than `multipart/byteranges` — the spec explicitly permits
+ignoring a Range header, and a multipart encoder is a lot of surface for a case no browser needs.
+
+Range is orthogonal to `Content-Disposition`: a partial response is still an `attachment` unless
+inline has been opted into.
+
+### Inline serving — opt-in, allowlisted, and still not the safest option
+
+Read "Downloads are never renderable" above first; this section only adds the opt-in. A per-bucket
+`inline_types` allowlist, empty by default, and a response is served inline only when the file's type
+is in it. `X-Content-Type-Options: nosniff` stays on **every** response either way.
+
+The allowlist is a hard-coded set of types that cannot execute — images (`image/png`, `image/jpeg`,
+`image/gif`, `image/webp`), `application/pdf` if wanted, `text/plain`. **`text/html` and
+`image/svg+xml` are permanently excluded**, not configurable: SVG carries script, and that is the whole
+vulnerability again with an extra step.
+
+**The stronger option, which is an owner decision rather than a default:** serve user content from a
+*separate origin* the way Sites already does (`<key>.<projectId>.{Praxy:Sites:Domain}`). Same-origin
+inline content is inherently a risk-management exercise, whereas a different origin makes it a
+non-issue structurally — a compromised inline asset cannot reach the console's cookies at all. The
+subdomain machinery already exists and is proven. It is more moving parts (DNS, a second Caddy block,
+CORS for the SDKs), which is why it is raised here rather than assumed; if inline serving is expected
+to carry anything richer than a thumbnail, it is the right answer.
 
 ## Verification
 
