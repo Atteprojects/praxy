@@ -438,8 +438,12 @@ unchanged, and no second authorization concept is introduced.
   `Praxy.Storage` project, bucket CRUD + permissions, streaming upload, full-file download, delete, the
   chunk store behind its interface, three new quota dimensions, outbox events, console screens, and
   Flutter/JS SDK upload+download.
-- **Phase 2 — access control and serving** (scoped, undesigned): per-file permissions following the
-  existing row-security shape, HTTP `Range`, `Content-Disposition` handling.
+- **Phase 2 — designed 2026-09-04** (kickoff: `docs/handoff/storage-phase-2-prompt.md`) — per-file
+  permissions following the existing row-security shape, HTTP `Range`, and *opt-in* inline serving
+  against a hard-coded safe-type allowlist. The property to keep in view: per-file permissions are
+  **additive, not restrictive**, exactly like row security — a bucket-level `read("any")` grant means
+  everyone reads every file, so "users only read their own uploads" means granting no bucket read at
+  all. Design: the "Phase 2" section of `docs/research/storage.md`.
 - **Phase 3 — image transforms** (scoped, undesigned): on-the-fly resize/crop/format with cached
   derivatives. The one Storage feature developers ask for by name, and its own design problem.
 
