@@ -41,8 +41,10 @@ export function FunctionExecutionsPage() {
     {
       id: "duration",
       header: "Duration",
+      // `== null` on purpose: a waiting/processing execution has no durationMs yet, and the API
+      // omits null fields entirely, so it arrives undefined rather than null.
       cell: ({ row }) => (
-        <span className="text-xs text-ink-400">{row.original.durationMs !== null ? `${row.original.durationMs}ms` : "—"}</span>
+        <span className="text-xs text-ink-400">{row.original.durationMs == null ? "—" : `${row.original.durationMs}ms`}</span>
       ),
     },
     {
@@ -208,8 +210,10 @@ function ExecutionSheet({
         <div className="flex flex-wrap items-center gap-2">
           <ExecutionStatusBadge status={e.status} />
           <span className="text-xs text-ink-400">{e.method} {e.path}</span>
-          {e.statusCode !== null ? <span className="font-mono text-xs text-ink-400">HTTP {e.statusCode}</span> : null}
-          {e.durationMs !== null ? <span className="text-xs text-ink-500">{e.durationMs}ms</span> : null}
+          {/* `!= null`, not `!== null`: both fields are unset until the execution finishes, and an
+              unset field is omitted from the JSON, so it reads as undefined. */}
+          {e.statusCode != null ? <span className="font-mono text-xs text-ink-400">HTTP {e.statusCode}</span> : null}
+          {e.durationMs != null ? <span className="text-xs text-ink-500">{e.durationMs}ms</span> : null}
           {e.coldStart ? <Badge tone="ink">cold start</Badge> : null}
         </div>
         {e.triggeredBy ? (
