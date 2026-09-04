@@ -49,6 +49,7 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<Bucket> Buckets => Set<Bucket>();
     public DbSet<BucketPermission> BucketPermissions => Set<BucketPermission>();
     public DbSet<StoredFile> Files => Set<StoredFile>();
+    public DbSet<FilePermission> FilePermissions => Set<FilePermission>();
     public DbSet<FileChunk> FileChunks => Set<FileChunk>();
     public DbSet<VcsInstallation> VcsInstallations => Set<VcsInstallation>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
@@ -462,6 +463,20 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.HasOne<Bucket>().WithMany().HasForeignKey(x => x.BucketId).OnDelete(DeleteBehavior.Cascade);
             // The file browser's one real query: a bucket's files newest-first.
             e.HasIndex(x => new { x.BucketId, x.CreatedAt });
+        });
+
+        b.Entity<FilePermission>(e =>
+        {
+            e.ToTable("file_permissions");
+            e.HasKey(x => new { x.FileId, x.Action, x.Role });
+            e.Property(x => x.Action).HasMaxLength(16);
+            e.Property(x => x.Role).HasMaxLength(128);
+            // Cascade, so deleting a file takes its grants with it in the same statement — the
+            // __perms side table's ON DELETE CASCADE, one level up from the row analogue.
+            e.HasOne<StoredFile>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
+            // The listing filter's EXISTS: (action, role) for a set of files, which is what
+            // FilesService.ListAsync folds into its EF query rather than filtering in memory.
+            e.HasIndex(x => new { x.Action, x.Role });
         });
 
         b.Entity<FileChunk>(e =>

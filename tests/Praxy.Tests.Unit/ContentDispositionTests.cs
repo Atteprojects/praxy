@@ -55,4 +55,25 @@ public class ContentDispositionTests
         Assert.Contains("filename=\"download\"", value);
         Assert.Contains(Uri.EscapeDataString("日本語"), value);
     }
+
+    /// <summary>
+    /// The inline form is the same builder with a different disposition — same escaping, same
+    /// injection defense. Whether it is *allowed* is InlineTypes' question, never this type's.
+    /// </summary>
+    [Fact]
+    public void The_inline_form_differs_only_in_the_disposition()
+    {
+        Assert.Equal("inline; filename=\"cat.png\"; filename*=UTF-8''cat.png", ContentDisposition.Inline("cat.png"));
+        Assert.StartsWith("attachment;", ContentDisposition.Attachment("cat.png"));
+    }
+
+    [Theory]
+    [InlineData("a\r\nX-Injected: yes.png")]
+    [InlineData("a\nSet-Cookie: x=1.png")]
+    public void Inline_defends_the_header_boundary_identically(string name)
+    {
+        var value = ContentDisposition.Inline(name);
+        Assert.DoesNotContain("\r", value);
+        Assert.DoesNotContain("\n", value);
+    }
 }

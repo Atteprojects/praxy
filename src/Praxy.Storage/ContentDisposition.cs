@@ -16,16 +16,25 @@ public static class ContentDisposition
     /// percent-encoded. Anything outside printable ASCII is dropped from the quoted form rather than
     /// escaped, so a raw CR/LF can never reach the header.
     ///
-    /// Always <c>attachment</c>, never <c>inline</c>: a file's stored MIME type is whatever the
-    /// uploader sent, so rendering it would be stored XSS on the console's own origin. Opt-in inline
-    /// serving is Phase 2's job and needs a safe-type allowlist.
+    /// <c>attachment</c> unless the bucket has opted this exact type into inline serving *and*
+    /// <see cref="InlineTypes.Safe"/> agrees: a file's stored MIME type is whatever the uploader
+    /// sent, so rendering an arbitrary one would be stored XSS on the console's own origin.
     /// </summary>
-    public static string Attachment(string fileName)
+    public static string Attachment(string fileName) => Build("attachment", fileName);
+
+    /// <summary>
+    /// The opt-in form. Identical escaping — the disposition type is the only difference, and the
+    /// decision about whether it is allowed belongs to <see cref="InlineTypes.ServesInline"/>, not
+    /// here. A caller reaching for this without asking that question first is the bug.
+    /// </summary>
+    public static string Inline(string fileName) => Build("inline", fileName);
+
+    private static string Build(string disposition, string fileName)
     {
         var ascii = new string(fileName.Where(c => c is >= ' ' and <= '~').ToArray())
             .Replace("\\", "\\\\").Replace("\"", "\\\"");
         if (ascii.Length == 0)
             ascii = "download";
-        return $"attachment; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
+        return $"{disposition}; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
     }
 }

@@ -93,6 +93,7 @@ public static class ErrorTypes
     public const string FileNotFound = "file_not_found";
     public const string FileSizeExceeded = "file_size_exceeded";
     public const string FileTypeNotAllowed = "file_type_not_allowed";
+    public const string FileRangeNotSatisfiable = "file_range_not_satisfiable";
 
     public const string SiteNotFound = "site_not_found";
     public const string SiteAlreadyExists = "site_already_exists";
@@ -202,6 +203,7 @@ public static class ErrorTypes
         FileNotFound,
         FileSizeExceeded,
         FileTypeNotAllowed,
+        FileRangeNotSatisfiable,
         SiteNotFound,
         SiteAlreadyExists,
         SiteInvalid,
