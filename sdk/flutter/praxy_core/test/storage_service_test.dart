@@ -26,6 +26,39 @@ Praxy _client(ResponseBuilder handler, {void Function(TransportRequest)? capture
 );
 
 void main() {
+  test('createFile() sends per-file grants in the query, since the body is the bytes', () async {
+    late TransportRequest captured;
+    const grants = ['read("user:u1")', 'delete("user:u1")'];
+    final client = _client(
+      (_) => jsonResponse(201, {..._fileJson(), r'$permissions': grants}),
+      capture: (r) => captured = r,
+    );
+
+    final file = await client.storage.createFile(
+      'b1',
+      name: 'avatar.png',
+      bytes: const [1],
+      permissions: grants,
+    );
+
+    expect(captured.query, {
+      'name': ['avatar.png'],
+      'permissions': grants,
+    });
+    expect(file.permissions, grants);
+  });
+
+  test('createFile() omits the permissions key entirely when none are given', () async {
+    late TransportRequest captured;
+    final client = _client((_) => jsonResponse(201, _fileJson()), capture: (r) => captured = r);
+
+    final file = await client.storage.createFile('b1', name: 'a.png', bytes: const [1], permissions: const []);
+
+    expect(captured.query, {'name': ['a.png']});
+    // A server that sends no $permissions at all decodes as "none", never as a crash.
+    expect(file.permissions, isEmpty);
+  });
+
   test('createFile() sends the raw bytes as the body, with the name in the query', () async {
     late TransportRequest captured;
     final client = _client((_) => jsonResponse(201, _fileJson()), capture: (r) => captured = r);

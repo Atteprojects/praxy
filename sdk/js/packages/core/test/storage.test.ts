@@ -25,6 +25,7 @@ const file = {
   checksum: "abc123",
   createdAt: "t",
   updatedAt: "t",
+  $permissions: [],
 };
 
 describe("StorageService", () => {
@@ -42,6 +43,26 @@ describe("StorageService", () => {
     expect(captured().body).toBeUndefined();
     expect(captured().contentType).toBe("image/png");
     expect(created.checksum).toBe("abc123");
+  });
+
+  it("createFile() sends per-file grants in the query, since the body is the bytes", async () => {
+    const permissions = ['read("user:u1")', 'delete("user:u1")'];
+    const { client, captured } = clientCapturing(jsonResponse(201, { ...file, $permissions: permissions }));
+
+    const created = await client.storage.createFile("b1", {
+      name: "avatar.png",
+      bytes: new Uint8Array([1]),
+      permissions,
+    });
+
+    expect(captured().query).toEqual({ name: ["avatar.png"], permissions });
+    expect(created.$permissions).toEqual(permissions);
+  });
+
+  it("createFile() omits the permissions key entirely when none are given", async () => {
+    const { client, captured } = clientCapturing(jsonResponse(201, file));
+    await client.storage.createFile("b1", { name: "a.png", bytes: new Uint8Array([1]), permissions: [] });
+    expect(captured().query).toEqual({ name: ["a.png"] });
   });
 
   it("createFile() without a mime type leaves the content type to the transport default", async () => {

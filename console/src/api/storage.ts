@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
-  Bucket, BucketList, BucketPermissions, ErrorEnvelope, StorageUsage, StoredFile, StoredFileList,
+  Bucket, BucketList, BucketPermissions, ErrorEnvelope, FilePermissions, InlineTypeList, StorageUsage,
+  StoredFile, StoredFileList,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/storage`;
@@ -12,6 +13,19 @@ export function useStorageUsage(projectId: string) {
   return useQuery({
     queryKey: ["projects", projectId, "storage", "usage"],
     queryFn: () => api<StorageUsage>(`${base(projectId)}/usage`),
+  });
+}
+
+/**
+ * The types this build will serve inline. Server-owned vocabulary, fetched like the functions
+ * screens fetch runtimes — a second hard-coded copy here would drift from the allow-list that
+ * actually gates the response, which is a security control rather than a display detail.
+ */
+export function useInlineTypes(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "storage", "inline-types"],
+    queryFn: () => api<InlineTypeList>(`${base(projectId)}/inline-types`),
+    staleTime: Infinity,
   });
 }
 
@@ -34,7 +48,10 @@ export function useBucket(projectId: string, bucketId: string) {
 export function useCreateBucket(projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { key: string; name: string; maxFileSizeBytes?: number; allowedMimeTypes?: string[] }) =>
+    mutationFn: (input: {
+      key: string; name: string; maxFileSizeBytes?: number; allowedMimeTypes?: string[];
+      fileSecurity?: boolean; inlineTypes?: string[];
+    }) =>
       api<Bucket>(`${base(projectId)}/buckets`, { method: "POST", body: input }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects", projectId, "buckets"] }),
   });
@@ -49,6 +66,9 @@ export function useUpdateBucket(projectId: string, bucketId: string) {
       maxFileSizeBytes?: number;
       /** `[]` clears the allow-list back to "any type"; omit to leave it unchanged. */
       allowedMimeTypes?: string[];
+      fileSecurity?: boolean;
+      /** `[]` means "serve nothing inline", which is the default — not a "leave unchanged" signal. */
+      inlineTypes?: string[];
     }) => api<Bucket>(`${base(projectId)}/buckets/${bucketId}`, { method: "PATCH", body: input }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "buckets"] });
@@ -93,6 +113,37 @@ export function useUpdateBucketPermissions(projectId: string, bucketId: string) 
   });
 }
 
+/**
+ * One file's own grants. Kept separate from the file document's `$permissions` (which the list
+ * already carries) because this is the mutation surface — full-replace, same as every other
+ * permission editor here.
+ */
+export function useFilePermissions(projectId: string, bucketId: string, fileId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "buckets", bucketId, "files", fileId, "permissions"],
+    queryFn: () =>
+      api<FilePermissions>(`${base(projectId)}/buckets/${bucketId}/files/${fileId}/permissions`),
+  });
+}
+
+export function useUpdateFilePermissions(projectId: string, bucketId: string, fileId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (permissions: string[]) =>
+      api<FilePermissions>(`${base(projectId)}/buckets/${bucketId}/files/${fileId}/permissions`, {
+        method: "PATCH",
+        body: { permissions },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "buckets", bucketId, "files", fileId, "permissions"],
+      });
+      // The list carries each file's $permissions too, so it goes stale with this.
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "buckets", bucketId, "files"] });
+    },
+  });
+}
+
 // ---- files ----
 
 export function useFiles(projectId: string, bucketId: string) {
@@ -125,6 +176,8 @@ export function uploadFile(
 ): Promise<StoredFile> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
+    // The API also accepts per-file grants here (`&permissions=…`), but the console sets those from
+    // the file's Permissions sheet instead — an operator uploading rarely knows them yet.
     request.open(
       "POST",
       `/v1${base(projectId)}/buckets/${bucketId}/files?name=${encodeURIComponent(file.name)}`,
@@ -163,10 +216,11 @@ export function useUploadFile(projectId: string, bucketId: string) {
 }
 
 /**
- * Fetches the bytes with the session cookie attached and hands the browser a blob URL to save. A
- * plain `<a href>` to the download route would work in the console's own origin, but this keeps the
- * file's stored name on the saved file without the server needing a `Content-Disposition` header —
- * which is deliberately Storage Phase 2's problem, not Phase 1's.
+ * Fetches the bytes with the session cookie attached and hands the browser a blob URL to save.
+ * The server now sends `Content-Disposition` itself, but this stays a `fetch` + blob: a plain
+ * `<a href>` would navigate to the download route, and for a bucket serving that type inline the
+ * browser would render it *in the console's own origin* rather than saving it. The download button
+ * should download.
  */
 export async function downloadFile(
   projectId: string, bucketId: string, file: { id: string; name: string },

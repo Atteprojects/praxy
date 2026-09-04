@@ -1,24 +1,33 @@
 import { useParams } from "@tanstack/react-router";
 import { useRef, useState, type DragEvent } from "react";
 import { ApiError } from "../api/client";
-import { useBucket, useDeleteFile, useFiles, downloadFile, uploadFile } from "../api/storage";
-import type { StoredFile } from "../api/types";
+import {
+  useBucket, useDeleteFile, useFiles, useUpdateFilePermissions, downloadFile, uploadFile,
+} from "../api/storage";
+import type { Bucket, StoredFile } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { AddRoleButton, RoleLabel } from "../components/RolePicker";
 import { useToast } from "../components/toast";
-import { DataTable, ErrorNote, FullPageSpinner, IdChip, Spinner, timeAgo } from "../components/ui";
+import { DataTable, ErrorNote, FullPageSpinner, IdChip, Sheet, Spinner, timeAgo } from "../components/ui";
 import { BucketDetailHeader } from "./BucketDetailHeader";
 import { formatBytes } from "./storageFormat";
 
 const HEADERS = ["Name", "Type", "Size", "Uploaded", ""];
 
+/** A file can be granted read/update/delete — never create, which has no file to attach to yet. */
+const FILE_ACTIONS = ["read", "update", "delete"] as const;
+
 export function BucketFilesPage() {
   const { projectId, bucketId } = useParams({ strict: false }) as { projectId: string; bucketId: string };
   const bucket = useBucket(projectId, bucketId);
   const files = useFiles(projectId, bucketId);
+  const [sheetFileId, setSheetFileId] = useState<string | null>(null);
 
   if (bucket.isPending || files.isPending) return <FullPageSpinner />;
   if (bucket.isError) throw bucket.error;
   if (files.isError) throw files.error;
+
+  const sheetFile = files.data.files.find((f) => f.id === sheetFileId);
 
   return (
     <div>
@@ -32,15 +41,34 @@ export function BucketFilesPage() {
       ) : (
         <DataTable headers={HEADERS}>
           {files.data.files.map((file) => (
-            <FileRow key={file.id} projectId={projectId} bucketId={bucketId} file={file} />
+            <FileRow
+              key={file.id}
+              projectId={projectId}
+              bucketId={bucketId}
+              bucket={bucket.data}
+              file={file}
+              onOpenPermissions={() => setSheetFileId(file.id)}
+            />
           ))}
         </DataTable>
       )}
+
+      {sheetFile ? (
+        <FilePermissionsSheet
+          projectId={projectId}
+          bucketId={bucketId}
+          bucket={bucket.data}
+          file={sheetFile}
+          onClose={() => setSheetFileId(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
-function FileRow({ projectId, bucketId, file }: { projectId: string; bucketId: string; file: StoredFile }) {
+function FileRow({ projectId, bucketId, bucket, file, onOpenPermissions }: {
+  projectId: string; bucketId: string; bucket: Bucket; file: StoredFile; onOpenPermissions: () => void;
+}) {
   const remove = useDeleteFile(projectId, bucketId);
   const [downloading, setDownloading] = useState(false);
   const toast = useToast();
@@ -65,6 +93,16 @@ function FileRow({ projectId, bucketId, file }: { projectId: string; bucketId: s
           <span className="font-mono text-[11px] text-ink-600" title="SHA-256, computed while the upload streamed">
             {file.checksum.slice(0, 12)}…
           </span>
+          {bucket.fileSecurity ? (
+            <span
+              className={`text-[11px] ${file.$permissions.length === 0 ? "text-amber-400" : "text-ink-600"}`}
+              title={file.$permissions.join(" · ") || "Only the bucket matrix can reach this file"}
+            >
+              {file.$permissions.length === 0
+                ? "no file grants"
+                : `${file.$permissions.length} file grant${file.$permissions.length === 1 ? "" : "s"}`}
+            </span>
+          ) : null}
         </div>
       </td>
       <td className="px-4 py-3 font-mono text-xs text-ink-400">{file.mimeType}</td>
@@ -84,6 +122,13 @@ function FileRow({ projectId, bucketId, file }: { projectId: string; bucketId: s
         >
           {downloading ? <Spinner /> : "Download"}
         </button>{" "}
+        <button
+          type="button"
+          className="btn-ghost border border-ink-700 px-2 py-1 text-xs"
+          onClick={onOpenPermissions}
+        >
+          Permissions
+        </button>{" "}
         <ConfirmButton
           label="Delete"
           title="Delete file?"
@@ -99,6 +144,100 @@ function FileRow({ projectId, bucketId, file }: { projectId: string; bucketId: s
         />
       </td>
     </tr>
+  );
+}
+
+/**
+ * Per-file grants, in the same matrix shape the row sheet uses — same components, same grammar,
+ * one action column short because a file cannot grant its own creation.
+ *
+ * These grants are **additive**: they widen access, never narrow it. A bucket-level
+ * <code>read</code> already reaches every file here, which is why the note below points at the
+ * bucket matrix rather than pretending this sheet is the whole answer.
+ */
+function FilePermissionsSheet({ projectId, bucketId, bucket, file, onClose }: {
+  projectId: string; bucketId: string; bucket: Bucket; file: StoredFile; onClose: () => void;
+}) {
+  const update = useUpdateFilePermissions(projectId, bucketId, file.id);
+  const error = update.error instanceof ApiError ? update.error : null;
+  const roles = [
+    ...new Set(file.$permissions.map((p) => /\("(.+)"\)$/.exec(p)?.[1]).filter((r): r is string => !!r)),
+  ];
+
+  function setPermission(action: (typeof FILE_ACTIONS)[number], role: string, enabled: boolean) {
+    const entry = `${action}("${role}")`;
+    const next = enabled
+      ? (file.$permissions.includes(entry) ? file.$permissions : [...file.$permissions, entry])
+      : file.$permissions.filter((p) => p !== entry);
+    update.mutate(next);
+  }
+
+  return (
+    <Sheet title={file.name} onClose={onClose}>
+      {!bucket.fileSecurity ? (
+        <p className="text-xs text-ink-500">
+          File security is off on this bucket — the bucket permission matrix governs every file
+          uniformly. Turn it on in Settings to grant access to individual files.
+        </p>
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-ink-500">
+            Granted <span className="text-ink-300">in addition to</span> the bucket matrix, never
+            instead of it: a role the bucket already grants reaches this file whatever is ticked here.
+          </p>
+          {error ? <div className="mb-3"><ErrorNote message={error.message} /></div> : null}
+
+          <div className="mb-3 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-ink-800 text-xs text-ink-500 uppercase">
+                  <th className="py-2 pr-4 font-medium">Role</th>
+                  {FILE_ACTIONS.map((action) => (
+                    <th key={action} className="px-2 py-2 text-center font-medium">{action}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-800/60">
+                {roles.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-xs text-ink-500">
+                      No grants on this file. Only the bucket matrix can reach it.
+                    </td>
+                  </tr>
+                ) : (
+                  roles.map((role) => (
+                    <tr key={role}>
+                      <td className="py-2 pr-4">
+                        <RoleLabel projectId={projectId} role={role} />
+                      </td>
+                      {FILE_ACTIONS.map((action) => (
+                        <td key={action} className="px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="accent-iris-500"
+                            checked={file.$permissions.includes(`${action}("${role}")`)}
+                            onChange={(e) => setPermission(action, role, e.target.checked)}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            {update.isPending ? <Spinner className="size-3" /> : null}
+            <AddRoleButton
+              projectId={projectId}
+              existingRoles={roles}
+              onPick={(role: string) => setPermission("read", role, true)}
+            />
+          </div>
+        </>
+      )}
+    </Sheet>
   );
 }
 
