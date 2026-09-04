@@ -78,7 +78,7 @@ function UserRow({
 }: {
   projectId: string;
   user: import("../api/types").AppUser;
-  lastActivityAt: string | null;
+  lastActivityAt: string | undefined;
 }) {
   const navigate = useNavigate();
   return (

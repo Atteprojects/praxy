@@ -15,7 +15,7 @@ export function JobStatusBadge({
   busy,
 }: {
   status: "available" | "processing" | "failed";
-  error?: string | null;
+  error?: string;
   startedAt?: string;
   onCancel?: () => void;
   onRetry?: () => void;
@@ -49,7 +49,7 @@ export function JobStatusBadge({
 
   return (
     <span className="inline-flex items-center gap-2">
-      <span title={error ?? undefined}>
+      <span title={error}>
         <Badge tone="coral">failed</Badge>
       </span>
       {error ? <span className="max-w-40 truncate text-xs text-coral-400">{error}</span> : null}

@@ -1,7 +1,15 @@
 /**
  * Wire-shape interfaces, camelCase throughout (the server's `JsonSerializerOptions` uses
- * `PropertyNamingPolicy.CamelCase`). Field names and nullability verified against the committed
- * OpenAPI snapshot (`docs/openapi/v1.json`) response schemas — not guessed.
+ * `PropertyNamingPolicy.CamelCase`). Field names verified against the committed OpenAPI snapshot
+ * (`docs/openapi/v1.json`) response schemas — not guessed.
+ *
+ * **Optional (`foo?: T`) means "the server may omit this key", never "the server may send `null`".**
+ * The API serializes with `DefaultIgnoreCondition = WhenWritingNull`, so a null property is dropped
+ * from the JSON rather than written as null. Nothing here is modelled `| null`; check absence with
+ * `== null` or a truthiness test, never `=== null`, which can never fire.
+ *
+ * Note the OpenAPI snapshot does not capture this — it lists these fields as `required` with a
+ * nullable type, which is what led the first version of this file to model them as `| null`.
  */
 
 // ---- account / sessions --------------------------------------------------------------------
@@ -13,7 +21,7 @@ export interface AppUser {
   emailVerified: boolean;
   status: boolean;
   labels: string[];
-  prefs: Record<string, unknown> | null;
+  prefs: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,8 +30,8 @@ export interface AppSession {
   id: string;
   userId: string;
   provider: string;
-  ip: string | null;
-  userAgent: string | null;
+  ip?: string;
+  userAgent?: string;
   current: boolean;
   expiresAt: string;
   createdAt: string;
@@ -43,7 +51,7 @@ export interface SessionList {
 export interface ResolvedRoles {
   roles: string[];
   principal: "user" | "key" | "guest";
-  scopes: string[] | null;
+  scopes?: string[];
 }
 
 export interface Jwt {
@@ -72,8 +80,8 @@ export interface Membership {
   userName: string;
   roles: string[];
   confirmed: boolean;
-  invitedAt: string | null;
-  joinedAt: string | null;
+  invitedAt?: string;
+  joinedAt?: string;
 }
 
 export interface MembershipList {
@@ -103,7 +111,7 @@ export interface RowMeta {
 export type Row<T> = RowMeta & T;
 
 export interface RowList<T> {
-  total: number | null;
+  total?: number;
   rows: Row<T>[];
 }
 
@@ -146,13 +154,13 @@ export interface FunctionExecution {
   status: string;
   method: string;
   path: string;
-  statusCode: number | null;
-  responseBody: string | null;
+  statusCode?: number;
+  responseBody?: string;
   logs: string;
-  errors: string | null;
-  durationMs: number | null;
+  errors?: string;
+  durationMs?: number;
   coldStart: boolean;
-  triggeredBy: string | null;
+  triggeredBy?: string;
   createdAt: string;
-  completedAt: string | null;
+  completedAt?: string;
 }

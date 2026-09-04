@@ -1,3 +1,23 @@
+/**
+ * Wire shapes for the Praxy API.
+ *
+ * **Optional (`foo?: T`) here means "the server may omit this key", never "the server may send
+ * `null`".** `Program.cs` configures minimal-API serialization with
+ * `DefaultIgnoreCondition = WhenWritingNull`, so a DTO property whose value is null is dropped from
+ * the JSON entirely — it arrives `undefined`. Nothing in this file is modelled `| null`, and that is
+ * deliberate: a `foo === null` guard against one of these fields is dead code that silently never
+ * fires, which is exactly how the Storage screens shipped
+ * "Cannot read properties of undefined (reading 'join')" (PR #55).
+ *
+ * Note that TypeScript will *not* flag `foo === null` on an optional field — it exempts null and
+ * undefined literals from its no-overlap check — so the compiler only catches the dereference half
+ * of the mistake (TS18048), not the guard half. Use `== null` when you mean "absent or null".
+ *
+ * The one exception is dynamic row data: a null column value in `Row` is a real, present `null`,
+ * because `JsonNode` contents are written verbatim and bypass `WhenWritingNull`. `Row` models
+ * column values as `unknown` for that reason.
+ */
+
 export interface ErrorEnvelope {
   message: string;
   code: number;
@@ -44,8 +64,8 @@ export interface OrganizationList {
 export interface Project {
   id: string;
   name: string;
-  organizationId: string | null;
-  lastPingAt?: string | null;
+  organizationId?: string;
+  lastPingAt?: string;
   createdAt: string;
 }
 
@@ -70,7 +90,7 @@ export interface AppUser {
 
 export interface UserListEntry {
   user: AppUser;
-  lastActivityAt: string | null;
+  lastActivityAt?: string;
 }
 
 export interface UserList {
@@ -82,7 +102,7 @@ export interface UserIdentity {
   id: string;
   provider: string;
   providerUid: string;
-  providerEmail: string | null;
+  providerEmail?: string;
   createdAt: string;
 }
 
@@ -95,8 +115,8 @@ export interface AppSession {
   id: string;
   userId: string;
   provider: string;
-  ip: string | null;
-  userAgent: string | null;
+  ip?: string;
+  userAgent?: string;
   current: boolean;
   expiresAt: string;
   createdAt: string;
@@ -127,8 +147,8 @@ export interface Membership {
   userName: string;
   roles: string[];
   confirmed: boolean;
-  invitedAt: string | null;
-  joinedAt: string | null;
+  invitedAt?: string;
+  joinedAt?: string;
 }
 
 export interface MembershipList {
@@ -144,7 +164,7 @@ export interface UserMembershipList {
 export interface AuthSettings {
   emailPassword: boolean;
   googleEnabled: boolean;
-  googleClientId: string | null;
+  googleClientId?: string;
   googleClientSecretSet: boolean;
   sessionLimit: number;
   passwordMinLength: number;
@@ -154,8 +174,8 @@ export interface ApiKey {
   id: string;
   name: string;
   scopes: string[];
-  expiresAt: string | null;
-  lastUsedAt: string | null;
+  expiresAt?: string;
+  lastUsedAt?: string;
   bypassRowPermissions: boolean;
   createdAt: string;
 }
@@ -174,7 +194,7 @@ export interface Platform {
   id: string;
   type: string;
   name: string;
-  hostname: string | null;
+  hostname?: string;
   createdAt: string;
 }
 
@@ -231,13 +251,13 @@ export interface ColumnSchema {
   type: ColumnType;
   required: boolean;
   array: boolean;
-  size: number | null;
+  size?: number;
   default: unknown;
-  elements: string[] | null;
+  elements?: string[];
   /** Set only when type === "relationship": the target table's id. */
-  targetTableId: string | null;
+  targetTableId?: string;
   status: "available" | "processing" | "failed";
-  error: string | null;
+  error?: string;
   position: number;
   createdAt: string;
   updatedAt: string;
@@ -259,7 +279,7 @@ export interface IndexSchema {
   columns: string[];
   orders: string[];
   status: "available" | "processing" | "failed";
-  error: string | null;
+  error?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -277,12 +297,12 @@ export interface TablePermissions {
 export interface SchemaJob {
   id: string;
   databaseId: string;
-  tableId: string | null;
-  indexId: string | null;
+  tableId?: string;
+  indexId?: string;
   kind: string;
   status: "queued" | "processing" | "available" | "failed" | "cancelled";
   attempts: number;
-  error: string | null;
+  error?: string;
   startedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -309,7 +329,7 @@ export interface Row {
 }
 
 export interface RowList {
-  total: number | null;
+  total?: number;
   rows: Row[];
 }
 
@@ -328,7 +348,7 @@ export interface Webhook {
   url: string;
   events: string[];
   enabled: boolean;
-  disabledReason: string | null;
+  disabledReason?: string;
   consecutiveFailures: number;
   createdAt: string;
   updatedAt: string;
@@ -353,10 +373,10 @@ export interface WebhookDelivery {
   status: WebhookDeliveryStatus;
   attempts: number;
   nextAttemptAt: string;
-  lastAttemptAt: string | null;
-  lastStatusCode: number | null;
-  lastError: string | null;
-  redeliveredFromId: string | null;
+  lastAttemptAt?: string;
+  lastStatusCode?: number;
+  lastError?: string;
+  redeliveredFromId?: string;
   createdAt: string;
 }
 
@@ -369,9 +389,9 @@ export interface WebhookDeliveryAttempt {
   attemptNumber: number;
   startedAt: string;
   durationMs: number;
-  statusCode: number | null;
-  responseBody: string | null;
-  error: string | null;
+  statusCode?: number;
+  responseBody?: string;
+  error?: string;
 }
 
 export interface WebhookDeliveryDetail {
@@ -405,14 +425,14 @@ export interface PraxyFunction {
   events: string[];
   /** Roles allowed to invoke over the data plane. Empty = nobody (deny by default). */
   execute: string[];
-  schedule: string | null;
-  nextScheduledRunAt: string | null;
-  activeDeploymentId: string | null;
+  schedule?: string;
+  nextScheduledRunAt?: string;
+  activeDeploymentId?: string;
   isWarm: boolean;
   /** The connected GitHub repository, "owner/repo" (Functions git integration) — null until one is connected. Set together with productionBranch. */
-  repositoryFullName: string | null;
+  repositoryFullName?: string;
   /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a deployment that finishes ready without activating. Null until a repository is connected. */
-  productionBranch: string | null;
+  productionBranch?: string;
   /** ApiKeyScopes granted for schedule-/event-triggered executions, injected as PRAXY_FUNCTION_API_KEY. Empty = no platform credential (deny by default). */
   platformScopes: string[];
   createdAt: string;
@@ -444,16 +464,16 @@ export interface FunctionDeployment {
   sourceSizeBytes: number;
   source: FunctionDeploymentSource;
   /** Set only for a "git" deployment — the pushed commit's full SHA. */
-  commitSha: string | null;
-  commitMessage: string | null;
+  commitSha?: string;
+  commitMessage?: string;
   /** Set only for a "git" deployment — the branch that was pushed to (may or may not be the function's production branch). */
-  branch: string | null;
+  branch?: string;
   buildLog: string;
-  error: string | null;
-  imageTag: string | null;
+  error?: string;
+  imageTag?: string;
   createdAt: string;
   updatedAt: string;
-  activatedAt: string | null;
+  activatedAt?: string;
 }
 
 export interface FunctionDeploymentList {
@@ -470,15 +490,15 @@ export interface FunctionExecution {
   status: FunctionExecutionStatus;
   method: string;
   path: string;
-  statusCode: number | null;
-  responseBody: string | null;
+  statusCode?: number;
+  responseBody?: string;
   logs: string;
-  errors: string | null;
-  durationMs: number | null;
+  errors?: string;
+  durationMs?: number;
   coldStart: boolean;
-  triggeredBy: string | null;
+  triggeredBy?: string;
   createdAt: string;
-  completedAt: string | null;
+  completedAt?: string;
 }
 
 export interface FunctionExecutionList {
@@ -492,7 +512,7 @@ export interface FunctionTemplate {
   description: string;
   runtime: FunctionRuntime;
   entrypoint: string;
-  defaultSchedule: string | null;
+  defaultSchedule?: string;
 }
 
 export interface FunctionTemplateList {
@@ -512,14 +532,14 @@ export interface PraxySite {
   name: string;
   rootDirectory: string;
   enabled: boolean;
-  activeDeploymentId: string | null;
+  activeDeploymentId?: string;
   /** Whether the active deployment's container is actually running right now — distinct from the deployment's own "ready" status, which only means "buildable." */
   isRunning: boolean;
   publicUrl: string;
   /** The connected GitHub repository, "owner/repo" (Sites Phase 4) — null until one is connected. Set together with productionBranch. */
-  repositoryFullName: string | null;
+  repositoryFullName?: string;
   /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a preview-only deployment. Null until a repository is connected. */
-  productionBranch: string | null;
+  productionBranch?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -549,18 +569,18 @@ export interface SiteDeployment {
   sourceSizeBytes: number;
   source: SiteDeploymentSource;
   /** Set only for a "git" deployment — the pushed commit's full SHA. */
-  commitSha: string | null;
-  commitMessage: string | null;
+  commitSha?: string;
+  commitMessage?: string;
   /** Set only for a "git" deployment — the branch that was pushed to (may or may not be the site's production branch). */
-  branch: string | null;
+  branch?: string;
   buildLog: string;
-  error: string | null;
-  imageTag: string | null;
+  error?: string;
+  imageTag?: string;
   /** This deployment's own preview URL — set once it's `ready`, regardless of whether it's the site's active deployment. Null before that. */
-  previewUrl: string | null;
+  previewUrl?: string;
   createdAt: string;
   updatedAt: string;
-  activatedAt: string | null;
+  activatedAt?: string;
 }
 
 export interface SiteDeploymentList {
@@ -576,7 +596,7 @@ export interface SiteDomain {
   status: SiteDomainStatus;
   createdAt: string;
   /** Set the moment the first request through this hostname is successfully proxied — proof Caddy's on-demand TLS actually issued a cert, not just that issuance was allowed. Null while still `pending`. */
-  verifiedAt: string | null;
+  verifiedAt?: string;
 }
 
 export interface SiteDomainList {
@@ -635,7 +655,7 @@ export interface MessagingProvider {
   isDefault: boolean;
   host: string;
   port: number;
-  username: string | null;
+  username?: string;
   from: string;
   useTls: boolean;
   hasSecret: boolean;
@@ -652,7 +672,7 @@ export interface MessagingTopic {
   id: string;
   key: string;
   name: string;
-  description: string | null;
+  description?: string;
   subscriberCount: number;
   createdAt: string;
   updatedAt: string;
@@ -700,7 +720,7 @@ export interface PraxyMessage {
   topicIds: string[];
   userIds: string[];
   createdAt: string;
-  completedAt: string | null;
+  completedAt?: string;
 }
 
 export interface MessageList {
@@ -714,8 +734,8 @@ export interface MessageTarget {
   id: string;
   identifier: string;
   status: MessageTargetStatus;
-  error: string | null;
-  deliveredAt: string | null;
+  error?: string;
+  deliveredAt?: string;
   createdAt: string;
 }
 
@@ -754,15 +774,8 @@ export interface Bucket {
   name: string;
   enabled: boolean;
   maxFileSizeBytes: number;
-  /**
-   * Absent or null means any type is accepted. **Optional on purpose**: the API sets
-   * `DefaultIgnoreCondition = WhenWritingNull` (Program.cs), so a null value is omitted from the
-   * JSON rather than serialized as `null` — the field arrives `undefined`. A `=== null` guard here
-   * silently does nothing, which crashed the Storage screens with
-   * "Cannot read properties of undefined (reading 'join')". Declaring it optional makes TypeScript
-   * reject that mistake instead of shipping it.
-   */
-  allowedMimeTypes?: string[] | null;
+  /** Absent means any type is accepted — check with `== null`, not `=== null` (see the file header). */
+  allowedMimeTypes?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -806,11 +819,11 @@ export interface StorageUsage {
 /** Actor is opaque (`admin:<id>` or `key:<id>`) — no endpoint resolves it to a name. */
 export interface AuditLogEntry {
   id: string;
-  projectId: string | null;
+  projectId?: string;
   actor: string;
   action: string;
   resource: string;
-  ip: string | null;
+  ip?: string;
   createdAt: string;
 }
 

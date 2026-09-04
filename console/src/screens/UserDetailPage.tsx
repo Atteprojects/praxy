@@ -287,7 +287,9 @@ function VerificationCard({ projectId, user }: { projectId: string; user: AppUse
   // The server checks the URL against these; showing them turns a rejection into a fix.
   const hostnames = (platforms.data?.platforms ?? [])
     .map((platform) => platform.hostname)
-    .filter((hostname): hostname is string => hostname !== null);
+    // `!= null`: a platform registered without a hostname omits the field, so it arrives
+    // undefined — a strict check would let it through and the type predicate would lie.
+    .filter((hostname): hostname is string => hostname != null);
 
   return (
     <div className="surface p-5">

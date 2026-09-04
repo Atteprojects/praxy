@@ -54,7 +54,9 @@ export function SitesPage() {
 }
 
 function SiteCard({ projectId, site }: { projectId: string; site: PraxySite }) {
-  const isLive = site.activeDeploymentId !== null && site.isRunning;
+  // `!= null`, not `!== null`: a site with no active deployment omits activeDeploymentId from
+  // the JSON, so it arrives undefined and a strict check would pass for every site.
+  const isLive = site.activeDeploymentId != null && site.isRunning;
 
   return (
     <Link
