@@ -1,5 +1,7 @@
 # Session task — close the console's null/undefined contract mismatch
 
+> **Status: shipped.** 2026-09-03 — see `docs/handoff/console-null-contract-report.md`.
+
 ## Why this exists
 
 **This already caused a production crash.** Storage Phase 1 shipped a Storage screen that threw
