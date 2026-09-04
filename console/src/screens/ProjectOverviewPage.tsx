@@ -13,7 +13,10 @@ export function ProjectOverviewPage() {
   if (project.isPending) return <FullPageSpinner />;
   if (project.isError) throw project.error;
 
-  const pinged = Boolean(project.data.lastPingAt);
+  // Narrowing a local, not Boolean(...) + a `!` at the use site: lastPingAt is omitted from the
+  // JSON until the first ping, so the value here is undefined and the assertion was asserting away
+  // the very case the guard exists for.
+  const lastPingAt = project.data.lastPingAt;
 
   return (
     <div>
@@ -27,7 +30,7 @@ export function ProjectOverviewPage() {
           the right. Stacked full-width cards left most of a desktop viewport empty. */}
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <div className="space-y-4">
-          {pinged ? <ConnectedCard lastPingAt={project.data.lastPingAt!} /> : <WaitingCard projectId={project.data.id} />}
+          {lastPingAt ? <ConnectedCard lastPingAt={lastPingAt} /> : <WaitingCard projectId={project.data.id} />}
           <ConnectionsTile projectId={project.data.id} />
         </div>
         <QuotaCard projectId={project.data.id} />

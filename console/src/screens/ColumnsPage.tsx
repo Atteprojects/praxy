@@ -49,7 +49,8 @@ export function ColumnsPage() {
   if (table.isError) throw table.error;
   if (columns.isError) throw columns.error;
 
-  const targetTableLabel = (targetTableId: string | null) =>
+  // undefined, not null: an orphaned relationship column omits targetTableId from the JSON entirely.
+  const targetTableLabel = (targetTableId: string | undefined) =>
     tables.data?.tables.find((t) => t.id === targetTableId)?.key ?? "…";
 
   const gridColumns: DataGridColumn<ColumnSchema>[] = [
