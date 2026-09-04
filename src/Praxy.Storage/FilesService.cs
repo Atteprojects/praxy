@@ -218,8 +218,8 @@ public sealed class FilesService(
     public async Task<StoredFile> RenameAsync(
         Bucket bucket, string fileId, string? name, string[] callerRoles, bool bypassPermissions, CancellationToken ct)
     {
-        RequireEnabled(bucket);
-        var file = await RequireFileAsync(bucket, fileId, PermissionStrings.Update, callerRoles, bypassPermissions, ct);
+        var file = await RequireFileAsync(
+            bucket, fileId, PermissionStrings.Update, callerRoles, bypassPermissions, ct, requireEnabled: true);
 
         if (name is not null)
             file.Name = ValidateName(name);
@@ -238,8 +238,8 @@ public sealed class FilesService(
     public async Task DeleteAsync(
         Bucket bucket, string fileId, string[] callerRoles, bool bypassPermissions, CancellationToken ct)
     {
-        RequireEnabled(bucket);
-        var file = await RequireFileAsync(bucket, fileId, PermissionStrings.Delete, callerRoles, bypassPermissions, ct);
+        var file = await RequireFileAsync(
+            bucket, fileId, PermissionStrings.Delete, callerRoles, bypassPermissions, ct, requireEnabled: true);
 
         // Captured before the row (and its permission rows, via ON DELETE CASCADE) disappear —
         // this is what makes the delete event authorizable to the same audience afterwards.
@@ -299,8 +299,8 @@ public sealed class FilesService(
         Bucket bucket, string fileId, string[] permissions, string[] callerRoles, bool bypassPermissions,
         CancellationToken ct)
     {
-        RequireEnabled(bucket);
-        var file = await RequireFileAsync(bucket, fileId, PermissionStrings.Update, callerRoles, bypassPermissions, ct);
+        var file = await RequireFileAsync(
+            bucket, fileId, PermissionStrings.Update, callerRoles, bypassPermissions, ct, requireEnabled: true);
         var parsed = ParsePermissions(bucket, permissions);
 
         file.UpdatedAt = DateTimeOffset.UtcNow;
@@ -353,14 +353,21 @@ public sealed class FilesService(
     /// Loads a file the caller may take <paramref name="action"/> on. A per-file miss is a 404
     /// rather than a 401 — the same answer a row the caller can't see gives, so the existence of
     /// someone else's file doesn't leak through the status code.
+    ///
+    /// <paramref name="requireEnabled"/> is checked *between* the bucket-level decision and the file
+    /// lookup, which is the order Phase 1's writes already used: a caller the bucket denies outright
+    /// gets the same 401 whatever state the bucket is in, and a permitted one gets the
+    /// bucket-disabled error before a missing file turns it into a 404.
     /// </summary>
     private async Task<StoredFile> RequireFileAsync(
         Bucket bucket, string fileId, string action, string[] callerRoles, bool bypassPermissions,
-        CancellationToken ct)
+        CancellationToken ct, bool requireEnabled = false)
     {
         var decision = await ResolveAsync(bucket, action, callerRoles, bypassPermissions, ct);
         if (decision == FileAccessDecision.Deny)
             throw Denied(action);
+        if (requireEnabled)
+            RequireEnabled(bucket);
 
         var file = await FindAsync(bucket, fileId, ct);
         if (decision == FileAccessDecision.PerFile && !await HasFileGrantAsync(file.Id, action, callerRoles, ct))

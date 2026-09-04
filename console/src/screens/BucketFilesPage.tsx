@@ -93,16 +93,6 @@ function FileRow({ projectId, bucketId, bucket, file, onOpenPermissions }: {
           <span className="font-mono text-[11px] text-ink-600" title="SHA-256, computed while the upload streamed">
             {file.checksum.slice(0, 12)}…
           </span>
-          {bucket.fileSecurity ? (
-            <span
-              className={`text-[11px] ${file.$permissions.length === 0 ? "text-amber-400" : "text-ink-600"}`}
-              title={file.$permissions.join(" · ") || "Only the bucket matrix can reach this file"}
-            >
-              {file.$permissions.length === 0
-                ? "no file grants"
-                : `${file.$permissions.length} file grant${file.$permissions.length === 1 ? "" : "s"}`}
-            </span>
-          ) : null}
         </div>
       </td>
       <td className="px-4 py-3 font-mono text-xs text-ink-400">{file.mimeType}</td>
@@ -122,12 +112,22 @@ function FileRow({ projectId, bucketId, bucket, file, onOpenPermissions }: {
         >
           {downloading ? <Spinner /> : "Download"}
         </button>{" "}
+        {/* The grant count rides on this button rather than sitting beside the name: a file with
+            none, in a bucket with file security on, is reachable only by whoever the bucket matrix
+            already covers — worth flagging in amber, not worth a column of its own. */}
         <button
           type="button"
-          className="btn-ghost border border-ink-700 px-2 py-1 text-xs"
+          className={`btn-ghost border border-ink-700 px-2 py-1 text-xs ${
+            bucket.fileSecurity && file.$permissions.length === 0 ? "text-amber-400" : ""
+          }`}
+          title={
+            bucket.fileSecurity
+              ? file.$permissions.join(" · ") || "No grants on this file"
+              : "File security is off — the bucket matrix governs every file"
+          }
           onClick={onOpenPermissions}
         >
-          Permissions
+          Permissions{bucket.fileSecurity ? ` · ${file.$permissions.length}` : ""}
         </button>{" "}
         <ConfirmButton
           label="Delete"
@@ -172,8 +172,10 @@ function FilePermissionsSheet({ projectId, bucketId, bucket, file, onClose }: {
     update.mutate(next);
   }
 
+  // `size="lg"`, like the row sheet: the role column carries a full `user:<id>` under the name, and
+  // at `md` the delete column falls off the edge into a horizontal scroll nobody notices.
   return (
-    <Sheet title={file.name} onClose={onClose}>
+    <Sheet title={file.name} size="lg" onClose={onClose}>
       {!bucket.fileSecurity ? (
         <p className="text-xs text-ink-500">
           File security is off on this bucket — the bucket permission matrix governs every file

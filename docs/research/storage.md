@@ -173,7 +173,8 @@ prefix rather than a new mechanism.
   no encryption at rest, no antivirus.
 - **Phase 2 — access control and serving**: per-file permissions (the row-security analogue, same
   opt-in flag + side table), HTTP Range, and *opt-in* inline serving with a safe-type allowlist.
-  Designed in full below; kickoff: `docs/handoff/storage-phase-2-prompt.md`.
+  Designed in full below. **Shipped 2026-09-04** — kickoff:
+  `docs/handoff/storage-phase-2-prompt.md`, report: `docs/handoff/storage-phase-2-report.md`.
 - **Phase 3 — image transforms**: on-the-fly resize/crop/format/quality with a cached derivative. This
   is the one Appwrite parity item in Storage that developers actually ask for by name, and it is its
   own design problem (which library, where derivatives live, how they're invalidated) rather than a

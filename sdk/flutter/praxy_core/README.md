@@ -52,11 +52,15 @@ print(execution.responseBody);
 // a role in the console (a 401 on a fresh bucket is expected, not a bug). The whole file
 // goes in one request; the server streams it into storage inside a single transaction, so a
 // failed or over-quota upload leaves nothing behind rather than a partial file.
+// On a bucket with file security on, `permissions` attaches the file's own grants (the
+// uploader's own user id, here) — additive on top of the bucket matrix, and never granted
+// automatically: pass them or nobody outside that matrix can reach the file.
 final stored = await px.storage.createFile(
   'bucket-id',
   name: 'avatar.png',
   bytes: await File('avatar.png').readAsBytes(),
   mimeType: 'image/png',
+  permissions: ['read("user:0195a1b2c3d4e5f6a7b8c9d0e1f2a3b4")'],
 );
 print('${stored.sizeBytes} bytes, sha256 ${stored.checksum}'); // checksum computed as it streamed
 final page2 = await px.storage.listFiles('bucket-id', limit: 25);
@@ -101,9 +105,11 @@ Errors are a sealed hierarchy rooted at `PraxyException` — `PraxyAuthException
 - **OAuth.** Google sign-in needs a browser-based redirect flow that's inherently platform-specific;
   `praxy_flutter`'s `PraxyOAuth` builds on this package's session/account primitives to provide it.
 - **Bucket management.** Creating buckets and editing their permission matrix is a console/operator
-  concern, the same line this package draws against schema management. Renaming a stored file is an
-  API route this package deliberately doesn't wrap yet; HTTP `Range` requests and image transforms
-  don't exist server-side (Storage Phase 2/3).
+  concern, the same line this package draws against schema management. Renaming a stored file, and
+  changing an existing file's grants (`PATCH /v1/storage/buckets/{id}/files/{id}/permissions`), are
+  API routes this package deliberately doesn't wrap yet. HTTP `Range` requests the server does now
+  honour — they're a transport concern, so use them through your own HTTP client if you need partial
+  reads. Image transforms don't exist server-side yet (Storage Phase 3).
 - **Codegen.** `TableRef`/`RowCodec` work with hand-written codecs; see
   [`praxy_codegen`](https://github.com/<your-fork-or-org>/praxy/tree/main/sdk/flutter/praxy_codegen)
   if you'd rather generate typed `Col<T>` column constants from your live schema.

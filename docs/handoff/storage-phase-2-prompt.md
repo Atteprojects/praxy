@@ -1,5 +1,7 @@
 # Session task — Storage, Phase 2 (access control and serving)
 
+> **Status: shipped.** 2026-09-04 — see `docs/handoff/storage-phase-2-report.md`.
+
 ## Why this exists
 
 Phase 1 shipped buckets, files, chunked bytes in Postgres, and bucket-level permissions. It is

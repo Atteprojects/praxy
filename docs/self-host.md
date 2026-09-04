@@ -470,6 +470,36 @@ but worth saying out loud since no other Praxy table churns at this volume — i
 bulk and want the disk back promptly, a manual `VACUUM (FULL) praxy.file_chunks` during a quiet
 window will do it (it takes an exclusive lock; plan accordingly).
 
+## Serving files inline
+
+**Every file download is a `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff`,
+unless a bucket has explicitly opted its type into inline serving.** That default is a security
+control, not an ergonomics choice, and it is worth understanding before you change it:
+
+- A file's stored MIME type is whatever `Content-Type` the *uploader* sent. A bucket accepts any
+  type by default, so a user can upload `text/html` and have it stored as `text/html`.
+- The console is served from the **same origin as the API**, and the operator session cookie is
+  `SameSite=Lax`. A script inside an uploaded HTML file, rendered on that origin, runs with your
+  console session — `HttpOnly` stops it *reading* the cookie, not from sending it.
+
+So a bucket's **Inline serving** list (Storage → a bucket → Settings) is intersected with a
+hard-coded allow-list of types that cannot execute — the images, media, `application/pdf` and
+`text/plain` the console offers you. **`text/html` and `image/svg+xml` are permanently excluded and
+not configurable**: SVG carries script, which is the same vulnerability with an extra step. The API
+refuses to store anything outside the allow-list, and the serve path checks it again, so shrinking
+the set in a future release takes effect immediately on buckets already configured. `nosniff` is sent
+on every response either way, inline included, so a browser cannot sniff its way from an allowed type
+back to a document.
+
+If you need to serve genuinely rich user content — anything that would want HTML — the answer is a
+**separate origin**, the way Praxy Sites already serves deployments, not a wider allow-list here. On
+a different origin a compromised asset cannot reach the console's cookies at all. That is a design
+decision rather than a setting today; `docs/research/storage.md` records what it would take.
+
+Range requests need no configuration: `Accept-Ranges: bytes` is advertised on every download, and a
+`Range` header is answered with a `206` whether or not the type is served inline. A partial response
+is still an attachment unless inline was opted in — the two are independent.
+
 ## Backup and restore
 
 Two things need backing up, because they live in different Postgres schemas and neither one alone is
