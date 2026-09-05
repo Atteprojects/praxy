@@ -15,6 +15,12 @@ public static partial class SiteRuntimeTemplates
 {
     public const int RuntimePort = 3000;
 
+    // security-review-phase-1: the runner stage previously ran as root (node:22-alpine's default).
+    // 65534:65534 (nobody/nogroup) is present in every base image's /etc/passwd, unlike a named
+    // user that isn't guaranteed to exist — same choice and same verification as
+    // Praxy.Functions.RuntimeTemplates.NonRootUser; see docs/handoff/security-review-phase-1-report.md.
+    private const string NonRootUser = "65534:65534";
+
     public static async Task<MemoryStream> BuildContextAsync(
         string rootDirectory, string baseImage, IReadOnlyCollection<string> envVarKeys, Stream userTar,
         CancellationToken ct)
@@ -144,7 +150,9 @@ public static partial class SiteRuntimeTemplates
             COPY --from=builder {appDir}/.next/standalone ./
             COPY --from=builder {appDir}/.next/static ./.next/static
             COPY --from=builder {appDir}/public ./public
+            RUN chown -R {NonRootUser} /app
             EXPOSE {RuntimePort}
+            USER {NonRootUser}
             CMD ["node", "server.js"]
             """;
     }

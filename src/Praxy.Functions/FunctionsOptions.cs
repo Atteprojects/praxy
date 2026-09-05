@@ -20,5 +20,9 @@ public sealed record FunctionsOptions(
     int PoolSweepIntervalSeconds = 30,
     long MemoryLimitMb = 256,
     double CpuLimit = 1.0,
+    // security-review-phase-1: a fork bomb was previously unbounded (verified live — a container
+    // with no PidsLimit can spawn processes until the *host* runs out of PIDs). 256 is generous for
+    // a single-request Node/Dart invocation, which normally holds a handful of processes at most.
+    int PidsLimit = 256,
     int MaxResponseCaptureBytes = 65536,
     long MaxSourceBytes = 26_214_400);

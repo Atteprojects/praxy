@@ -161,6 +161,18 @@ public sealed class DockerExecutor : IDisposable
             Memory = _options.MemoryLimitMb * 1024 * 1024,
             NanoCPUs = (long)(_options.CpuLimit * 1_000_000_000),
             AutoRemove = false,
+            // security-review-phase-1: previously unset entirely (verified live, both here and in
+            // SiteDockerExecutor — zero repo-wide matches for any of these before this fix).
+            // PidsLimit bounds a fork bomb (confirmed empirically: a container with no limit can
+            // fork until the *host* is out of PIDs, not just the container). CapDrop/SecurityOpt
+            // strip Linux capabilities and setuid-escalation the runtime never needs — verified
+            // against a real build of every runtime this executor runs (Node, Dart), non-root user
+            // included (RuntimeTemplates' generated Dockerfile now carries a USER directive; that's
+            // the container image's job, not HostConfig's) — before applying here, not assumed
+            // safe. ReadonlyRootfs is NOT set — see docs/handoff/security-review-phase-1-report.md for why.
+            PidsLimit = _options.PidsLimit,
+            CapDrop = ["ALL"],
+            SecurityOpt = ["no-new-privileges"],
         };
         NetworkingConfig? networkingConfig = null;
         if (attachToNetwork)

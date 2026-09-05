@@ -132,6 +132,14 @@ public sealed class SiteDockerExecutor : IDisposable
             NanoCPUs = (long)(_options.CpuLimit * 1_000_000_000),
             AutoRemove = false,
             RestartPolicy = new RestartPolicy { Name = RestartPolicyKind.UnlessStopped },
+            // security-review-phase-1: same fix and same reasoning as DockerExecutor's own
+            // HostConfig — see its comment. ReadonlyRootfs is deliberately NOT set here: a real
+            // Next.js standalone server was tested read-only with a tmpfs /tmp and served
+            // correctly, but ISR/image-optimization cache writes under .next/cache were not
+            // exercised by that test and are a plausible break — see docs/handoff/security-review-phase-1-report.md.
+            PidsLimit = _options.PidsLimit,
+            CapDrop = ["ALL"],
+            SecurityOpt = ["no-new-privileges"],
         };
         NetworkingConfig? networkingConfig = null;
         if (attachToNetwork)

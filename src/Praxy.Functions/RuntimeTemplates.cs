@@ -111,15 +111,31 @@ public static class RuntimeTemplates
         await writer.WriteEntryAsync(entry, ct);
     }
 
+    // security-review-phase-1: containers previously ran as whatever the base image defaults to —
+    // root, for both. `dart:3.13.0` (Debian-based) has no pre-made low-privilege application user,
+    // unlike node:22-alpine's built-in `node`, so both runtimes chown to the nobody/nogroup ids
+    // (65534:65534 — present in every base image's /etc/passwd, unlike a named user that isn't) and
+    // run as that. Verified end-to-end against a real build of each runtime (health check + an
+    // invocation) with this plus DockerExecutor's CapDrop/SecurityOpt/PidsLimit together before
+    // applying — see docs/handoff/security-review-phase-1-report.md.
+    private const string NonRootUser = "65534:65534";
+
     private static string Dockerfile(string runtime, string entrypoint, string baseImage) => runtime switch
     {
         FunctionRuntimes.Dart => $"""
             FROM {baseImage}
             WORKDIR /function
+            # dart pub get otherwise caches packages under root's own home directory
+            # (/root/.pub-cache), unreadable by the non-root USER below — found by actually running
+            # a pub-dependent function under that user, not assumed (see
+            # docs/handoff/security-review-phase-1-report.md).
+            ENV PUB_CACHE=/function/.pub-cache
             COPY . .
             RUN if [ -f pubspec.yaml ]; then dart pub get; fi
+            RUN chown -R {NonRootUser} /function
             ENV PRAXY_ENTRYPOINT={entrypoint}
             EXPOSE {RuntimePort}
+            USER {NonRootUser}
             CMD ["dart", "run", "_praxy_server.dart"]
             """,
         FunctionRuntimes.Node => $"""
@@ -127,8 +143,10 @@ public static class RuntimeTemplates
             WORKDIR /function
             COPY . .
             RUN if [ -f package.json ]; then npm install --omit=dev; fi
+            RUN chown -R {NonRootUser} /function
             ENV PRAXY_ENTRYPOINT={entrypoint}
             EXPOSE {RuntimePort}
+            USER {NonRootUser}
             CMD ["node", "_praxy_server.js"]
             """,
         _ => throw new ArgumentOutOfRangeException(nameof(runtime), runtime, "Unknown runtime."),

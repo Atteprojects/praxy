@@ -31,6 +31,11 @@ public sealed record SitesOptions(
     // default) undersells a real app.
     long MemoryLimitMb = 512,
     double CpuLimit = 1.0,
+    // security-review-phase-1: same rationale as FunctionsOptions.PidsLimit — a fork bomb was
+    // previously unbounded. A Next.js server process tree is a bit heavier than a Functions
+    // invocation (the standalone server itself plus any worker threads it spawns), so this
+    // defaults higher than Functions' 256.
+    int PidsLimit = 512,
     long MaxSourceBytes = 26_214_400,
     // How long a preview (non-active) deployment's container may sit with no proxied request
     // before SitePreviewSweeper stops it. Reference point, not a mandate, per

@@ -74,6 +74,7 @@ services:
       Praxy__Vcs__GitHub__WebhookSecret: ${PRAXY_VCS_GITHUB_WEBHOOKSECRET:-}
     networks:
       - default
+      - praxy-functions
       - praxy-sites
     ports:
       # PRAXY_BIND defaults to 0.0.0.0 (direct plain-HTTP access — the local/no-domain case).
@@ -122,10 +123,21 @@ volumes:
   praxy-caddy-config:
 
 networks:
-  # Named explicitly (not left to Compose's default `<project>_default` naming, whose separator
-  # varies by Compose version) so DockerExecutor has a fixed, documented value to join function
-  # containers to — see the api service's Praxy__Functions__DockerNetwork above.
+  # api/postgres/caddy's own network — Compose's default project-derived name (unlike the two
+  # below, nothing outside this file needs a fixed name for it).
+  #
+  # security-review-phase-1: this network used to *be* praxy-functions (`default: name:
+  # praxy-functions`), so every function container — attacker-authored code, joined to
+  # Praxy__Functions__DockerNetwork — shared a network with postgres. Confirmed live: attacker
+  # code could open a raw TCP connection straight to postgres:5432 (it would still need the
+  # password, but the network boundary that's supposed to hold when a credential leaks or a
+  # Postgres CVE lands wasn't there at all). Sites already had this right by accident
+  # (praxy-sites was always its own network with no database on it) — the fix makes Functions
+  # symmetric with Sites: its own dedicated network below, api joining both, postgres on neither.
   default:
+  # Functions' own network, separate from the api/postgres/caddy network above — see the api
+  # service's Praxy__Functions__DockerNetwork above and docs/self-host.md's Functions section.
+  praxy-functions:
     name: praxy-functions
   # Sites' own network, separate from Functions' — see the api service's Praxy__Sites__DockerNetwork
   # above and docs/self-host.md's Sites section.
