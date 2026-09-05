@@ -7,7 +7,14 @@ import '../models.dart';
 /// storage-amplification control, not an SDK-side detail to replicate — so a size
 /// above the top rung is rejected rather than clamped.
 final class FileTransform {
-  const FileTransform({this.width, this.height, this.format, this.quality, this.gravity});
+  const FileTransform({
+    this.width,
+    this.height,
+    this.format,
+    this.quality,
+    this.gravity,
+    this.background,
+  });
 
   final int? width;
   final int? height;
@@ -21,12 +28,22 @@ final class FileTransform {
   /// `bottom` | `bottom-right`. Has no effect without both dimensions.
   final String? gravity;
 
+  /// Six hex digits without `#` (e.g. `ffffff`) — what transparent pixels are flattened onto when the
+  /// output format has no alpha channel. Only `jpeg` is affected; `png` and `webp` keep their
+  /// transparency. Defaults to white.
+  ///
+  /// Unlike the other options, a custom background is **generated per request and not cached**: a
+  /// colour has 16.7M values and could otherwise be walked to fill the derivative cache. Expect CPU
+  /// cost per request rather than storage.
+  final String? background;
+
   Map<String, List<String>> toQuery() => {
     if (width != null) 'width': ['$width'],
     if (height != null) 'height': ['$height'],
     if (format != null) 'format': [format!],
     if (quality != null) 'quality': ['$quality'],
     if (gravity != null) 'gravity': [gravity!],
+    if (background != null) 'background': [background!],
   };
 }
 
