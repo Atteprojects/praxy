@@ -16,6 +16,38 @@ public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : 
     private readonly Dictionary<Guid, WarmEntry> _byDeployment = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
 
+    /// <summary>
+    /// Bounds how many *non-poolable* containers can exist at once. These never enter
+    /// <see cref="_byDeployment"/>, so <see cref="EvictOverflowAsync"/> never sees them and
+    /// <see cref="FunctionsOptions.WarmPoolSize"/> does not bound them — and since an invocation
+    /// triggered by an app user is always non-poolable (it carries that user's JWT), that is the
+    /// primary data-plane path, not an edge case. Without this, concurrent user-triggered
+    /// invocations spawn one container each: the functions rate limiter partitions per caller and
+    /// is a fixed window, so it bounds arrival rate, not concurrency.
+    ///
+    /// <para>Lives here, rather than in <c>FunctionExecutionService</c>, because this is the
+    /// singleton that owns container-count accounting — but it is reserved and released by that
+    /// service, whose <c>RunAsync</c> is the scope a slot is actually held for.</para>
+    /// </summary>
+    private readonly SemaphoreSlim _isolatedSlots =
+        new(options.MaxConcurrentIsolatedContainers, options.MaxConcurrentIsolatedContainers);
+
+    /// <summary>
+    /// Waits up to <see cref="FunctionsOptions.IsolatedContainerWaitSeconds"/> for capacity to run
+    /// one non-poolable container, smoothing a burst rather than failing at the boundary. Returns
+    /// false when the wait elapsed — the caller must surface that as a loud, retryable failure and
+    /// must NOT start a container. Every successful reservation must be paired with exactly one
+    /// <see cref="ReleaseIsolatedSlot"/>.
+    /// </summary>
+    public async Task<bool> TryReserveIsolatedSlotAsync(CancellationToken ct) =>
+        await _isolatedSlots.WaitAsync(TimeSpan.FromSeconds(options.IsolatedContainerWaitSeconds), ct);
+
+    /// <summary>Releases a slot taken by <see cref="TryReserveIsolatedSlotAsync"/>. Call in a <c>finally</c>, after the container is stopped.</summary>
+    public void ReleaseIsolatedSlot() => _isolatedSlots.Release();
+
+    /// <summary>Free non-poolable slots — for tests and diagnostics.</summary>
+    public int AvailableIsolatedSlots => _isolatedSlots.CurrentCount;
+
     /// <summary>Stops every warm container on shutdown — otherwise every restart leaks whatever was warm at the time, in dev and in production alike.</summary>
     public async ValueTask DisposeAsync()
     {
@@ -73,9 +105,27 @@ public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : 
         }
     }
 
+    /// <summary>
+    /// <paramref name="poolable"/> must be <see langword="false"/> whenever <paramref name="envVars"/>
+    /// carries a credential scoped to *this one invocation* — <c>PRAXY_FUNCTION_JWT</c>,
+    /// <c>PRAXY_FUNCTION_USER_ID</c>, or <c>PRAXY_FUNCTION_API_KEY</c>
+    /// (<c>FunctionExecutionService.BuildEnvAsync</c> decides). Env vars are baked into a container
+    /// at start and never updated again — a pooled container is reused by whichever invocation asks
+    /// for its deployment next, regardless of who that is. Before this flag existed, a container
+    /// cold-started for one app user's invocation (carrying that user's JWT in its process
+    /// environment) would sit in the pool and silently serve a *different* app user's — or a
+    /// schedule/event trigger's — next invocation of the same function with the first user's
+    /// credential still set (security-review-phase-1, finding: warm-pool credential reuse). A
+    /// non-poolable container is always cold-started fresh and never added to <see cref="_byDeployment"/>
+    /// — the caller must stop it after use (<see cref="FunctionExecutionService"/> does).
+    /// </summary>
     public async Task<RunningContainer> AcquireAsync(
-        Guid deploymentId, string imageTag, IReadOnlyDictionary<string, string> envVars, CancellationToken ct)
+        Guid deploymentId, string imageTag, IReadOnlyDictionary<string, string> envVars, CancellationToken ct,
+        bool poolable = true)
     {
+        if (!poolable)
+            return await docker.StartContainerAsync(imageTag, envVars, deploymentId.ToString(), ct);
+
         await _lock.WaitAsync(ct);
         try
         {

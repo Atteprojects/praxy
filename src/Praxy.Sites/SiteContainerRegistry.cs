@@ -30,6 +30,7 @@ public sealed class SiteContainerRegistry
 
     private readonly Dictionary<Guid, Entry> _byDeployment = [];
     private readonly Dictionary<Guid, SemaphoreSlim> _startGates = [];
+    private readonly Dictionary<string, SemaphoreSlim> _projectGates = [];
     private readonly object _lock = new();
 
     public void Set(Guid deploymentId, RunningSiteContainer container)
@@ -100,6 +101,52 @@ public sealed class SiteContainerRegistry
     {
         lock (_lock)
             return [.. _byDeployment.Keys];
+    }
+
+    /// <summary>
+    /// Serializes <em>preview cold starts within one project</em>, so the per-project preview quota
+    /// check and the registration that is supposed to satisfy it cannot interleave.
+    ///
+    /// <para>Without this, <c>QuotaService.EnsurePreviewQuotaAsync</c> reads
+    /// <see cref="TrackedDeploymentIds"/>, and only later does <see cref="StartOrJoinAsync"/> add the
+    /// new entry — so two concurrent cold starts for <em>different</em> deployments in the same
+    /// project both saw a count below the cap and both started (the TOCTOU the quota's own doc
+    /// comment recorded as accepted). An untrusted developer scripting concurrent preview requests
+    /// could push well past <c>MaxPreviewContainersPerProject</c>, spending host-wide Docker capacity
+    /// that isn't theirs.</para>
+    ///
+    /// <para><b>Lock ordering:</b> this gate is always taken <em>before</em> the per-deployment gate
+    /// in <see cref="StartOrJoinAsync"/>, never after. Nothing acquires them in the other order, so
+    /// the two cannot deadlock — keep it that way.</para>
+    ///
+    /// <para>Only cold starts serialize: the proxy's warm path (<see cref="TryGet"/>) never reaches
+    /// here, so an already-running preview is unaffected, and different projects never wait on each
+    /// other.</para>
+    /// </summary>
+    public async Task<IDisposable> EnterProjectColdStartAsync(string projectId, CancellationToken ct)
+    {
+        SemaphoreSlim gate;
+        lock (_lock)
+        {
+            if (!_projectGates.TryGetValue(projectId, out gate!))
+            {
+                gate = new SemaphoreSlim(1, 1);
+                _projectGates[projectId] = gate;
+            }
+        }
+
+        await gate.WaitAsync(ct);
+        return new GateReleaser(gate);
+    }
+
+    private sealed class GateReleaser(SemaphoreSlim gate) : IDisposable
+    {
+        private int _released;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+                gate.Release();
+        }
     }
 
     /// <summary>

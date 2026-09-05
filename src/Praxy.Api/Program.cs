@@ -189,6 +189,10 @@ try
         PoolSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Functions:PoolSweepIntervalSeconds", 30),
         MemoryLimitMb: builder.Configuration.GetValue("Praxy:Functions:MemoryLimitMb", 256L),
         CpuLimit: builder.Configuration.GetValue("Praxy:Functions:CpuLimit", 1.0),
+        PidsLimit: builder.Configuration.GetValue("Praxy:Functions:PidsLimit", 256),
+        TmpfsSizeMb: builder.Configuration.GetValue("Praxy:Functions:TmpfsSizeMb", 64),
+        MaxConcurrentIsolatedContainers: builder.Configuration.GetValue("Praxy:Functions:MaxConcurrentIsolatedContainers", 16),
+        IsolatedContainerWaitSeconds: builder.Configuration.GetValue("Praxy:Functions:IsolatedContainerWaitSeconds", 5),
         MaxResponseCaptureBytes: builder.Configuration.GetValue("Praxy:Functions:MaxResponseCaptureBytes", 65536),
         MaxSourceBytes: builder.Configuration.GetValue("Praxy:Functions:MaxSourceBytes", 26_214_400L));
     builder.Services.AddSingleton(functionsOptions);
@@ -257,6 +261,8 @@ try
         ReconcileIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:ReconcileIntervalSeconds", 60),
         MemoryLimitMb: builder.Configuration.GetValue("Praxy:Sites:MemoryLimitMb", 512L),
         CpuLimit: builder.Configuration.GetValue("Praxy:Sites:CpuLimit", 1.0),
+        TmpfsSizeMb: builder.Configuration.GetValue("Praxy:Sites:TmpfsSizeMb", 256),
+        PidsLimit: builder.Configuration.GetValue("Praxy:Sites:PidsLimit", 512),
         MaxSourceBytes: builder.Configuration.GetValue("Praxy:Sites:MaxSourceBytes", 26_214_400L),
         PreviewIdleSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewIdleSeconds", 600),
         PreviewSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewSweepIntervalSeconds", 60),

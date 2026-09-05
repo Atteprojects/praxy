@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Praxy.Vcs;
 
@@ -13,9 +14,19 @@ public sealed record GitHubPushEvent(
 
 public sealed class GitHubPushPayloadException(string message) : Exception(message);
 
-public static class GitHubPushEventParser
+public static partial class GitHubPushEventParser
 {
     private const string BranchRefPrefix = "refs/heads/";
+
+    // security-review-phase-1: GitCliRepositoryCloner passes this straight to `git fetch origin
+    // <commitSha>` via ArgumentList (no shell, so no shell injection) — but a value starting with
+    // `-` would still be parsed by git as an *option* to fetch, not a ref (option injection). A
+    // real GitHub push payload's "after" field is always the actual resulting commit hash, which
+    // can't start with `-`, and this endpoint only accepts requests signed with the instance's own
+    // webhook secret (GitHubWebhookSignature.Verify) — so this is defense-in-depth against a
+    // forged or malformed payload, not a fix for a demonstrated exploit path.
+    [GeneratedRegex("^[0-9a-fA-F]{7,40}$")]
+    private static partial Regex CommitShaPattern();
 
     /// <summary>Throws <see cref="GitHubPushPayloadException"/> for anything not shaped like a real GitHub push payload.</summary>
     public static GitHubPushEvent Parse(ReadOnlySpan<byte> rawBody)
@@ -40,6 +51,8 @@ public static class GitHubPushEventParser
             if (repositoryFullName is null || refValue is null || commitSha is null)
                 throw new GitHubPushPayloadException(
                     "Push payload is missing one of repository.full_name, ref, or after.");
+            if (!CommitShaPattern().IsMatch(commitSha))
+                throw new GitHubPushPayloadException("Push payload's 'after' is not a valid commit SHA.");
 
             var commitMessage = root.TryGetProperty("head_commit", out var headCommit)
                 && headCommit.ValueKind == JsonValueKind.Object

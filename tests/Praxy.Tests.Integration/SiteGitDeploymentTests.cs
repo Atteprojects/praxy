@@ -82,10 +82,10 @@ public class SiteGitDeploymentTests(PostgresContainerFixture pg) : AuthTestBase(
         await ConnectGitHubAsync("acme/website", ["main", "preview"]);
         await ConnectRepositoryAsync(operatorToken, projectId, siteId, "acme/website", "main");
 
-        var response = await PostWebhookAsync(BuildPushPayload("acme/website", "main", "commit-1", "Ship it"));
+        var response = await PostWebhookAsync(BuildPushPayload("acme/website", "main", "c0000001", "Ship it"));
         Assert.Equal(204, (int)response.StatusCode);
 
-        var deployment = await FindDeploymentByCommitAsync(operatorToken, projectId, siteId, "commit-1");
+        var deployment = await FindDeploymentByCommitAsync(operatorToken, projectId, siteId, "c0000001");
         Assert.Equal("git", deployment.GetProperty("source").GetString());
         Assert.Equal("main", deployment.GetProperty("branch").GetString());
         Assert.Equal("Ship it", deployment.GetProperty("commitMessage").GetString());
@@ -103,15 +103,15 @@ public class SiteGitDeploymentTests(PostgresContainerFixture pg) : AuthTestBase(
         await ConnectRepositoryAsync(operatorToken, projectId, siteId, "acme/website", "main");
 
         // A production push first, so there's a real active deployment to prove stays untouched.
-        await PostWebhookAsync(BuildPushPayload("acme/website", "main", "commit-prod", "Prod"));
-        var prod = await FindDeploymentByCommitAsync(operatorToken, projectId, siteId, "commit-prod");
+        await PostWebhookAsync(BuildPushPayload("acme/website", "main", "c0000002", "Prod"));
+        var prod = await FindDeploymentByCommitAsync(operatorToken, projectId, siteId, "c0000002");
         var activeBefore = prod.GetProperty("id").GetString()!;
         await WaitForSiteActiveAsync(operatorToken, projectId, siteId, activeBefore);
 
-        var response = await PostWebhookAsync(BuildPushPayload("acme/website", "preview", "commit-preview", "Try this"));
+        var response = await PostWebhookAsync(BuildPushPayload("acme/website", "preview", "c0000003", "Try this"));
         Assert.Equal(204, (int)response.StatusCode);
 
-        var preview = await FindDeploymentByCommitAsync(operatorToken, projectId, siteId, "commit-preview");
+        var preview = await FindDeploymentByCommitAsync(operatorToken, projectId, siteId, "c0000003");
         var previewId = preview.GetProperty("id").GetString()!;
         var finishedPreview = await WaitForDeploymentFinishedAsync(operatorToken, projectId, siteId, previewId);
         Assert.Equal("ready", finishedPreview.GetProperty("status").GetString());
@@ -138,7 +138,7 @@ public class SiteGitDeploymentTests(PostgresContainerFixture pg) : AuthTestBase(
         await ConnectGitHubAsync("acme/website", ["main"]);
         await ConnectRepositoryAsync(operatorToken, projectId, siteId, "acme/website", "main");
 
-        var payload = BuildPushPayload("acme/website", "main", "unsigned-commit", "Nope");
+        var payload = BuildPushPayload("acme/website", "main", "c0000004", "Nope");
 
         var unsigned = await PostWebhookAsync(payload, signatureHeader: null);
         Assert.Equal(401, (int)unsigned.StatusCode);
@@ -161,7 +161,7 @@ public class SiteGitDeploymentTests(PostgresContainerFixture pg) : AuthTestBase(
         await ConnectGitHubAsync("acme/website", ["main"]);
         await ConnectRepositoryAsync(operatorToken, projectId, siteId, "acme/website", "main");
 
-        var response = await PostWebhookAsync(BuildPushPayload("someone-else/unrelated", "main", "commit-x", "Not us"));
+        var response = await PostWebhookAsync(BuildPushPayload("someone-else/unrelated", "main", "c0000005", "Not us"));
         Assert.Equal(204, (int)response.StatusCode);
 
         var deployments = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,

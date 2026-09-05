@@ -132,6 +132,31 @@ public sealed class SiteDockerExecutor : IDisposable
             NanoCPUs = (long)(_options.CpuLimit * 1_000_000_000),
             AutoRemove = false,
             RestartPolicy = new RestartPolicy { Name = RestartPolicyKind.UnlessStopped },
+            // security-review-phase-1: same fix and same reasoning as DockerExecutor's own
+            // HostConfig — see its comment. ReadonlyRootfs is deliberately NOT set here: a real
+            // Next.js standalone server was tested read-only with a tmpfs /tmp and served
+            // correctly, but ISR/image-optimization cache writes under .next/cache were not
+            // exercised by that test and are a plausible break — see docs/handoff/security-review-phase-1-report.md.
+            PidsLimit = _options.PidsLimit,
+            CapDrop = ["ALL"],
+            SecurityOpt = ["no-new-privileges"],
+            // security-review-phase-1 follow-up (finding F): same reasoning as DockerExecutor —
+            // Docker has no portable per-container disk quota, so the writable layer is removed
+            // rather than measured. Next.js standalone is the reason this needs two mounts rather
+            // than one: /tmp for the usual things, and .next/cache because ISR revalidation and the
+            // image optimizer write their caches there at *runtime*. Getting that second mount
+            // wrong is what made ReadonlyRootfs look infeasible in the first pass — verified here
+            // against a site that actually exercises both, not a static page.
+            ReadonlyRootfs = true,
+            Tmpfs = new Dictionary<string, string>
+            {
+                // The container runs as 65534 (SiteRuntimeTemplates' USER directive) and a tmpfs
+                // mount defaults to root-owned — /tmp gets the usual sticky world-writable mode,
+                // and .next/cache is owned outright by the runtime user, since Next.js creates
+                // subdirectories under it rather than just files.
+                ["/tmp"] = $"rw,nosuid,nodev,mode=1777,size={_options.TmpfsSizeMb}m",
+                ["/app/.next/cache"] = $"rw,nosuid,nodev,uid=65534,gid=65534,size={_options.TmpfsSizeMb}m",
+            },
         };
         NetworkingConfig? networkingConfig = null;
         if (attachToNetwork)
@@ -226,6 +251,35 @@ public sealed class SiteDockerExecutor : IDisposable
                 // Not warm yet (connection refused, container still booting) — keep polling.
             }
             await Task.Delay(TimeSpan.FromMilliseconds(200), linked.Token);
+        }
+    }
+
+
+    /// <summary>
+    /// The repo digest an image reference actually resolved to, or <c>null</c> if it can't be read.
+    ///
+    /// <para>security-review-phase-1 follow-up (finding E): base images are pinned by <em>tag</em>
+    /// (<c>node:22-alpine</c>), which floats within its line. Digest-pinning the default was
+    /// considered and rejected — with no auto-update mechanism it would freeze every self-hoster on
+    /// one Node build until they bumped it by hand, trading silent drift for silently missing
+    /// security patches, which is the worse failure. What was actually wrong was that the drift was
+    /// <em>invisible</em>: nothing recorded which image a deployment was built against, so "did this
+    /// build pick up a new base?" was unanswerable after the fact. Recording the digest in the build
+    /// log makes it answerable, and an operator who does want a frozen base can set
+    /// <c>Praxy:Sites:NodeBaseImage</c> to a
+    /// <c>name@sha256:...</c> reference — that already works, and is now documented.</para>
+    /// </summary>
+    public async Task<string?> TryResolveImageDigestAsync(string imageRef, CancellationToken ct)
+    {
+        try
+        {
+            var image = await _client.Images.InspectImageAsync(imageRef, ct);
+            return image.RepoDigests is { Count: > 0 } digests ? digests[0] : image.ID;
+        }
+        catch
+        {
+            // Best-effort provenance, never a build failure.
+            return null;
         }
     }
 

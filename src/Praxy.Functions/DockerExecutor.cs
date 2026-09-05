@@ -161,6 +161,33 @@ public sealed class DockerExecutor : IDisposable
             Memory = _options.MemoryLimitMb * 1024 * 1024,
             NanoCPUs = (long)(_options.CpuLimit * 1_000_000_000),
             AutoRemove = false,
+            // security-review-phase-1: previously unset entirely (verified live, both here and in
+            // SiteDockerExecutor — zero repo-wide matches for any of these before this fix).
+            // PidsLimit bounds a fork bomb (confirmed empirically: a container with no limit can
+            // fork until the *host* is out of PIDs, not just the container). CapDrop/SecurityOpt
+            // strip Linux capabilities and setuid-escalation the runtime never needs — verified
+            // against a real build of every runtime this executor runs (Node, Dart), non-root user
+            // included (RuntimeTemplates' generated Dockerfile now carries a USER directive; that's
+            // the container image's job, not HostConfig's) — before applying here, not assumed
+            // safe. ReadonlyRootfs is NOT set — see docs/handoff/security-review-phase-1-report.md for why.
+            PidsLimit = _options.PidsLimit,
+            CapDrop = ["ALL"],
+            SecurityOpt = ["no-new-privileges"],
+            // security-review-phase-1 follow-up (finding F): Docker has no portable per-container
+            // disk quota — --storage-opt size= needs devicemapper, or overlay2 on XFS with pquota,
+            // neither of which a self-host installer can assume. So the writable layer is removed
+            // instead of measured: the rootfs is read-only and the one writable path is a
+            // size-capped, RAM-backed tmpfs. A function that writes in a loop fills that and gets
+            // ENOSPC; it cannot touch the host's shared disk, which is what Postgres and every
+            // other container are living on.
+            ReadonlyRootfs = true,
+            Tmpfs = new Dictionary<string, string>
+            {
+                // mode=1777 explicitly: the container runs as 65534 (RuntimeTemplates' USER
+                // directive) and a tmpfs mount defaults to root-owned, so without this the one
+                // writable path is unwritable by the process that needs it.
+                ["/tmp"] = $"rw,nosuid,nodev,mode=1777,size={_options.TmpfsSizeMb}m",
+            },
         };
         NetworkingConfig? networkingConfig = null;
         if (attachToNetwork)
@@ -296,6 +323,77 @@ public sealed class DockerExecutor : IDisposable
                 : [],
             parsed?["logs"]?.GetValue<string>() ?? "",
             string.IsNullOrEmpty(parsed?["errors"]?.GetValue<string>()) ? null : parsed!["errors"]!.GetValue<string>());
+    }
+
+    /// <summary>
+    /// Removes every container this executor has ever started that is still around at startup.
+    ///
+    /// <para>No function container is meant to outlive the api process: <see cref="WarmPool"/>
+    /// stops the pooled ones on graceful shutdown, and <c>FunctionExecutionService</c> stops each
+    /// non-poolable one in its own <c>finally</c>. So anything still labelled
+    /// <c>praxy.function=true</c> when we start is an orphan from a hard crash (SIGKILL, OOM, host
+    /// reboot) — holding its memory and CPU reservation forever, invisible to the pool that would
+    /// otherwise reclaim it. The label was already being written for exactly this kind of
+    /// bookkeeping; nothing read it until now.</para>
+    ///
+    /// <para><b>Deliberately not the same for Sites.</b> A site container is *designed* to outlive
+    /// the api process (<c>RestartPolicy: unless-stopped</c>, adopted again by
+    /// <c>SiteContainerRegistry</c>/<c>SiteReconciler</c>), so sweeping <c>praxy.site=true</c> the
+    /// same way would take every hosted site down on restart. The asymmetry is intentional.</para>
+    ///
+    /// <para><b>Assumes one api process per Docker daemon</b>, which is what
+    /// <c>deploy/docker-compose.yml</c> runs and what <see cref="WarmPool"/>'s in-memory tracking
+    /// already requires. A second replica sharing this daemon would sweep the first's live
+    /// containers — if Praxy ever supports multiple api instances, this needs an instance id in the
+    /// label, not removal.</para>
+    /// </summary>
+
+    /// <summary>
+    /// The repo digest an image reference actually resolved to, or <c>null</c> if it can't be read.
+    ///
+    /// <para>security-review-phase-1 follow-up (finding E): base images are pinned by <em>tag</em>
+    /// (<c>node:22-alpine</c>), which floats within its line. Digest-pinning the default was
+    /// considered and rejected — with no auto-update mechanism it would freeze every self-hoster on
+    /// one Node build until they bumped it by hand, trading silent drift for silently missing
+    /// security patches, which is the worse failure. What was actually wrong was that the drift was
+    /// <em>invisible</em>: nothing recorded which image a deployment was built against, so "did this
+    /// build pick up a new base?" was unanswerable after the fact. Recording the digest in the build
+    /// log makes it answerable, and an operator who does want a frozen base can set
+    /// <c>Praxy:Functions:NodeBaseImage</c> (or the Dart/Sites equivalent) to a
+    /// <c>name@sha256:...</c> reference — that already works, and is now documented.</para>
+    /// </summary>
+    public async Task<string?> TryResolveImageDigestAsync(string imageRef, CancellationToken ct)
+    {
+        try
+        {
+            var image = await _client.Images.InspectImageAsync(imageRef, ct);
+            return image.RepoDigests is { Count: > 0 } digests ? digests[0] : image.ID;
+        }
+        catch
+        {
+            // Best-effort provenance, never a build failure.
+            return null;
+        }
+    }
+
+    public async Task<int> RemoveOrphanedContainersAsync(CancellationToken ct)
+    {
+        var orphans = await _client.Containers.ListContainersAsync(new ContainersListParameters
+        {
+            All = true,
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["label"] = new Dictionary<string, bool> { ["praxy.function=true"] = true },
+            },
+        }, ct);
+
+        var removed = 0;
+        foreach (var orphan in orphans)
+        {
+            await StopAndRemoveAsync(orphan.ID, ct);
+            removed++;
+        }
+        return removed;
     }
 
     public async Task StopAndRemoveAsync(string containerId, CancellationToken ct)

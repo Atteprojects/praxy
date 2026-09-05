@@ -500,7 +500,9 @@ Phased by **threat surface, not by subsystem**, because Functions and Sites buil
 `HostConfig` blocks and splitting them across sessions would mean making the same isolation decisions
 twice with drift between them:
 
-- **Phase 1 — the container boundary** (Functions + Sites) — the Docker execution seam: `HostConfig`
+- **Phase 1 — the container boundary — shipped 2026-09-05** (kickoff:
+  `docs/handoff/security-review-phase-1-prompt.md`; report:
+  `docs/handoff/security-review-phase-1-report.md`) (Functions + Sites) — the Docker execution seam: `HostConfig`
   hardening applied consistently to both executors, network topology, what lands in a container's
   environment, resource limits, egress, and the image-build path as a supply-chain surface. **Runs
   first** — the only surface where untrusted *code* executes. Two findings are already verified and

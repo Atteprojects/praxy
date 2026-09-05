@@ -139,10 +139,16 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
     /// Sites Phase 2: caps concurrent on-demand preview containers per project. Checked on the
     /// request path (a cold preview start), not against a durable counter table like every other
     /// dimension here — <paramref name="currentlyTrackedDeploymentIds"/> is <c>SiteContainerRegistry</c>'s
-    /// own in-memory snapshot at call time, so this is a best-effort check: two concurrent cold
-    /// starts for different deployments in the same project can both pass before either registers,
-    /// the same small race every soft resource guard in this codebase (e.g. WarmPool eviction)
-    /// accepts rather than serializing the whole request path over it.
+    /// own in-memory snapshot at call time.
+    ///
+    /// <para><b>This used to be best-effort</b> — two concurrent cold starts for different
+    /// deployments in the same project could both pass before either registered. That race is now
+    /// closed by the <em>caller</em>, not here: <c>SiteProxyMiddleware</c> holds
+    /// <c>SiteContainerRegistry.EnterProjectColdStartAsync</c> across this check and the
+    /// registration that satisfies it, so the count this reads cannot go stale underneath it. This
+    /// method still assumes nothing about locking itself — it is the caller's job to hold that gate,
+    /// and any future caller that starts a preview container must do the same or the cap goes soft
+    /// again (security-review-phase-1, finding H).</para>
     /// </summary>
     public async Task EnsurePreviewQuotaAsync(
         string projectId, IReadOnlyCollection<Guid> currentlyTrackedDeploymentIds, CancellationToken ct)

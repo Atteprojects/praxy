@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Praxy.Auth;
 using Praxy.Core;
+using Praxy.Core.Errors;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
 
@@ -52,10 +53,44 @@ public sealed class FunctionExecutionService(
         var timeoutSeconds = execution.Async ? fn.TimeoutSeconds : Math.Min(fn.TimeoutSeconds, options.MaxSyncTimeoutSeconds);
         var wasWarm = pool.IsWarm(deploymentId);
 
+        // security-review-phase-1: a container carrying an invocation-scoped credential
+        // (PRAXY_FUNCTION_JWT/USER_ID for a specific app user, or PRAXY_FUNCTION_API_KEY for a
+        // scoped schedule/event trigger — see BuildEnvAsync) must never be handed to a later
+        // invocation that didn't ask for that credential. WarmPool bakes env into the container at
+        // start and never updates it, so pooling one of these would silently leak the first
+        // invocation's identity to every later invocation of the same deployment that happens to
+        // land on the still-warm container. poolable: false always cold-starts and is never added
+        // to the pool; this method stops it itself once the invocation is done.
+        var identityScoped = env.ContainsKey("PRAXY_FUNCTION_JWT") || env.ContainsKey("PRAXY_FUNCTION_API_KEY");
+
+        // security-review-phase-1 follow-up: reserve capacity BEFORE the try. A non-poolable
+        // container is outside WarmPoolSize's accounting entirely, so without this cap concurrent
+        // user-triggered invocations spawn one container each, bounded by nothing (the functions
+        // rate limiter is a per-caller fixed window — it bounds arrival rate, not concurrency).
+        // Deliberately outside the try: the broad catch below turns every *execution* failure into
+        // a recorded row and a 200 with status "failed", which is the wrong shape for "the server
+        // never started this" — that has to reach the caller as a retryable 503. The row is still
+        // finalized first, so this method keeps its "must always reach a final status" invariant.
+        var reservedSlot = false;
+        if (identityScoped)
+        {
+            reservedSlot = await pool.TryReserveIsolatedSlotAsync(ct);
+            if (!reservedSlot)
+            {
+                await FinalizeAsync(execution.Id, deploymentId, "failed", 0, "", "", 0, false,
+                    "No isolated container capacity available.", CancellationToken.None);
+                throw new PraxyException(
+                    503, ErrorTypes.FunctionCapacityExceeded,
+                    "The server is at capacity for isolated function containers. Retry shortly.",
+                    retryAfterSeconds: options.IsolatedContainerWaitSeconds);
+            }
+        }
+
         var sw = Stopwatch.StartNew();
+        RunningContainer? container = null;
         try
         {
-            var container = await pool.AcquireAsync(deploymentId, deployment.ImageTag, env, ct);
+            container = await pool.AcquireAsync(deploymentId, deployment.ImageTag, env, ct, poolable: !identityScoped);
             var result = await docker.InvokeAsync(
                 container, execution.Method, execution.Path, execution.RequestBody ?? "",
                 new Dictionary<string, string>(), TimeSpan.FromSeconds(timeoutSeconds), ct);
@@ -77,6 +112,15 @@ public sealed class FunctionExecutionService(
             sw.Stop();
             await FinalizeAsync(execution.Id, deploymentId, "failed", 0, "", "", (int)sw.ElapsedMilliseconds, !wasWarm,
                 ex.Message, CancellationToken.None);
+        }
+        finally
+        {
+            if (identityScoped && container is not null)
+                await docker.StopAndRemoveAsync(container.ContainerId, CancellationToken.None);
+            // Released only after the container is actually gone — releasing earlier would let the
+            // next invocation start one while this one is still holding its memory/CPU.
+            if (reservedSlot)
+                pool.ReleaseIsolatedSlot();
         }
     }
 

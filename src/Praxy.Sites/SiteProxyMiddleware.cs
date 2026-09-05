@@ -123,6 +123,14 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
                     return;
                 }
 
+                // security-review-phase-1 follow-up (finding H): the quota check and the
+                // registration that satisfies it have to be one atomic step, or two concurrent cold
+                // starts for different deployments in the same project both pass it. Held until
+                // StartOrJoinAsync has registered the new container, and always taken before the
+                // per-deployment gate inside it — see EnterProjectColdStartAsync's lock-ordering note.
+                using var projectGate = await registry.EnterProjectColdStartAsync(
+                    site.ProjectId, ctx.RequestAborted);
+
                 try
                 {
                     await quotas.EnsurePreviewQuotaAsync(

@@ -20,6 +20,8 @@ public sealed class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorH
             if (ctx.Response.HasStarted)
                 throw;
             ctx.Response.StatusCode = ex.Code;
+            if (ex.RetryAfterSeconds is { } retryAfter)
+                ctx.Response.Headers.RetryAfter = retryAfter.ToString();
             await ctx.Response.WriteAsJsonAsync(
                 ErrorEnvelope.Create(ctx, ex.Code, ex.Type, ex.Message, ex.Fields));
         }

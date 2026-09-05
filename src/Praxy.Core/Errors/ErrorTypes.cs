@@ -86,6 +86,10 @@ public static class ErrorTypes
     public const string FunctionExecutionFailed = "function_execution_failed";
     public const string FunctionGitRepositoryInvalid = "function_git_repository_invalid";
     public const string FunctionTemplateNotFound = "function_template_not_found";
+    // security-review-phase-1 follow-up: the server is out of isolated-container capacity, not
+    // the caller out of rate-limit budget — a distinct 503 so an SDK can back off and retry rather
+    // than treat it as the caller's own fault the way general_rate_limit_exceeded implies.
+    public const string FunctionCapacityExceeded = "function_capacity_exceeded";
 
     public const string BucketNotFound = "bucket_not_found";
     public const string BucketAlreadyExists = "bucket_already_exists";
@@ -199,6 +203,7 @@ public static class ErrorTypes
         FunctionExecutionFailed,
         FunctionGitRepositoryInvalid,
         FunctionTemplateNotFound,
+        FunctionCapacityExceeded,
         BucketNotFound,
         BucketAlreadyExists,
         BucketDisabled,
