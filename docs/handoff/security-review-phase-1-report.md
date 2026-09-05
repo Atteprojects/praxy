@@ -71,7 +71,13 @@ network praxy-functions was found but has incorrect label com.docker.compose.net
 ```
 
 The instance is left running, unchanged, on the old topology — this fails safe, not partially. The
-correct upgrade is `docker compose down && docker compose up -d --build`, verified end to end
+correct upgrade turned out to need a third step — **`docker network rm praxy-functions` between the
+`down` and the `up`**, found running this deploy against praxycore.dev after this report was first
+written. `down` does not remove that network: Compose resolves networks by their
+`com.docker.compose.network` label, the surviving one still carries the old `default` value, and the
+new file declares that name under a new key — so `down` skips it and leaves exactly the stale,
+mislabelled network that makes the next `up` fail. `docs/self-host.md` carries the corrected
+three-step sequence. The rest was verified end to end
 including a warm function container attached to the old network at the moment of shutdown: `WarmPool`
 stops every warm container when `api` shuts down, so nothing is left stranded blocking the network's
 removal, and the new topology comes up cleanly with existing projects/functions/images intact. A
