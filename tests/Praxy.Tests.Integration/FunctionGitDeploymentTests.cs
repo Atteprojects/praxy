@@ -50,10 +50,10 @@ public class FunctionGitDeploymentTests(PostgresContainerFixture pg) : AuthTestB
         await ConnectGitHubAsync("acme/greeter-fn", ["main", "preview"]);
         await ConnectRepositoryAsync(operatorToken, projectId, functionId, "acme/greeter-fn", "main");
 
-        var response = await PostWebhookAsync(BuildPushPayload("acme/greeter-fn", "main", "commit-1", "Ship it"));
+        var response = await PostWebhookAsync(BuildPushPayload("acme/greeter-fn", "main", "c0000001", "Ship it"));
         Assert.Equal(204, (int)response.StatusCode);
 
-        var deployment = await FindDeploymentByCommitAsync(operatorToken, projectId, functionId, "commit-1");
+        var deployment = await FindDeploymentByCommitAsync(operatorToken, projectId, functionId, "c0000001");
         Assert.Equal("git", deployment.GetProperty("source").GetString());
         Assert.Equal("main", deployment.GetProperty("branch").GetString());
         Assert.Equal("Ship it", deployment.GetProperty("commitMessage").GetString());
@@ -71,15 +71,15 @@ public class FunctionGitDeploymentTests(PostgresContainerFixture pg) : AuthTestB
         await ConnectRepositoryAsync(operatorToken, projectId, functionId, "acme/greeter-fn", "main");
 
         // A production push first, so there's a real active deployment to prove stays untouched.
-        await PostWebhookAsync(BuildPushPayload("acme/greeter-fn", "main", "commit-prod", "Prod"));
-        var prod = await FindDeploymentByCommitAsync(operatorToken, projectId, functionId, "commit-prod");
+        await PostWebhookAsync(BuildPushPayload("acme/greeter-fn", "main", "c0000002", "Prod"));
+        var prod = await FindDeploymentByCommitAsync(operatorToken, projectId, functionId, "c0000002");
         var activeBefore = prod.GetProperty("id").GetString()!;
         await WaitForFunctionActiveAsync(operatorToken, projectId, functionId, activeBefore);
 
-        var response = await PostWebhookAsync(BuildPushPayload("acme/greeter-fn", "preview", "commit-preview", "Try this"));
+        var response = await PostWebhookAsync(BuildPushPayload("acme/greeter-fn", "preview", "c0000003", "Try this"));
         Assert.Equal(204, (int)response.StatusCode);
 
-        var preview = await FindDeploymentByCommitAsync(operatorToken, projectId, functionId, "commit-preview");
+        var preview = await FindDeploymentByCommitAsync(operatorToken, projectId, functionId, "c0000003");
         var previewId = preview.GetProperty("id").GetString()!;
         var finishedPreview = await WaitForDeploymentFinishedAsync(operatorToken, projectId, functionId, previewId);
         Assert.Equal("ready", finishedPreview.GetProperty("status").GetString());
@@ -101,7 +101,7 @@ public class FunctionGitDeploymentTests(PostgresContainerFixture pg) : AuthTestB
         await ConnectGitHubAsync("acme/greeter-fn", ["main"]);
         await ConnectRepositoryAsync(operatorToken, projectId, functionId, "acme/greeter-fn", "main");
 
-        var payload = BuildPushPayload("acme/greeter-fn", "main", "unsigned-commit", "Nope");
+        var payload = BuildPushPayload("acme/greeter-fn", "main", "c0000004", "Nope");
 
         var unsigned = await PostWebhookAsync(payload, signatureHeader: null);
         Assert.Equal(401, (int)unsigned.StatusCode);
@@ -124,7 +124,7 @@ public class FunctionGitDeploymentTests(PostgresContainerFixture pg) : AuthTestB
         await ConnectGitHubAsync("acme/greeter-fn", ["main"]);
         await ConnectRepositoryAsync(operatorToken, projectId, functionId, "acme/greeter-fn", "main");
 
-        var response = await PostWebhookAsync(BuildPushPayload("someone-else/unrelated", "main", "commit-x", "Not us"));
+        var response = await PostWebhookAsync(BuildPushPayload("someone-else/unrelated", "main", "c0000005", "Not us"));
         Assert.Equal(204, (int)response.StatusCode);
 
         var deployments = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,
@@ -148,13 +148,13 @@ public class FunctionGitDeploymentTests(PostgresContainerFixture pg) : AuthTestB
         await ConnectRepositoryAsync(operatorToken, projectId, functionId, "acme/monorepo", "main");
         await ConnectSiteRepositoryAsync(operatorToken, projectId, siteId, "acme/monorepo", "site-main");
 
-        var response = await PostWebhookAsync(BuildPushPayload("acme/monorepo", "main", "commit-both", "Touch both"));
+        var response = await PostWebhookAsync(BuildPushPayload("acme/monorepo", "main", "c0000006", "Touch both"));
         Assert.Equal(204, (int)response.StatusCode);
 
         var fnDeployments = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,
             $"/v1/console/projects/{projectId}/functions/{functionId}/deployments", operatorToken)));
         Assert.Equal(1, fnDeployments.GetProperty("total").GetInt32());
-        Assert.Equal("commit-both",
+        Assert.Equal("c0000006",
             fnDeployments.GetProperty("deployments")[0].GetProperty("commitSha").GetString());
 
         // The site's production branch ("site-main") didn't match this push's branch ("main"), but a
@@ -163,7 +163,7 @@ public class FunctionGitDeploymentTests(PostgresContainerFixture pg) : AuthTestB
         var siteDeployments = await ReadJson(await Client.SendAsync(Authed(HttpMethod.Get,
             $"/v1/console/projects/{projectId}/sites/{siteId}/deployments", operatorToken)));
         Assert.Equal(1, siteDeployments.GetProperty("total").GetInt32());
-        Assert.Equal("commit-both",
+        Assert.Equal("c0000006",
             siteDeployments.GetProperty("deployments")[0].GetProperty("commitSha").GetString());
     }
 
