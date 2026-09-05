@@ -473,6 +473,61 @@ must be bounded into the cache key or dropped for a fixed white flatten.
 **Explicitly out of scope for the whole sequence**: CDN integration, signed time-limited URLs, antivirus
 scanning.
 
+## Security review (post-v0.1.0 initiative)
+
+**Not a feature initiative.** An adversarial read of the three subsystems that turn untrusted network
+input into something the host acts on — Storage (bytes served over HTTP with a caller-chosen MIME type
+and filename), Sites (an attacker-authored app on an attacker-influenced hostname, proxied by the API),
+and Functions (attacker-authored **code**, built and run against a root-equivalent Docker socket).
+Tables/Auth/Realtime/Messaging are out of scope: they had Phase 9's hardening pass and are covered by
+`tests/Praxy.LoadTests`. These three were all built after v0.1.0 and have never had a dedicated pass.
+
+The case for it is the Storage sequence's own defect record (2026-09-03 → 09-05): a stored XSS
+introduced by a *design document* rather than an implementation slip, a production crash, three
+physical-naming 500s, two transform bugs found only by comparing against Appwrite on a running
+instance, and a flaky test. **The suite caught none of them**, and the XSS could not have been caught
+by tests at all — it was a design defect, faithfully implemented.
+
+Two actors, and rating each finding under **both** is the point: an **anonymous network caller**, and a
+**project developer** — who today is the owner and people they trust, since `CLAUDE.md` defers
+multitenancy. A finding that is harmless under one trusted operator but critical the moment a second
+untrusted developer shares an instance is not "low"; it is a **multitenancy prerequisite**, recorded as
+one, because that is the class of defect that silently blocks a future feature. A host-root attacker is
+explicitly *not* in scope — the compose file already concedes that boundary in writing; mapping what
+else becomes reachable because of it is what this reviews.
+
+Phased by **threat surface, not by subsystem**, because Functions and Sites build near-identical
+`HostConfig` blocks and splitting them across sessions would mean making the same isolation decisions
+twice with drift between them:
+
+- **Phase 1 — the container boundary** (Functions + Sites) — the Docker execution seam: `HostConfig`
+  hardening applied consistently to both executors, network topology, what lands in a container's
+  environment, resource limits, egress, and the image-build path as a supply-chain surface. **Runs
+  first** — the only surface where untrusted *code* executes. Two findings are already verified and
+  waiting for it: function containers share a Docker network with the Postgres container (Compose's
+  `default` is renamed `praxy-functions`, and `postgres` joins `default` — confirmed live; Sites' own
+  network has no database on it, so the asymmetry is accidental, not designed), and neither executor
+  sets `PidsLimit`, `CapDrop`, `SecurityOpt`, `ReadonlyRootfs` or `User` — zero repo-wide matches for
+  any of them.
+- **Phase 2 — the HTTP edge** (Storage + the Sites proxy) — the derivative/transform path (the newest
+  storage code, post-dating the XSS fix), `ByteRanges` arithmetic, `SiteProxyMiddleware`'s header and
+  host handling, `SiteHostPattern` and the `_ask-tls` endpoint sharing it, preview-URL enumeration, and
+  whether `site_requests` logging can be poisoned. Storage's download edge is already well defended —
+  `ContentDisposition`, `InlineTypes`' two gates, unconditional `nosniff` — so the job there is
+  verification, not discovery.
+- **Phase 3 — authorization and project isolation** (all three) — the permission model itself: Storage's
+  additive bucket/per-file grants, the scope and lifetime of a function's minted credentials, and
+  whether project isolation holds at *every* entry point, including the ones that bypass the normal API
+  surface (the proxy, the webhook endpoint, the schedulers and workers).
+
+A review phase produces **findings, not features**, so it is judged differently: every finding is
+recorded whether or not it is fixed (attack, impact, severity under both actor models, fix or explicit
+acceptance); **not everything gets fixed**, because a review that tries to becomes a rewrite; every fix
+carries a regression test, since untested security fixes come back and the missing tests are the whole
+reason this exists; and no new features. Design: `docs/research/security-review.md`.
+
+---
+
 ---
 
 ## Rules that hold across every phase
