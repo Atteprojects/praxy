@@ -446,8 +446,12 @@ unchanged, and no second authorization concept is introduced.
   per-file permissions are **additive, not restrictive**, exactly like row security — a bucket-level
   `read("any")` grant means everyone reads every file, so "users only read their own uploads" means
   granting no bucket read at all. Design: the "Phase 2" section of `docs/research/storage.md`.
-- **Phase 3 — image transforms** (scoped, undesigned): on-the-fly resize/crop/format with cached
-  derivatives. The one Storage feature developers ask for by name, and its own design problem.
+- **Phase 3 — designed 2026-09-04** (kickoff: `docs/handoff/storage-phase-3-prompt.md`) — on-the-fly
+  resize/crop/format/quality with cached derivatives. Two decisions worth knowing without opening the
+  design: **SkiaSharp, not ImageSharp** — ImageSharp's v4 build-time licence enforcement would land on
+  every self-hoster's `docker compose up --build`; and **requested dimensions snap up to a fixed
+  ladder** (64/128/256/512/1024/2048), because arbitrary `?width=` plus a cache is a
+  storage-amplification vector. Design: the "Phase 3" section of `docs/research/storage.md`.
 
 **Explicitly out of scope for the whole sequence**: CDN integration, signed time-limited URLs, antivirus
 scanning.
