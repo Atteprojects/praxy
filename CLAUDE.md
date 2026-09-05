@@ -173,7 +173,21 @@ Filled in as phases land — keep this section current.
   automatic, nothing to configure. Also fixed: a warm function container could carry one app user's
   `PRAXY_FUNCTION_JWT`/`PRAXY_FUNCTION_USER_ID` into a *different* user's later invocation of the same
   function (`WarmPool` never updates a reused container's env) — any invocation carrying an
-  invocation-scoped credential is now never pooled.
+  invocation-scoped credential is now never pooled. Because that means every app-user-triggered
+  invocation gets its own container, how many may run at once is capped by
+  `Praxy:Functions:MaxConcurrentIsolatedContainers` (16) with a
+  `Praxy:Functions:IsolatedContainerWaitSeconds` (5) wait, then `503 function_capacity_exceeded` +
+  `Retry-After` — without that cap a single signed-up app user can drive the host out of memory,
+  since `WarmPoolSize` does not bound non-pooled containers. Follow-up review of that phase also
+  closed its four accepted risks: containers now run **read-only-rootfs with size-capped tmpfs**
+  (`Praxy:Functions:TmpfsSizeMb` 64 / `Praxy:Sites:TmpfsSizeMb` 256 — sites need `/app/.next/cache`
+  too, for ISR and the image optimizer), which is the portable stand-in for the per-container disk
+  quota Docker can't give; the **preview-container quota race** is closed by holding
+  `SiteContainerRegistry.EnterProjectColdStartAsync` across the check and the registration (**always
+  take that gate before the per-deployment one** — the two would otherwise deadlock); **egress stays
+  allowed** but is now a documented one-line `internal: true` switch in the compose file; and every
+  build log records the **resolved base-image digest**, since tag drift was invisible rather than
+  wrong (digest-pinning the default would freeze security patches on a product with no auto-update).
 
 ## Session end — handoff protocol
 
