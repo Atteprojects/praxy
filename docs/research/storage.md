@@ -175,10 +175,8 @@ prefix rather than a new mechanism.
   opt-in flag + side table), HTTP Range, and *opt-in* inline serving with a safe-type allowlist.
   Designed in full below. **Shipped 2026-09-04** — kickoff:
   `docs/handoff/storage-phase-2-prompt.md`, report: `docs/handoff/storage-phase-2-report.md`.
-- **Phase 3 — image transforms**: on-the-fly resize/crop/format/quality with a cached derivative. This
-  is the one Appwrite parity item in Storage that developers actually ask for by name, and it is its
-  own design problem (which library, where derivatives live, how they're invalidated) rather than a
-  slice of Phase 1.
+- **Phase 3 — image transforms**: on-the-fly resize/crop/format/quality with a cached derivative.
+  Designed in full below; kickoff: `docs/handoff/storage-phase-3-prompt.md`.
 
 **Explicitly out of scope for the whole sequence**: a CDN integration, signed time-limited URLs, and
 antivirus scanning. Each is a legitimate future initiative; none is needed for Storage to be useful.
@@ -288,6 +286,89 @@ non-issue structurally — a compromised inline asset cannot reach the console's
 subdomain machinery already exists and is proven. It is more moving parts (DNS, a second Caddy block,
 CORS for the SDKs), which is why it is raised here rather than assumed; if inline serving is expected
 to carry anything richer than a thumbnail, it is the right answer.
+
+## Phase 3 — designed 2026-09-04
+
+On-the-fly resize/crop/format/quality, the one Storage feature developers ask for by name. Three
+questions had to be settled before any of it: which library, where derivatives live, and how the URL
+space is bounded. The third turned out to matter most and is the one an implementation is most likely
+to get wrong.
+
+### The library: SkiaSharp, and the reason is operational rather than technical
+
+**ImageSharp is the obvious .NET answer and it is the wrong one here.** Since June 2022 it ships under
+the Six Labors Split License: open-source consumers and businesses under $1M revenue stay on Apache-2.0,
+which Praxy itself qualifies for. That is not the problem. **v4.0.0 added build-time licence
+enforcement requiring a `sixlabors.lic` file to compile a project that depends on it** — and Praxy's
+self-host path is `docker compose up --build`, which builds the API from source on the operator's own
+machine. That enforcement would land on *every self-hoster's build*, not just ours. The alternative is
+pinning v3.x forever and forgoing security updates on an image decoder, which is precisely the
+component you least want frozen.
+
+**SkiaSharp is MIT**, with no commercial tier and no build-time enforcement, and
+`SkiaSharp.NativeAssets.Linux.NoDependencies` ships a `libSkiaSharp.so` built without third-party
+dependencies — **fontconfig included in what it does not need**, because this feature renders no text.
+So it needs no `apt-get` line in the Dockerfile. The runtime image is `dotnet/aspnet:10.0`, which is
+Debian/glibc, so the ordinary Linux native assets apply; only the console build stage is Alpine, and it
+never touches this code.
+
+**The honest trade, stated rather than buried:** ImageSharp is fully managed, so a malformed-image bug
+is a .NET exception. Skia is C++, so the same bug is potentially memory corruption — and every byte it
+decodes is attacker-supplied. Skia is among the most heavily fuzzed codebases in existence (it is
+Chrome's graphics engine), which is real mitigation but not a guarantee. The limits in "Bounding the
+damage" below are what actually contains this, and they would be needed with either library.
+
+Per `CLAUDE.md`, the exact version goes through `docs/research/dotnet-stack.md`'s verify-and-pin
+discipline; this doc deliberately does not name one.
+
+### Bounding the URL space — the part that is easy to get wrong
+
+A transform URL like `?width=237` is a **storage-amplification vector** the moment derivatives are
+cached: an attacker walks `width=1..2000` against one public image and creates two thousand cached
+derivatives from a single source. Appwrite accepts arbitrary dimensions; Praxy should not.
+
+**Requested dimensions snap up to a fixed ladder** — 64, 128, 256, 512, 1024, 2048 — so `?width=237`
+is served by the 256-wide derivative. The key space per source file is therefore small and fixed, the
+cache cannot be walked, and callers still get "about this big" without needing to know the ladder.
+Anything above the top rung is rejected rather than silently clamped, because silently returning a
+smaller image than asked for is the kind of surprise that costs an afternoon to debug.
+
+This also disposes of the quota interaction cleanly: derivatives count against
+`MaxStorageBytesPerProject` like any other bytes, and a bounded ladder means that total is predictable
+rather than attacker-controlled.
+
+### Where derivatives live
+
+**As ordinary files in the same chunk store**, in a `file_derivatives` table keyed by
+`(file_id, width, height, format, quality)` and pointing at their own chunk rows. Same `IFileStore`
+seam, same streaming read, same backup story — no new storage concept, and the "PostgreSQL only" rule
+holds without an exception.
+
+Invalidation falls out of the schema rather than needing a sweeper: the FK to `files` is
+`ON DELETE CASCADE`, so deleting a source drops its derivatives and their bytes in one statement, and
+**re-uploading over a file id must purge its derivatives explicitly** — that is the one case the
+database will not do for you, and the one most likely to ship as a stale-thumbnail bug.
+
+### What it inherits from Phases 1 and 2, and must not weaken
+
+- **Permissions are the source file's.** A derivative is a representation of that file, not a
+  separate resource with its own grants. It resolves through exactly the same `FileAccessRules`
+  escalation — no second check, no bypass for "it's just a thumbnail".
+- **`nosniff` on every response, and the attachment default still holds.** A transform's output type is
+  server-chosen (the encoder's), not the uploader's, which makes it *safer* than the source — but
+  inline still requires the bucket to have opted that type in. A transform endpoint that quietly serves
+  inline because "images are safe" reopens Phase 1's hole through a side door.
+- **Only decode types the transform pipeline claims to support**, and validate the decoded dimensions
+  *before* allocating the output. A 100×100 JPEG that decodes to 30,000×30,000 is a decompression bomb;
+  the ladder caps the output but the *source* needs its own pixel ceiling, checked after header parse
+  and before the full decode.
+
+### Deliberately out of scope
+
+No animated-GIF or video thumbnailing, no smart/face-aware cropping, no SVG rasterisation (it is
+excluded from inline serving for the same reason it should not be decoded), and no CDN. Each is a
+separate initiative, and the first three all widen the decoder attack surface for a feature nobody has
+asked for yet.
 
 ## Verification
 
