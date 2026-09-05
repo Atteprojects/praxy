@@ -1,5 +1,9 @@
 # Session task — Storage transforms: two bugs and a crop anchor
 
+> **Status: shipped.** 2026-09-04 — see `docs/handoff/storage-transform-gravity-report.md`. One
+> deviation from scope: `?background=` was dropped in favor of a fixed white flatten (the prompt's own
+> sanctioned fallback) — see the report's "Deviations" section.
+
 ## Why this exists
 
 Storage Phase 3 shipped image transforms (`?width=`/`?height=`/`?format=`/`?quality=`). Comparing the
