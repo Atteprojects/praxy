@@ -60,7 +60,9 @@ public sealed class ImageTransformer(StorageOptions options)
                 // Skia's own default (black) leaks through — surprising for exactly the
                 // transparent-logo case transforms are asked to thumbnail. png/webp both support
                 // alpha, so they pass through untouched.
-                using var flattened = format == SKEncodedImageFormat.Jpeg ? FlattenOntoWhite(transformed) : null;
+                using var flattened = ImageTransforms.FlattensAlpha(key.Format)
+                    ? FlattenOnto(transformed, BackgroundColor(key.Background))
+                    : null;
                 var toEncode = flattened ?? transformed;
                 // Quality's sentinel (0, for lossless png) has no meaning to the encoder itself; Skia's
                 // own quality parameter is only consulted for lossy formats, so 100 there is inert, not
@@ -104,20 +106,33 @@ public sealed class ImageTransformer(StorageOptions options)
     }
 
     /// <summary>
-    /// Composites <paramref name="source"/> over an opaque white canvas the same size — the default
-    /// flatten for a format with no alpha channel of its own. <see cref="SKCanvas.DrawBitmap"/>'s
-    /// default paint blends with the normal source-over rule, so a fully transparent pixel becomes
-    /// pure white and a partially transparent one blends proportionally, exactly like flattening in
-    /// an image editor.
+    /// Composites <paramref name="source"/> over an opaque canvas of <paramref name="background"/>,
+    /// the same size — the flatten for a format with no alpha channel of its own.
+    /// <see cref="SKCanvas.DrawBitmap"/>'s default paint blends with the normal source-over rule, so
+    /// a fully transparent pixel becomes the background exactly and a partially transparent one
+    /// blends proportionally, like flattening in an image editor.
     /// </summary>
-    private static SKBitmap FlattenOntoWhite(SKBitmap source)
+    private static SKBitmap FlattenOnto(SKBitmap source, SKColor background)
     {
         var flattened = new SKBitmap(source.Width, source.Height, SKColorType.Rgb888x, SKAlphaType.Opaque);
         using var canvas = new SKCanvas(flattened);
-        canvas.Clear(SKColors.White);
+        canvas.Clear(background);
         canvas.DrawBitmap(source, 0, 0, Sampling);
         return flattened;
     }
+
+    /// <summary>
+    /// White unless the caller asked otherwise. <see cref="DerivativeKey.Background"/> is already
+    /// validated as six hex digits by <see cref="ImageTransforms"/>, so this parses rather than
+    /// re-validates — a malformed value became a 400 long before reaching the encoder.
+    /// </summary>
+    private static SKColor BackgroundColor(string? background) =>
+        background is null
+            ? SKColors.White
+            : new SKColor(
+                Convert.ToByte(background[..2], 16),
+                Convert.ToByte(background.Substring(2, 2), 16),
+                Convert.ToByte(background.Substring(4, 2), 16));
 
     /// <summary>
     /// Undoes the EXIF orientation tag by drawing <paramref name="source"/> through the matrix that

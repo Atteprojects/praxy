@@ -38,7 +38,7 @@ internal static class StorageTransfer
         return new TransformRequest(
             ParseInt("width", query["width"]), ParseInt("height", query["height"]),
             query["format"].FirstOrDefault(), ParseInt("quality", query["quality"]),
-            query["gravity"].FirstOrDefault());
+            query["gravity"].FirstOrDefault(), query["background"].FirstOrDefault());
     }
 
     private static int? ParseInt(string paramName, Microsoft.Extensions.Primitives.StringValues values)

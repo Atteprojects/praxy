@@ -157,6 +157,60 @@ public class StorageDerivativesTests(PostgresContainerFixture pg) : AuthTestBase
         AssertColorClose(SKColors.White, bitmap.GetPixel(90, 50), tolerance: 15);
     }
 
+    /// <summary>
+    /// The caller-settable half of bug #1: an explicit background reaches the encoder, and a
+    /// transparent source lands on it rather than on the white default.
+    /// </summary>
+    [Fact]
+    public async Task An_explicit_background_is_used_instead_of_the_white_default()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fileId = await UploadFileAsync(ctx, EncodeHalfTransparentPng(100, 100), "image/png", "logo.png");
+
+        var response = await DownloadAsync(ctx, fileId, "?format=jpeg&background=ff0000");
+        Assert.Equal(200, (int)response.StatusCode);
+        var bitmap = DecodeBitmap(await response.Content.ReadAsByteArrayAsync());
+
+        AssertColorClose(SKColors.Blue, bitmap.GetPixel(10, 50), tolerance: 40);
+        // The transparent half now carries the requested red, not white and not Skia's black.
+        AssertColorClose(SKColors.Red, bitmap.GetPixel(90, 50), tolerance: 20);
+    }
+
+    /// <summary>
+    /// <b>The security property the parameter is shaped around.</b> A color has 16.7M values, so it
+    /// can never join the stored key the way ladder-bounded dimensions do — a walked
+    /// <c>?background=</c> has to cost zero rows. Asserting the derivative count rather than timing is
+    /// what makes that checkable: three distinct custom backgrounds, still only the one row the
+    /// default request created.
+    /// </summary>
+    [Fact]
+    public async Task Custom_backgrounds_are_generated_per_request_and_never_cached()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fileId = await UploadFileAsync(ctx, EncodeHalfTransparentPng(100, 100), "image/png", "logo.png");
+
+        // The default (no ?background=) is cacheable and creates exactly one row.
+        Assert.Equal(200, (int)(await DownloadAsync(ctx, fileId, "?format=jpeg")).StatusCode);
+        var afterDefault = await ScalarAsync("SELECT count(*) FROM praxy.file_derivatives");
+        Assert.Equal(1L, afterDefault);
+
+        foreach (var hex in new[] { "ff0000", "00ff00", "0000ff" })
+            Assert.Equal(200, (int)(await DownloadAsync(ctx, fileId, $"?format=jpeg&background={hex}")).StatusCode);
+
+        // Still one: every custom background was served from memory.
+        Assert.Equal(afterDefault, await ScalarAsync("SELECT count(*) FROM praxy.file_derivatives"));
+    }
+
+    [Fact]
+    public async Task A_malformed_background_is_rejected_rather_than_ignored()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fileId = await UploadFileAsync(ctx, EncodeHalfTransparentPng(100, 100), "image/png", "logo.png");
+
+        var response = await DownloadAsync(ctx, fileId, "?format=jpeg&background=%23ffffff");
+        await AssertError(response, 400, ErrorTypes.FileTransformInvalid);
+    }
+
     /// <summary>Feature #3: cropping a portrait source to a square keeps the requested edge instead of always centering.</summary>
     [Fact]
     public async Task A_gravity_top_crop_of_a_tall_source_keeps_the_top_not_the_middle()

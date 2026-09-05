@@ -1,9 +1,11 @@
 # Storage transforms: two bugs and a crop anchor — report
 
-**Status: complete.** Every item in
-`docs/handoff/storage-transform-gravity-prompt.md`'s scope shipped except `?background=` (see
-"Deviations" — the fallback the prompt itself sanctioned). Targeted `dotnet test` green: **604/604
-unit, 10/10 `StorageDerivativesTests`, 4/4 `OpenApiDocumentTests`** (real Postgres via Testcontainers).
+**Status: complete.** Every item in `docs/handoff/storage-transform-gravity-prompt.md`'s scope
+shipped. `?background=` was initially dropped for the fixed white flatten the prompt sanctioned, then
+implemented during owner review as a cache-bypassing parameter — see
+"[`background`](#background--dropped-by-the-follow-up-then-implemented-in-review)" for why that keeps
+it settable without touching the stored key space. Targeted `dotnet test` green: **610/610 unit,
+13/13 `StorageDerivativesTests`, 4/4 `OpenApiDocumentTests`** (real Postgres via Testcontainers).
 Console `tsc --noEmit` and `npm run build --prefix console` clean. `@praxy/core` (`npm test -w
 packages/core`): 81/81. Flutter `praxy_core` (`dart test praxy_core`): 80/80, `dart analyze .` clean
 (pre-existing, unrelated `praxy_flutter` lints only).
@@ -67,32 +69,39 @@ and to Flutter's `FileTransform` (`sdk/flutter/praxy_core/lib/src/services/stora
 threaded into the download URL's query string exactly like the four existing parameters. One test added
 per SDK confirming the new parameter is sent.
 
-## Deviations: `background` was dropped, not bounded
+## `background` — dropped by the follow-up, then implemented in review
 
-Item 4 asked for `?background=` (a short hex color, folded into the derivative key, rejected on
-malformed input). **It was not implemented.** The prompt itself flagged this as the likely outcome and
-explicitly sanctioned it: "if bounding it proves awkward, shipping only a fixed white flatten is a
-perfectly good outcome." Bounding turned out to be more than awkward — it's the one parameter of the
-three that genuinely can't be bounded the way `gravity` was, for a reason specific to what it is:
+The follow-up shipped everything except `?background=`, taking the prompt's own escape hatch ("if
+bounding it proves awkward, shipping only a fixed white flatten is a perfectly good outcome") and
+arguing the case well: `gravity` is acceptable as a cache-key dimension because it is *inherently* a
+closed set of nine physically meaningful anchors, whereas any colour enum small enough to bound the
+key is too small to be the feature. It also identified the way out — generate non-default backgrounds
+uncached — and correctly declined to invent that unprompted.
 
-- `gravity` is acceptable as a free cache-key dimension because it's *inherently* a small closed set —
-  nine physically meaningful anchors, no more exist to add.
-- `background` is a color. Bounding it to a small enum (say, `white`/`black`/`transparent`) would
-  satisfy "bounded" but not "settable" — the entire point of the parameter, per the prompt's own
-  framing ("take Appwrite's lead by making it settable"), is that a caller picks *their* brand's exact
-  hex. Any enum small enough to bound the key space is too small to be the feature being asked for.
-- The only way to keep an arbitrary hex genuinely settable *and* bounded would be to stop caching
-  non-default backgrounds — generate them on the fly, uncached, so a walked `?background=000001..FFFFFF`
-  produces zero new rows instead of up to 16.7 million. That's a real, coherent design, but it's a
-  second code path (a cache-bypass branch in `DerivativesService.ResolveAsync`) and a different feature
-  from what item 4 literally describes ("folded into the derivative key") — inventing it wasn't this
-  follow-up's call to make unprompted, and the prompt's own escape hatch was to ship the fixed flatten
-  instead and say so here.
+**The owner asked for it, so it was implemented in review, along exactly those lines.**
 
-So: **background is fixed white, not a parameter.** Bug #1 is fully fixed (transparent → white, not
-black); the "or the requested colour" half of feature request is the one piece of the prompt not done.
-If a caller-chosen background becomes a real ask later, the uncached-generation approach above is the
-starting point.
+`?background=RRGGBB` is now settable with any of the 16.7M values, and a request carrying one
+**bypasses the cache entirely**: it is transformed, served from memory, and no row is written. The
+stored key space is therefore byte-for-byte what it was before the parameter existed, which is the
+property `DimensionLadder` exists to protect — a walked `?background=000001..FFFFFF` costs zero rows,
+not up to 16.7 million.
+
+Three details worth stating because each was a choice:
+
+- **A background is normalized away for png and webp.** Both carry their own alpha, so a background
+  changes nothing about the output while making the request uncacheable for no benefit — the same
+  normalization `gravity` already gets when it cannot have an effect. Only jpeg keeps it.
+- **`#` is rejected, not accepted-and-stripped.** A `#` needs percent-encoding in a query string, and
+  accepting both spellings would make two requests for one colour.
+- **Nothing is written, so nothing counts against the storage quota** on this path. The cost moves
+  from rows to CPU: a repeated request with a custom background re-encodes every time. That is the
+  right trade while custom backgrounds are the rare case. If one becomes hot, the fix is a per-file
+  derivative cap that admits the first few and generates the rest uncached — not unbounding the key.
+
+Coverage: 6 new unit cases (valid hex kept and lowercased, four malformed shapes rejected as 400,
+dropped for alpha-keeping formats, cacheable-vs-not) and 3 integration tests, including one that
+asserts **three distinct custom backgrounds leave the derivative row count unchanged** — the security
+property, checked by row count rather than timing, the same way the existing cache-hit test is.
 
 ## Tests
 

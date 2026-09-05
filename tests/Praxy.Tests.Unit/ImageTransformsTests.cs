@@ -211,4 +211,64 @@ public class ImageTransformsTests
         Assert.Equal(expectedLeft, left);
         Assert.Equal(expectedTop, top);
     }
+
+    // ---- background (caller-settable, deliberately uncached) ----------------------------------
+
+    [Theory]
+    [InlineData("ffffff")]
+    [InlineData("000000")]
+    [InlineData("1A2b3C")]
+    public void A_valid_hex_background_is_kept_and_lowercased(string hex)
+    {
+        var key = ImageTransforms.Resolve(
+            new TransformRequest(256, null, "jpeg", null, null, hex), "image/png", 800, 600);
+        Assert.Equal(hex.ToLowerInvariant(), key.Background);
+    }
+
+    [Theory]
+    [InlineData("#ffffff")]   // '#' would need percent-encoding; accepting both spellings would make two requests for one colour
+    [InlineData("fff")]       // shorthand deliberately not accepted
+    [InlineData("gggggg")]
+    [InlineData("ffffff00")]
+    public void A_malformed_background_is_a_clean_400(string hex)
+    {
+        var ex = Assert.Throws<PraxyException>(() => ImageTransforms.Resolve(
+            new TransformRequest(256, null, "jpeg", null, null, hex), "image/png", 800, 600));
+        Assert.Equal(400, ex.Code);
+        Assert.Equal(ErrorTypes.FileTransformInvalid, ex.Type);
+    }
+
+    /// <summary>
+    /// png and webp carry their own alpha, so a background changes nothing about the output — keeping
+    /// it would make the request uncacheable for no benefit. Same normalization gravity already gets
+    /// when it cannot have an effect.
+    /// </summary>
+    [Theory]
+    [InlineData("png")]
+    [InlineData("webp")]
+    public void A_background_is_dropped_for_a_format_that_keeps_alpha(string format)
+    {
+        var key = ImageTransforms.Resolve(
+            new TransformRequest(256, null, format, null, null, "ff0000"), "image/png", 800, 600);
+        Assert.Null(key.Background);
+        Assert.True(key.IsCacheable);
+    }
+
+    /// <summary>
+    /// The security property this parameter is shaped around: a colour has 16.7M values, so it can
+    /// never join the stored key the way the ladder-bounded dimensions do. Settable *and* bounded is
+    /// achieved by not caching it at all.
+    /// </summary>
+    [Fact]
+    public void A_custom_background_makes_the_key_uncacheable_while_the_default_stays_cacheable()
+    {
+        var custom = ImageTransforms.Resolve(
+            new TransformRequest(256, null, "jpeg", null, null, "ff0000"), "image/png", 800, 600);
+        var defaulted = ImageTransforms.Resolve(
+            new TransformRequest(256, null, "jpeg", null, null, null), "image/png", 800, 600);
+
+        Assert.False(custom.IsCacheable);
+        Assert.True(defaulted.IsCacheable);
+        Assert.Null(defaulted.Background);
+    }
 }

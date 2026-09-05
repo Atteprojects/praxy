@@ -3,7 +3,7 @@ using Praxy.Core.Errors;
 namespace Praxy.Storage;
 
 /// <summary>What a caller asked for on the download endpoint's <c>?width=/?height=/?format=/?quality=/?gravity=</c>. Raw, unvalidated — <see cref="ImageTransforms.Resolve"/> is where these become a <see cref="DerivativeKey"/> or a rejection.</summary>
-public readonly record struct TransformRequest(int? Width, int? Height, string? Format, int? Quality, string? Gravity = null)
+public readonly record struct TransformRequest(int? Width, int? Height, string? Format, int? Quality, string? Gravity = null, string? Background = null)
 {
     /// <summary>
     /// With none present the endpoint behaves exactly as it does today, including Range — a
@@ -26,9 +26,31 @@ public readonly record struct TransformRequest(int? Width, int? Height, string? 
 /// silently defeat the <c>(file_id, width, height, format, quality, gravity)</c> uniqueness this key
 /// exists to provide for exactly the format that needs it least dropped.
 /// </summary>
-public readonly record struct DerivativeKey(int Width, int Height, string Format, int Quality, bool Crop, string Gravity = "center")
+public readonly record struct DerivativeKey(
+    int Width, int Height, string Format, int Quality, bool Crop, string Gravity = "center",
+    string? Background = null)
 {
     public string MimeType => ImageTransforms.MimeTypeFor(Format);
+
+    /// <summary>
+    /// <b>A custom background is generated per request and never stored.</b> Every other component of
+    /// this key is drawn from a small closed set — six ladder rungs, three formats, 1-100 quality,
+    /// nine gravities — so the rows one source file can accumulate are bounded by construction. A
+    /// color is not: 16.7 million values would let <c>?background=000001..FFFFFF</c> walk the cache
+    /// exactly the way <c>?width=</c> could before <see cref="DimensionLadder"/> existed, which is
+    /// the storage-amplification vector this whole design exists to close
+    /// (docs/research/storage.md).
+    ///
+    /// <para>
+    /// Bypassing the cache keeps the parameter genuinely settable — any hex, not a token enum — while
+    /// leaving the stored key space byte-for-byte what it was before it existed. The cost is real and
+    /// deliberate: a repeated request with a custom background re-encodes every time. That is the
+    /// right trade while custom backgrounds are the rare case; if one becomes hot, the fix is a
+    /// per-file derivative cap that admits the first few and generates the rest uncached, not
+    /// unbounding the key.
+    /// </para>
+    /// </summary>
+    public bool IsCacheable => Background is null;
 }
 
 /// <summary>
@@ -79,7 +101,8 @@ public static class ImageTransforms
         var quality = NormalizeQuality(request.Quality, format);
         var (width, height, crop) = ResolveDimensions(request.Width, request.Height, sourceWidth, sourceHeight);
         var gravity = NormalizeGravity(request.Gravity, crop);
-        return new DerivativeKey(width, height, format, quality, crop, gravity);
+        var background = NormalizeBackground(request.Background, format);
+        return new DerivativeKey(width, height, format, quality, crop, gravity, background);
     }
 
     public static string MimeTypeFor(string format) => FormatMimeTypes[format];
@@ -99,6 +122,34 @@ public static class ImageTransforms
                 $"{string.Join(", ", SupportedSourceTypes)}.");
         }
     }
+
+    /// <summary>
+    /// <c>?background=RRGGBB</c> — six hex digits, no <c>#</c> (a <c>#</c> would have to be
+    /// percent-encoded in a query string, and silently accepting both spellings would make two
+    /// requests for one color).
+    ///
+    /// <para>
+    /// Normalized away for a format that has an alpha channel of its own, the same way
+    /// <see cref="NormalizeGravity"/> drops a gravity that cannot have an effect: png and webp keep
+    /// their transparency, so a background would change nothing about the output while making the
+    /// request uncacheable for no benefit. Only a flattening target (jpeg) keeps it.
+    /// </para>
+    /// </summary>
+    private static string? NormalizeBackground(string? background, string format)
+    {
+        if (string.IsNullOrEmpty(background))
+            return null;
+        if (!FlattensAlpha(format))
+            return null;
+
+        var value = background.Trim();
+        if (value.Length != 6 || !value.All(Uri.IsHexDigit))
+            throw Invalid($"'background' must be six hex digits without '#', e.g. 'ffffff'. Got '{background}'.");
+        return value.ToLowerInvariant();
+    }
+
+    /// <summary>Whether encoding to <paramref name="format"/> discards alpha, so transparent pixels need an explicit fill.</summary>
+    public static bool FlattensAlpha(string format) => format == "jpeg";
 
     private static (int Width, int Height, bool Crop) ResolveDimensions(
         int? width, int? height, int sourceWidth, int sourceHeight)
