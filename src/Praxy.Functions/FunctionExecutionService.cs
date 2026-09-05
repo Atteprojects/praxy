@@ -52,10 +52,21 @@ public sealed class FunctionExecutionService(
         var timeoutSeconds = execution.Async ? fn.TimeoutSeconds : Math.Min(fn.TimeoutSeconds, options.MaxSyncTimeoutSeconds);
         var wasWarm = pool.IsWarm(deploymentId);
 
+        // security-review-phase-1: a container carrying an invocation-scoped credential
+        // (PRAXY_FUNCTION_JWT/USER_ID for a specific app user, or PRAXY_FUNCTION_API_KEY for a
+        // scoped schedule/event trigger — see BuildEnvAsync) must never be handed to a later
+        // invocation that didn't ask for that credential. WarmPool bakes env into the container at
+        // start and never updates it, so pooling one of these would silently leak the first
+        // invocation's identity to every later invocation of the same deployment that happens to
+        // land on the still-warm container. poolable: false always cold-starts and is never added
+        // to the pool; this method stops it itself once the invocation is done.
+        var identityScoped = env.ContainsKey("PRAXY_FUNCTION_JWT") || env.ContainsKey("PRAXY_FUNCTION_API_KEY");
+
         var sw = Stopwatch.StartNew();
+        RunningContainer? container = null;
         try
         {
-            var container = await pool.AcquireAsync(deploymentId, deployment.ImageTag, env, ct);
+            container = await pool.AcquireAsync(deploymentId, deployment.ImageTag, env, ct, poolable: !identityScoped);
             var result = await docker.InvokeAsync(
                 container, execution.Method, execution.Path, execution.RequestBody ?? "",
                 new Dictionary<string, string>(), TimeSpan.FromSeconds(timeoutSeconds), ct);
@@ -77,6 +88,11 @@ public sealed class FunctionExecutionService(
             sw.Stop();
             await FinalizeAsync(execution.Id, deploymentId, "failed", 0, "", "", (int)sw.ElapsedMilliseconds, !wasWarm,
                 ex.Message, CancellationToken.None);
+        }
+        finally
+        {
+            if (identityScoped && container is not null)
+                await docker.StopAndRemoveAsync(container.ContainerId, CancellationToken.None);
         }
     }
 

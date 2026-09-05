@@ -73,9 +73,27 @@ public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : 
         }
     }
 
+    /// <summary>
+    /// <paramref name="poolable"/> must be <see langword="false"/> whenever <paramref name="envVars"/>
+    /// carries a credential scoped to *this one invocation* — <c>PRAXY_FUNCTION_JWT</c>,
+    /// <c>PRAXY_FUNCTION_USER_ID</c>, or <c>PRAXY_FUNCTION_API_KEY</c>
+    /// (<c>FunctionExecutionService.BuildEnvAsync</c> decides). Env vars are baked into a container
+    /// at start and never updated again — a pooled container is reused by whichever invocation asks
+    /// for its deployment next, regardless of who that is. Before this flag existed, a container
+    /// cold-started for one app user's invocation (carrying that user's JWT in its process
+    /// environment) would sit in the pool and silently serve a *different* app user's — or a
+    /// schedule/event trigger's — next invocation of the same function with the first user's
+    /// credential still set (security-review-phase-1, finding: warm-pool credential reuse). A
+    /// non-poolable container is always cold-started fresh and never added to <see cref="_byDeployment"/>
+    /// — the caller must stop it after use (<see cref="FunctionExecutionService"/> does).
+    /// </summary>
     public async Task<RunningContainer> AcquireAsync(
-        Guid deploymentId, string imageTag, IReadOnlyDictionary<string, string> envVars, CancellationToken ct)
+        Guid deploymentId, string imageTag, IReadOnlyDictionary<string, string> envVars, CancellationToken ct,
+        bool poolable = true)
     {
+        if (!poolable)
+            return await docker.StartContainerAsync(imageTag, envVars, deploymentId.ToString(), ct);
+
         await _lock.WaitAsync(ct);
         try
         {
