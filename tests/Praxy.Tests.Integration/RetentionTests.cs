@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Praxy.Functions;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
 using Praxy.Tests.Integration.Infrastructure;
@@ -15,6 +17,30 @@ namespace Praxy.Tests.Integration;
 /// </summary>
 public class RetentionTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
+    /// <summary>
+    /// <b>Removes the live functions dispatcher for this class only.</b> These tests seed an event
+    /// that only one of the two dispatchers has claimed and assert the sweeper leaves it alone —
+    /// but <see cref="FunctionEventDispatcher"/> is a hosted service that claims *any* row with
+    /// <c>functions_dispatched_at IS NULL</c>, ordered oldest-first. The fixture is deliberately 31
+    /// days old, which makes it the single most likely row the dispatcher picks up; once it does,
+    /// the row is fully claimed and the sweeper deletes it entirely correctly.
+    ///
+    /// <para>
+    /// So the failure this prevents was never a product bug — the sweeper's predicate is right, and
+    /// the test's premise ("functions never claimed it") simply wasn't true for the whole run. It
+    /// failed roughly one run in three, which is worse than failing always: it makes CI look
+    /// unreliable rather than broken. Removing just this one hosted service lets the test assert
+    /// what it actually means to assert.
+    /// </para>
+    /// </summary>
+    protected override Action<IServiceCollection>? TestServices => services =>
+        // Single, not SingleOrDefault: if the registration ever stops matching this shape (a
+        // factory registration would leave ImplementationType null), a silent no-op would quietly
+        // hand the flakiness back. Failing loudly here is the cheaper outcome.
+        services.Remove(services.Single(
+            d => d.ServiceType == typeof(IHostedService)
+                && d.ImplementationType == typeof(FunctionEventDispatcher)));
+
     protected override IDictionary<string, string?>? ExtraSettings => new Dictionary<string, string?>(
         base.ExtraSettings ?? new Dictionary<string, string?>())
     {
