@@ -2,7 +2,8 @@ import { useParams } from "@tanstack/react-router";
 import { useRef, useState, type DragEvent } from "react";
 import { ApiError } from "../api/client";
 import {
-  useBucket, useDeleteFile, useFiles, useUpdateFilePermissions, downloadFile, uploadFile,
+  useBucket, useDeleteFile, useFileDerivatives, useFiles, usePurgeFileDerivatives, useUpdateFilePermissions,
+  downloadFile, uploadFile,
 } from "../api/storage";
 import type { Bucket, StoredFile } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
@@ -148,6 +149,74 @@ function FileRow({ projectId, bucketId, bucket, file, onOpenPermissions }: {
 }
 
 /**
+ * Storage Phase 3: which cached image transforms exist for this file, their total size, and a way
+ * to drop them all. A derivative is a representation of the file, not a resource of its own — there
+ * is nothing to permission or rename here, only to see and clear.
+ */
+function DerivativesSection({ projectId, bucketId, fileId }: {
+  projectId: string; bucketId: string; fileId: string;
+}) {
+  const derivatives = useFileDerivatives(projectId, bucketId, fileId);
+  const purge = usePurgeFileDerivatives(projectId, bucketId, fileId);
+  const toast = useToast();
+
+  async function onPurge() {
+    try {
+      await purge.mutateAsync();
+      toast.success("Cleared this file's cached derivatives.");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : (error as Error).message);
+    }
+  }
+
+  return (
+    <div className="mb-4 border-b border-ink-800 pb-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-medium text-ink-500 uppercase">Derivatives</h3>
+        {derivatives.data && derivatives.data.total > 0 ? (
+          <button
+            type="button"
+            className="btn-ghost border border-ink-700 px-2 py-1 text-xs"
+            disabled={purge.isPending}
+            onClick={() => void onPurge()}
+          >
+            {purge.isPending ? <Spinner className="size-3" /> : "Purge all"}
+          </button>
+        ) : null}
+      </div>
+
+      {derivatives.isPending ? (
+        <Spinner className="size-3" />
+      ) : derivatives.isError ? (
+        <ErrorNote message={(derivatives.error as Error).message} />
+      ) : derivatives.data.total === 0 ? (
+        <p className="text-xs text-ink-500">
+          No cached sizes yet — one is generated the first time this file is downloaded with
+          <code className="mx-1 rounded bg-ink-850 px-1">?width=</code> or similar.
+        </p>
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-ink-500">
+            {derivatives.data.total} cached, {formatBytes(derivatives.data.totalBytes)} total.
+          </p>
+          <ul className="space-y-1 text-xs text-ink-400">
+            {derivatives.data.derivatives.map((d) => (
+              <li key={d.id} className="flex items-center justify-between font-mono">
+                <span>
+                  {d.width}×{d.height} · {d.format}
+                  {d.quality != null ? ` · q${d.quality}` : ""}
+                </span>
+                <span className="text-ink-600">{formatBytes(d.sizeBytes)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * Per-file grants, in the same matrix shape the row sheet uses — same components, same grammar,
  * one action column short because a file cannot grant its own creation.
  *
@@ -176,6 +245,8 @@ function FilePermissionsSheet({ projectId, bucketId, bucket, file, onClose }: {
   // at `md` the delete column falls off the edge into a horizontal scroll nobody notices.
   return (
     <Sheet title={file.name} size="lg" onClose={onClose}>
+      <DerivativesSection projectId={projectId} bucketId={bucketId} fileId={file.id} />
+
       {!bucket.fileSecurity ? (
         <p className="text-xs text-ink-500">
           File security is off on this bucket — the bucket permission matrix governs every file

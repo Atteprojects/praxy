@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
 import type {
-  Bucket, BucketList, BucketPermissions, ErrorEnvelope, FilePermissions, InlineTypeList, StorageUsage,
-  StoredFile, StoredFileList,
+  Bucket, BucketList, BucketPermissions, ErrorEnvelope, FileDerivativeList, FilePermissions, InlineTypeList,
+  StorageUsage, StoredFile, StoredFileList,
 } from "./types";
 
 const base = (projectId: string) => `/console/projects/${projectId}/storage`;
@@ -249,6 +249,29 @@ export async function downloadFile(
     // Revoked on the next tick: revoking synchronously can beat the browser's own read of the URL.
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
+}
+
+// ---- derivatives (Storage Phase 3) ----
+
+/** The file sheet's "which sizes exist, total bytes" — console-only; the data plane only ever fetches one via the download endpoint's transform parameters. */
+export function useFileDerivatives(projectId: string, bucketId: string, fileId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "buckets", bucketId, "files", fileId, "derivatives"],
+    queryFn: () =>
+      api<FileDerivativeList>(`${base(projectId)}/buckets/${bucketId}/files/${fileId}/derivatives`),
+  });
+}
+
+export function usePurgeFileDerivatives(projectId: string, bucketId: string, fileId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<void>(`${base(projectId)}/buckets/${bucketId}/files/${fileId}/derivatives`, { method: "DELETE" }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectId, "buckets", bucketId, "files", fileId, "derivatives"],
+      }),
+  });
 }
 
 function invalidateAfterFileChange(

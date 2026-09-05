@@ -116,6 +116,24 @@ describe("StorageService", () => {
     expect(bytes).toEqual(payload);
   });
 
+  it("getFileDownload() with no transform sends no transform query parameters", async () => {
+    const { client, captured } = clientCapturing(bytesResponse(200, new Uint8Array([1])));
+    await client.storage.getFileDownload("b1", "f1");
+    expect(captured().query).toEqual({});
+  });
+
+  it("getFileDownload() sends transform parameters as query strings", async () => {
+    const { client, captured } = clientCapturing(bytesResponse(200, new Uint8Array([1])));
+    await client.storage.getFileDownload("b1", "f1", { width: 200, height: 100, format: "webp", quality: 70 });
+    expect(captured().query).toEqual({ width: ["200"], height: ["100"], format: ["webp"], quality: ["70"] });
+  });
+
+  it("getFileDownload() sends only the transform parameters that were given", async () => {
+    const { client, captured } = clientCapturing(bytesResponse(200, new Uint8Array([1])));
+    await client.storage.getFileDownload("b1", "f1", { width: 300 });
+    expect(captured().query).toEqual({ width: ["300"] });
+  });
+
   it("getFileDownload() maps an error status the same way a JSON call does", async () => {
     const { client } = clientCapturing(
       jsonResponse(401, {

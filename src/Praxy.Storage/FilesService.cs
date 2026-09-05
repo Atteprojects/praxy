@@ -21,7 +21,7 @@ namespace Praxy.Storage;
 /// </summary>
 public sealed class FilesService(
     PraxyDb db, IFileStore store, BucketsService buckets, QuotaService quotas,
-    StorageOptions options, IEventBus events)
+    StorageOptions options, IEventBus events, DerivativesService derivatives)
 {
     /// <summary>Copy buffer between the request body and the chunk writer — unrelated to the chunk size, which is how much is buffered before a row is written.</summary>
     private const int CopyBufferBytes = 81_920;
@@ -183,33 +183,152 @@ public sealed class FilesService(
         RequireFileAsync(bucket, fileId, PermissionStrings.Read, callerRoles, bypassPermissions, ct);
 
     /// <summary>
-    /// A forward-only stream over the file's bytes, already permission-checked. The caller copies it
-    /// to the response body — it is never materialized, so a 2 GB download costs one chunk of memory.
+    /// A forward-only stream over the file's bytes — or, when <paramref name="transform"/> asks for
+    /// one, over a generated derivative's bytes instead — already permission-checked either way. The
+    /// caller copies it to the response body; neither path materializes more than one file's worth of
+    /// memory.
     ///
     /// <para>
-    /// <paramref name="rangeHeader"/> is resolved here, against the size this very lookup just read,
-    /// so a range can be honoured without a second metadata round trip and without any caller being
-    /// able to open a stream that skipped the permission check. The resulting offset/length go
-    /// *through* the store seam rather than being skipped off the front of a full stream:
-    /// reading-and-discarding works for the Postgres backend and would force a future
-    /// S3-compatible one to fetch a whole object to serve a kilobyte (docs/research/storage.md).
+    /// <b>A derivative resolves through exactly this same permission check, never a second one.</b>
+    /// <paramref name="transform"/> is only consulted *after* <see cref="GetAsync"/> has already
+    /// decided the caller may read <paramref name="fileId"/> — a derivative is a representation of
+    /// that file, not a resource with grants of its own (docs/research/storage.md), so there is no
+    /// separate check to add and no way to reach one without first passing this one.
+    /// </para>
+    ///
+    /// <para>
+    /// <paramref name="rangeHeader"/> is resolved against the size this same lookup just read, so a
+    /// range can be honoured without a second metadata round trip — but only on the plain-file path;
+    /// a transform request ignores it entirely (Range is a full-file concern that doesn't apply to a
+    /// generated derivative). The resulting offset/length go *through* the store seam rather than
+    /// being skipped off the front of a full stream: reading-and-discarding works for the Postgres
+    /// backend and would force a future S3-compatible one to fetch a whole object to serve a
+    /// kilobyte (docs/research/storage.md).
     /// </para>
     ///
     /// <para>The content stream is null — and only null — for an unsatisfiable range, which the caller answers with a 416.</para>
     /// </summary>
-    public async Task<(StoredFile File, ByteRangeRequest Range, Stream? Content)> OpenDownloadAsync(
-        Bucket bucket, string fileId, string? rangeHeader, string[] callerRoles, bool bypassPermissions,
-        CancellationToken ct)
+    public async Task<FileDownload> OpenDownloadAsync(
+        Bucket bucket, string fileId, string? rangeHeader, TransformRequest transform,
+        string[] callerRoles, bool bypassPermissions, CancellationToken ct)
     {
         var file = await GetAsync(bucket, fileId, callerRoles, bypassPermissions, ct);
+
+        if (transform.IsRequested)
+        {
+            var (derivative, content) = await derivatives.ResolveAsync(bucket, file, transform, ct);
+            return FileDownload.ForDerivative(file, derivative, content);
+        }
+
         var range = ByteRanges.Parse(rangeHeader, file.SizeBytes);
         if (range.Outcome == ByteRangeOutcome.Unsatisfiable)
-            return (file, range, null);
+            return FileDownload.ForFile(file, range, null);
 
-        var content = range.Outcome == ByteRangeOutcome.Partial
+        var fileContent = range.Outcome == ByteRangeOutcome.Partial
             ? store.OpenRead(file.Id, file.ChunkSizeBytes, range.Start, range.Length)
             : store.OpenRead(file.Id, file.ChunkSizeBytes);
-        return (file, range, content);
+        return FileDownload.ForFile(file, range, fileContent);
+    }
+
+    /// <summary>
+    /// Replaces an existing file's bytes in place, keeping its id — the capability Phase 1 explicitly
+    /// left out ("the bytes of a stored file are immutable... replacing them means a new upload") and
+    /// Phase 3 has to add: a derivative is keyed by file id, and "upload a new file instead" would
+    /// leave the old file's now-stale derivatives sitting under an id nothing points at for cleanup.
+    /// Gated on <c>update</c>, the same permission <see cref="RenameAsync"/> uses — replacing the
+    /// bytes of a file you're allowed to rename is the same permission question.
+    /// </summary>
+    public async Task<StoredFile> ReplaceBytesAsync(
+        Bucket bucket, string fileId, string? name, string? contentType, long? contentLength, Stream body,
+        string[] callerRoles, bool bypassPermissions, CancellationToken ct)
+    {
+        var file = await RequireFileAsync(
+            bucket, fileId, PermissionStrings.Update, callerRoles, bypassPermissions, ct, requireEnabled: true);
+
+        var mimeType = MimeTypes.Normalize(contentType);
+        if (!MimeTypes.IsAllowed(bucket.AllowedMimeTypes, mimeType))
+            throw new PraxyException(400, ErrorTypes.FileTypeNotAllowed,
+                $"This bucket does not accept '{mimeType}'. Allowed: {string.Join(", ", bucket.AllowedMimeTypes!)}.");
+
+        var budget = await quotas.GetStorageBudgetAsync(bucket.ProjectId, ct);
+        var maxFileSize = Math.Min(bucket.MaxFileSizeBytes, budget.MaxFileSizeBytes);
+        // The bytes being replaced stop counting toward "used" the moment the new ones land, so this
+        // replace may spend the project's free headroom *plus* what this file already occupies —
+        // otherwise replacing a file with one the same size or smaller could spuriously trip a quota
+        // that is actually about to go down.
+        var availableForThisFile = budget.Remaining + file.SizeBytes;
+
+        if (contentLength is { } declared)
+        {
+            if (declared > maxFileSize) throw TooLarge(maxFileSize);
+            if (declared > availableForThisFile) throw OverStorageQuota(budget);
+        }
+
+        try
+        {
+            await ReplaceBytesInStorageAsync(bucket, file, name, mimeType, body, maxFileSize, availableForThisFile, budget, ct);
+        }
+        catch
+        {
+            // The transaction rolled everything back, but this same tracked entity had its fields
+            // mutated in memory before the throw — reload rather than leaving it disagreeing with
+            // what's actually committed (the row still exists, unlike a failed create's placeholder).
+            await db.Entry(file).ReloadAsync(ct);
+            throw;
+        }
+
+        await PublishAsync(bucket, "update", file.Id, ct);
+        return file;
+    }
+
+    private async Task ReplaceBytesInStorageAsync(
+        Bucket bucket, StoredFile file, string? name, string mimeType, Stream body, long maxFileSize,
+        long remaining, StorageBudget budget, CancellationToken ct)
+    {
+        await SchemaDdl.InTransactionAsync(db, async () =>
+        {
+            // Old bytes and derivatives go first — purging derivatives here is the one invalidation
+            // the schema's ON DELETE CASCADE can never reach on its own, since replacing bytes keeps
+            // the file's id and therefore never deletes the row that cascade hangs off. Both this and
+            // the new bytes below are inside the one transaction, so a failed replace never leaves
+            // the file without its old bytes and without new ones either.
+            await store.DeleteAsync(file.Id, ct);
+            await derivatives.PurgeAsync(file.Id, ct);
+
+            await using var writer = store.OpenWrite(file.Id, options.ChunkSizeBytes);
+            var buffer = ArrayPool<byte>.Shared.Rent(CopyBufferBytes);
+            try
+            {
+                int read;
+                while ((read = await body.ReadAsync(buffer.AsMemory(0, CopyBufferBytes), ct)) > 0)
+                {
+                    if (writer.BytesWritten + read > maxFileSize) throw TooLarge(maxFileSize);
+                    if (writer.BytesWritten + read > remaining) throw OverStorageQuota(budget);
+                    await writer.WriteAsync(buffer.AsMemory(0, read), ct);
+                }
+                await writer.CompleteAsync(ct);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            if (name is not null)
+                file.Name = ValidateName(name);
+            file.MimeType = mimeType;
+            file.ChunkSizeBytes = options.ChunkSizeBytes;
+            file.SizeBytes = writer.BytesWritten;
+            file.ChunkCount = writer.ChunkCount;
+            file.Checksum = writer.Checksum;
+            // Phase 3's own lazily-cached probe (DerivativesService.SourceDimensionsAsync) — valid
+            // only for the bytes it measured, which no longer exist.
+            file.Width = null;
+            file.Height = null;
+            file.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            await WriteOutboxAsync(bucket, "update", file.Id, ct);
+        }, ct);
     }
 
     // ---- update / delete --------------------------------------------------------------------

@@ -25,6 +25,8 @@ Verified against SDK `10.0.100` / runtime `10.0.0` on this machine, plus NuGet a
 | `Serilog.AspNetCore` | 10.0.0 | |
 | `OpenTelemetry.Extensions.Hosting` | 1.17.0 | instrumentation packages same version |
 | `OpenTelemetry.Exporter.OpenTelemetryProtocol` | 1.17.0 | |
+| `SkiaSharp` | 4.151.2 | Storage Phase 3 — image transforms |
+| `SkiaSharp.NativeAssets.Linux.NoDependencies` | 4.151.2 | see note below |
 
 WebSockets, `System.Threading.Channels`, and rate limiting need **no package** — all in the shared framework.
 
@@ -717,6 +719,21 @@ warranted" and each landing on "no":
 
 None of this needed a new entry in the pinned-versions table above — every dependency used is either
 already a transitive reference (`Microsoft.EntityFrameworkCore` via `Praxy.Persistence`) or pure BCL.
+
+## SkiaSharp — verified pin (Storage Phase 3)
+
+Checked against the NuGet flatcontainer index and each package's own nuget.org listing (versions and
+target-framework lists, not memory), same discipline as this file's other pins.
+
+**`SkiaSharp` 4.151.2 and `SkiaSharp.NativeAssets.Linux.NoDependencies` 4.151.2 — both current stable**
+(4.152.0/4.153.0 exist only as previews), both list **`net10.0`** as a supported target framework
+alongside net9.0/net6.0, both MIT. `SkiaSharp.NativeAssets.Linux.NoDependencies`'s own listing confirms
+its `libSkiaSharp.so` has **no NuGet dependencies** and only five runtime `.so` deps — `libpthread.so.0`,
+`libdl.so.2`, `libm.so.6`, `libc.so.6`, `ld-linux-x86-64.so.2` — all ordinary glibc, present in
+`dotnet/aspnet:10.0` (Debian) already. **Fontconfig is confirmed absent from this variant's dependency
+list**, consistent with `docs/research/storage.md`'s Phase 3 section: this feature renders no text, so
+the no-fontconfig build costs nothing and needs no `apt-get` line in `deploy/Dockerfile`. Do not add the
+plain `SkiaSharp.NativeAssets.Linux` package instead — that one pulls fontconfig and defeats the point.
 
 ## Other notes
 

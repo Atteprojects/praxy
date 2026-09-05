@@ -2,6 +2,18 @@ import type { Praxy } from "../client.js";
 import type { StoredFile, StoredFileList } from "../models.js";
 
 /**
+ * Storage Phase 3: on-the-fly resize/crop/format/quality on the download endpoint. Dimensions snap
+ * up to a fixed ladder server-side (64/128/256/512/1024/2048) — a storage-amplification control, not
+ * an SDK-side detail to replicate — so a size above the top rung is rejected rather than clamped.
+ */
+export interface FileTransformOptions {
+  width?: number;
+  height?: number;
+  format?: "png" | "jpeg" | "webp";
+  quality?: number;
+}
+
+/**
  * The data-plane storage surface (`/v1/storage`). 5 methods, matching `praxy_core`'s
  * `StorageService` (`sdk/flutter/praxy_core/lib/src/services/storage_service.dart`): upload, list,
  * read metadata, download bytes, delete. Bucket configuration and its permission matrix are a
@@ -52,13 +64,24 @@ export class StorageService {
   }
 
   /**
-   * The file's bytes. Buffered whole here — the server streams them, but `Transport` returns a
-   * complete response body, so a very large download is the caller's memory to budget for.
+   * The file's bytes — or, with `transform`, a generated derivative's bytes instead. Buffered whole
+   * here either way: the server streams them, but `Transport` returns a complete response body, so
+   * a very large download (or a request for the source's own native size with no `transform` at
+   * all) is the caller's memory to budget for.
+   *
+   * A derivative resolves through exactly the same permission check as the source file — it is a
+   * representation of that file, not a resource with grants of its own — and Range never applies to
+   * one, since a transform request always returns the whole generated image.
    */
-  getFileDownload(bucketId: string, fileId: string): Promise<Uint8Array> {
+  getFileDownload(bucketId: string, fileId: string, transform?: FileTransformOptions): Promise<Uint8Array> {
+    const query: Record<string, string[]> = {};
+    if (transform?.width !== undefined) query.width = [String(transform.width)];
+    if (transform?.height !== undefined) query.height = [String(transform.height)];
+    if (transform?.format !== undefined) query.format = [transform.format];
+    if (transform?.quality !== undefined) query.quality = [String(transform.quality)];
+
     return this.client.requestBytes(
-      "GET",
-      `${this.filesPath(bucketId)}/${encodeURIComponent(fileId)}/download`,
+      "GET", `${this.filesPath(bucketId)}/${encodeURIComponent(fileId)}/download`, { query },
     );
   }
 

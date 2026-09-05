@@ -16,4 +16,13 @@ public sealed record StorageOptions(
     /// Default per-file ceiling applied to a bucket that doesn't set its own. Always clamped to the
     /// resolved <c>MaxFileSizeBytes</c> quota, which is the real cap.
     /// </summary>
-    long DefaultBucketMaxFileSizeBytes = 52_428_800);
+    long DefaultBucketMaxFileSizeBytes = 52_428_800,
+    /// <summary>
+    /// Storage Phase 3: the decoded pixel-count ceiling a source image must pass *before*
+    /// <see cref="ImageTransformer"/> allocates the full decode. Checked against the header
+    /// (<c>SKCodec.Info</c>), never the encoded byte size — a small file can still claim an enormous
+    /// decoded size, which is exactly what a decompression bomb is. 40 megapixels comfortably covers
+    /// real camera/scan output (a 45 MP full-frame sensor is the practical ceiling most photographers
+    /// hit) while still rejecting the pathological case.
+    /// </summary>
+    long MaxSourceImagePixels = 40_000_000);

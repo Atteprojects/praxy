@@ -82,3 +82,25 @@ public sealed record FileListResponse(int Total, IReadOnlyList<FileResponse> Fil
 
 /// <summary>What a project has stored versus its <c>MaxStorageBytesPerProject</c> quota — the console's usage bar.</summary>
 public sealed record StorageUsageResponse(long UsedBytes, long MaxBytes, long MaxFileSizeBytes);
+
+/// <summary>
+/// Storage Phase 3: one cached transform of a file. <c>quality</c> is reported as the public API's
+/// natural <c>null</c> for the lossless-png sentinel (the entity's <c>0</c>, which exists only to
+/// keep Postgres's per-NULL-is-distinct unique index behaving — see <c>FileDerivative</c>'s remarks)
+/// rather than leaking that storage detail into the wire shape.
+/// </summary>
+public sealed record FileDerivativeResponse(
+    string Id, int Width, int Height, string Format, int? Quality, string MimeType, long SizeBytes,
+    DateTimeOffset CreatedAt)
+{
+    public static FileDerivativeResponse From(FileDerivative d) => new(
+        Ids.Wire(d.Id), d.Width, d.Height, d.Format, d.Quality == 0 ? null : d.Quality,
+        d.MimeType, d.SizeBytes, d.CreatedAt);
+}
+
+/// <summary>The file sheet's "which sizes exist, total bytes" — <c>totalBytes</c> saves the console recomputing the sum client-side.</summary>
+public sealed record FileDerivativeListResponse(int Total, long TotalBytes, IReadOnlyList<FileDerivativeResponse> Derivatives)
+{
+    public static FileDerivativeListResponse From(IReadOnlyList<FileDerivative> list) => new(
+        list.Count, list.Sum(d => d.SizeBytes), [.. list.Select(FileDerivativeResponse.From)]);
+}

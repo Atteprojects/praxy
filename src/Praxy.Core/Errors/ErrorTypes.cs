@@ -94,6 +94,8 @@ public static class ErrorTypes
     public const string FileSizeExceeded = "file_size_exceeded";
     public const string FileTypeNotAllowed = "file_type_not_allowed";
     public const string FileRangeNotSatisfiable = "file_range_not_satisfiable";
+    public const string FileTransformInvalid = "file_transform_invalid";
+    public const string FileTransformSourceTooLarge = "file_transform_source_too_large";
 
     public const string SiteNotFound = "site_not_found";
     public const string SiteAlreadyExists = "site_already_exists";
@@ -204,6 +206,8 @@ public static class ErrorTypes
         FileSizeExceeded,
         FileTypeNotAllowed,
         FileRangeNotSatisfiable,
+        FileTransformInvalid,
+        FileTransformSourceTooLarge,
         SiteNotFound,
         SiteAlreadyExists,
         SiteInvalid,

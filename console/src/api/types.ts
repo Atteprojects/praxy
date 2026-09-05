@@ -832,6 +832,25 @@ export interface StorageUsage {
   maxFileSizeBytes: number;
 }
 
+/** Storage Phase 3: one cached image transform of a file — a representation of it, never a resource of its own. */
+export interface FileDerivative {
+  id: string;
+  width: number;
+  height: number;
+  format: string;
+  /** Absent for `png` — lossless, quality has no meaning. */
+  quality?: number;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface FileDerivativeList {
+  total: number;
+  totalBytes: number;
+  derivatives: FileDerivative[];
+}
+
 // ---- Audit log ----
 
 /** Actor is opaque (`admin:<id>` or `key:<id>`) — no endpoint resolves it to a name. */

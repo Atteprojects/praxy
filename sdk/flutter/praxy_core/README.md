@@ -65,6 +65,14 @@ final stored = await px.storage.createFile(
 print('${stored.sizeBytes} bytes, sha256 ${stored.checksum}'); // checksum computed as it streamed
 final page2 = await px.storage.listFiles('bucket-id', limit: 25);
 final bytes = await px.storage.getFileDownload('bucket-id', stored.id); // buffered whole
+// Image transforms: a generated, cached derivative instead of the original bytes. Dimensions
+// snap up server-side to a fixed ladder (64/128/256/512/1024/2048) — a size above 2048 is a
+// clean error, not a silent clamp — and the same permission check as the plain download applies.
+final thumbnail = await px.storage.getFileDownload(
+  'bucket-id',
+  stored.id,
+  transform: const FileTransform(width: 200, format: 'webp'),
+);
 await px.storage.deleteFile('bucket-id', stored.id);
 
 // Typed rows — write a small RowCodec<T> once per table, no build step required.
@@ -109,7 +117,7 @@ Errors are a sealed hierarchy rooted at `PraxyException` — `PraxyAuthException
   changing an existing file's grants (`PATCH /v1/storage/buckets/{id}/files/{id}/permissions`), are
   API routes this package deliberately doesn't wrap yet. HTTP `Range` requests the server does now
   honour — they're a transport concern, so use them through your own HTTP client if you need partial
-  reads. Image transforms don't exist server-side yet (Storage Phase 3).
+  reads.
 - **Codegen.** `TableRef`/`RowCodec` work with hand-written codecs; see
   [`praxy_codegen`](https://github.com/<your-fork-or-org>/praxy/tree/main/sdk/flutter/praxy_codegen)
   if you'd rather generate typed `Col<T>` column constants from your live schema.

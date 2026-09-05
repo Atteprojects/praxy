@@ -543,11 +543,11 @@ pair for each phase in **[handoff/](handoff/)**. That's the source of truth for 
 file.
 
 **Not built, still open** (tracked here since they're architectural, not a specific phase's leftover):
-Storage resumable uploads and image transforms (buckets, per-file permissions, Range and inline
-serving shipped 2026-09-03/04), TOTP MFA (flag reserved, no flow), relationships in
-the tables engine, multi-node scale-out, per-project Postgres roles (the threat-model "defence in depth"
-row above), additional Sites framework presets beyond Next.js (owner's explicit deferred call,
-2026-08-22).
+Storage resumable uploads (buckets, per-file permissions, Range, inline serving and image transforms
+shipped 2026-09-03/04/05 — resumable/chunked *client* upload protocols remain the one open piece),
+TOTP MFA (flag reserved, no flow), multi-node scale-out, per-project Postgres roles (the threat-model
+"defence in depth" row above), additional Sites framework presets beyond Next.js (owner's explicit
+deferred call, 2026-08-22).
 
 ---
 
