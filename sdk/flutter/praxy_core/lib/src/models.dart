@@ -294,6 +294,7 @@ final class StoredFile {
     required this.checksum,
     required this.createdAt,
     required this.updatedAt,
+    this.permissions = const [],
   });
 
   final String id;
@@ -312,6 +313,12 @@ final class StoredFile {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// The file's own grants, in the same `action("role")` grammar a row's
+  /// `$permissions` uses (wire name: `$permissions`). Empty unless the bucket has
+  /// file security on — nothing consults them otherwise. They are *additive*: a
+  /// bucket-level grant reaches every file whatever is listed here.
+  final List<String> permissions;
+
   factory StoredFile.fromJson(Map<String, dynamic> json) => StoredFile(
     id: json['id'] as String,
     bucketId: json['bucketId'] as String,
@@ -323,6 +330,7 @@ final class StoredFile {
     checksum: json['checksum'] as String,
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
+    permissions: ((json[r'$permissions'] as List?) ?? const []).cast<String>(),
   );
 }
 

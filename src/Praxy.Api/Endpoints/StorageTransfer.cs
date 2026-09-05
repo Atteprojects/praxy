@@ -18,6 +18,14 @@ internal static class StorageTransfer
     public static string? FileName(HttpContext http) => http.Request.Query["name"].FirstOrDefault();
 
     /// <summary>
+    /// The new file's own grants, from repeated <c>?permissions=read("user:abc")</c>. Query rather
+    /// than body because the body *is* the file's bytes — there is no JSON envelope on an upload to
+    /// put them in, which is the one place storage can't mirror a row's create payload exactly.
+    /// </summary>
+    public static string[]? Permissions(HttpContext http) =>
+        http.Request.Query["permissions"] is { Count: > 0 } values ? [.. values!] : null;
+
+    /// <summary>
     /// Runs one upload with the request-body limit lifted to this project's resolved
     /// <c>MaxFileSizeBytes</c>.
     ///
@@ -45,7 +53,7 @@ internal static class StorageTransfer
         {
             return await files.UploadAsync(
                 bucket, FileName(http), http.Request.ContentType, http.Request.ContentLength,
-                http.Request.Body, callerRoles, bypassPermissions, ct);
+                http.Request.Body, Permissions(http), callerRoles, bypassPermissions, ct);
         }
         catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
         {
@@ -74,22 +82,58 @@ internal static class StorageTransfer
     /// Two headers close that: <c>Content-Disposition: attachment</c> so the browser saves rather
     /// than renders, and <c>nosniff</c> so it cannot MIME-sniff its way back to rendering. The real
     /// <c>Content-Type</c> is still reported, because it is useful metadata and harmless once the
-    /// response can't become an active document. Opt-in inline serving is Phase 2's job and needs a
-    /// safe-type allowlist; it must not arrive by simply dropping these headers.
+    /// response can't become an active document.
+    /// </para>
+    /// <para>
+    /// A bucket can opt specific types into <c>inline</c> — but only types <see cref="InlineTypes"/>
+    /// considers safe, never <c>text/html</c> or <c>image/svg+xml</c>, and <c>nosniff</c> stays on
+    /// regardless. That is the only way the attachment default is ever lifted; dropping these
+    /// headers for any other reason re-opens the hole above.
     /// </para>
     /// </remarks>
     public static async Task<IResult> DownloadAsync(
-        HttpContext http, StoredFile file, Stream content, CancellationToken ct)
+        HttpContext http, Bucket bucket, StoredFile file, ByteRangeRequest range, Stream? content,
+        CancellationToken ct)
     {
-        await using (content)
+        // 416: the client asked for bytes this file doesn't have. Content-Range reports the real
+        // size so it can retry correctly, and it survives the throw because ErrorHandlingMiddleware
+        // writes the envelope onto this same response rather than resetting it.
+        if (range.Outcome == ByteRangeOutcome.Unsatisfiable)
+        {
+            http.Response.Headers.ContentRange = $"bytes */{file.SizeBytes}";
+            throw new PraxyException(416, ErrorTypes.FileRangeNotSatisfiable,
+                $"That range lies outside this file's {file.SizeBytes} bytes.");
+        }
+
+        // Non-null for every outcome but the 416 above, which has already returned.
+        await using (var body = content!)
         {
             http.Response.ContentType = file.MimeType;
-            http.Response.ContentLength = file.SizeBytes;
-            http.Response.Headers.ContentDisposition = ContentDisposition.Attachment(file.Name);
+            // Advertised on every response, so a media player knows it can seek at all.
+            http.Response.Headers.AcceptRanges = "bytes";
             http.Response.Headers.XContentTypeOptions = "nosniff";
-            await content.CopyToAsync(http.Response.Body, ct);
+            // Orthogonal to the range: a 206 is still an attachment unless this bucket opted this
+            // exact type into inline serving. Adding partial content must not quietly drop that.
+            http.Response.Headers.ContentDisposition =
+                InlineTypes.ServesInline(bucket.InlineTypes, file.MimeType)
+                    ? ContentDisposition.Inline(file.Name)
+                    : ContentDisposition.Attachment(file.Name);
+
+            if (range.Outcome == ByteRangeOutcome.Partial)
+            {
+                http.Response.StatusCode = StatusCodes.Status206PartialContent;
+                http.Response.Headers.ContentRange = $"bytes {range.Start}-{range.End}/{file.SizeBytes}";
+                // The length of the *part*, not of the file. Getting this wrong makes players hang
+                // waiting for bytes that never come rather than failing loudly.
+                http.Response.ContentLength = range.Length;
+            }
+            else
+            {
+                http.Response.ContentLength = file.SizeBytes;
+            }
+
+            await body.CopyToAsync(http.Response.Body, ct);
         }
         return Results.Empty;
     }
-
 }

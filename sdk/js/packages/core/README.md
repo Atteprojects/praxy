@@ -483,9 +483,21 @@ const stored = await authed.storage.createFile(bucketId, {
   name: browserFile.name,
   bytes,
   mimeType: browserFile.type,
+  // Only on a bucket with file security on; rejected otherwise, so a grant can never be
+  // stored somewhere nothing consults it.
+  permissions: [`read("user:${user.id}")`],
 });
 console.log(stored.id, stored.sizeBytes, stored.checksum); // checksum: SHA-256, computed as it streamed
+console.log(stored.$permissions);                          // the grants that were attached
 ```
+
+`permissions` are the file's **own** grants, in the same `action("role")` grammar a row uses, and
+they are **additive**: they widen access on top of the bucket's matrix and never narrow it. A bucket
+that grants `read("any")` is readable by everyone whatever a file carries — "each user reads only
+their own uploads" is configured by granting *no* bucket-level read at all. There is no auto-grant to
+the uploader (rows don't get one either), so pass `read("user:<id>")` yourself if you want it.
+Changing an existing file's grants is `PATCH /v1/storage/buckets/{bucketId}/files/{fileId}/permissions`,
+which this SDK doesn't wrap yet.
 
 Two limits can reject an upload: the bucket's per-file ceiling (`file_size_exceeded`) and the
 project's total storage quota (`general_resource_limit_exceeded`). Both are enforced mid-stream, so

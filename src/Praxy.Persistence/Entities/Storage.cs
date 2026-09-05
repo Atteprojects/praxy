@@ -16,12 +16,22 @@ public class Bucket
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Reserved for Storage Phase 2's per-file permissions — the exact analogue of
-    /// <see cref="TableDef.RowSecurity"/>, opting a bucket into per-file grants on top of the
-    /// bucket-level matrix. Persisted from Phase 1 (it is part of the design doc's field list) but
-    /// never read or exposed on the wire yet: Phase 1 is bucket-level only.
+    /// The exact analogue of <see cref="TableDef.RowSecurity"/>: opts this bucket into per-file
+    /// grants *on top of* the bucket-level matrix. Additive, never restrictive — a bucket-level
+    /// grant still reaches every file, and no <see cref="FilePermission"/> row can claw it back
+    /// (docs/research/storage.md). "Users see only their own uploads" is therefore configured by
+    /// granting no bucket-level read at all and attaching a per-file one.
     /// </summary>
     public bool FileSecurity { get; set; }
+
+    /// <summary>
+    /// Types this bucket may serve <c>inline</c> instead of as an attachment. Empty/null (the
+    /// default) means every download is an attachment. Never trusted on its own: a response is
+    /// inline only when the type is in here *and* in <c>InlineTypes.Safe</c>, the hard-coded set
+    /// that can never contain <c>text/html</c> or <c>image/svg+xml</c> — a file's stored MIME type
+    /// is whatever the uploader sent, so the allowlist is what makes rendering it safe.
+    /// </summary>
+    public string[]? InlineTypes { get; set; }
 
     /// <summary>Per-file ceiling for this bucket. Never above the resolved <c>MaxFileSizeBytes</c> quota, which is the instance/org-level cap.</summary>
     public required long MaxFileSizeBytes { get; set; }
@@ -43,6 +53,22 @@ public class BucketPermission
     public required Guid BucketId { get; set; }
 
     /// <summary>read | create | update | delete</summary>
+    public required string Action { get; set; }
+
+    public required string Role { get; set; }
+}
+
+/// <summary>
+/// Per-file permission grant — <see cref="TablePermission"/>'s field shape verbatim again, one
+/// level down, and the storage analogue of a row's <c>__perms</c> side table. Only consulted when
+/// the owning bucket has <see cref="Bucket.FileSecurity"/> on, and only *after* the bucket-level
+/// matrix has already failed to grant the action: these rows widen access, they never narrow it.
+/// </summary>
+public class FilePermission
+{
+    public required Guid FileId { get; set; }
+
+    /// <summary>read | update | delete — a file cannot grant its own creation, exactly like a row.</summary>
     public required string Action { get; set; }
 
     public required string Role { get; set; }

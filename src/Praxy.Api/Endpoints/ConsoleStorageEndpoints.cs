@@ -23,6 +23,10 @@ public static class ConsoleStorageEndpoints
             .AddEndpointFilter<ConsoleProjectFilter>();
 
         admin.MapGet("/usage", GetUsage).Produces<StorageUsageResponse>();
+        // Server-owned vocabulary, fetched like the functions surface's /runtimes rather than
+        // hard-coded again in the console — the two copies would drift, and this one is a security
+        // boundary.
+        admin.MapGet("/inline-types", ListInlineTypes).Produces<InlineTypeListResponse>();
 
         admin.MapGet("/buckets", ListBuckets).Produces<BucketListResponse>();
         admin.MapPost("/buckets", CreateBucket).Produces<BucketResponse>(StatusCodes.Status201Created);
@@ -43,9 +47,15 @@ public static class ConsoleStorageEndpoints
             // `Produces<Stream>`, not a bare `Produces(200, contentType: …)`: without a response
             // *type* the generator emits no `content` block at all, and the endpoint reads as
             // undocumented (caught by OpenApiDocumentTests, which exists for exactly this).
-            .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream");
+            .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream")
+            .Produces<Stream>(StatusCodes.Status206PartialContent, "application/octet-stream");
         admin.MapPatch("/buckets/{bucketId}/files/{fileId}", UpdateFile).Produces<FileResponse>();
         admin.MapDelete("/buckets/{bucketId}/files/{fileId}", DeleteFile).Produces(StatusCodes.Status204NoContent);
+
+        admin.MapGet("/buckets/{bucketId}/files/{fileId}/permissions", GetFilePermissions)
+            .Produces<FilePermissionsResponse>();
+        admin.MapPatch("/buckets/{bucketId}/files/{fileId}/permissions", UpdateFilePermissions)
+            .Produces<FilePermissionsResponse>();
     }
 
     // ---- usage -----------------------------------------------------------------------------
@@ -57,6 +67,8 @@ public static class ConsoleStorageEndpoints
         return Results.Ok(new StorageUsageResponse(
             budget.UsedBytes, budget.MaxTotalBytes, budget.MaxFileSizeBytes));
     }
+
+    private static IResult ListInlineTypes() => Results.Ok(new InlineTypeListResponse(InlineTypes.Safe));
 
     // ---- buckets ---------------------------------------------------------------------------
 
@@ -72,7 +84,8 @@ public static class ConsoleStorageEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var bucket = await buckets.CreateAsync(
-            project.Id, req.Key, req.Name, req.MaxFileSizeBytes, req.AllowedMimeTypes, ct);
+            project.Id, req.Key, req.Name, req.MaxFileSizeBytes, req.AllowedMimeTypes,
+            req.FileSecurity, req.InlineTypes, ct);
         await AuditAsync(db, http, project.Id, "storage.buckets.create", $"bucket/{Ids.Wire(bucket.Id)}", ct);
         return Results.Created(
             $"/v1/console/projects/{project.Id}/storage/buckets/{Ids.Wire(bucket.Id)}", BucketResponse.From(bucket));
@@ -96,7 +109,8 @@ public static class ConsoleStorageEndpoints
         bucket = await buckets.UpdateAsync(
             bucket, req.Name, req.Enabled, req.MaxFileSizeBytes,
             req.AllowedMimeTypes is { Length: > 0 } ? req.AllowedMimeTypes : null,
-            clearAllowedMimeTypes: req.AllowedMimeTypes is { Length: 0 }, ct);
+            clearAllowedMimeTypes: req.AllowedMimeTypes is { Length: 0 },
+            req.FileSecurity, req.InlineTypes, ct);
         await AuditAsync(db, http, project.Id, "storage.buckets.update", $"bucket/{bucketId}", ct);
         return Results.Ok(BucketResponse.From(bucket));
     }
@@ -140,7 +154,7 @@ public static class ConsoleStorageEndpoints
         var limit = int.TryParse(http.Request.Query["limit"], out var l) ? l : 50;
         var offset = int.TryParse(http.Request.Query["offset"], out var o) && o > 0 ? o : 0;
         var (total, list) = await files.ListAsync(bucket, limit, offset, [], bypassPermissions: true, ct);
-        return Results.Ok(new FileListResponse(total, [.. list.Select(FileResponse.From)]));
+        return Results.Ok(await FileListResponse.FromAsync(files, bucket, total, list, ct));
     }
 
     private static async Task<IResult> CreateFile(
@@ -155,7 +169,7 @@ public static class ConsoleStorageEndpoints
             $"bucket/{bucketId}/file/{Ids.Wire(file.Id)}", ct);
         return Results.Created(
             $"/v1/console/projects/{project.Id}/storage/buckets/{bucketId}/files/{Ids.Wire(file.Id)}",
-            FileResponse.From(file));
+            FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
     private static async Task<IResult> GetFile(
@@ -163,8 +177,8 @@ public static class ConsoleStorageEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
-        return Results.Ok(FileResponse.From(
-            await files.GetAsync(bucket, fileId, [], bypassPermissions: true, ct)));
+        var file = await files.GetAsync(bucket, fileId, [], bypassPermissions: true, ct);
+        return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
     private static async Task<IResult> DownloadFile(
@@ -172,8 +186,9 @@ public static class ConsoleStorageEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
-        var (file, content) = await files.OpenDownloadAsync(bucket, fileId, [], bypassPermissions: true, ct);
-        return await StorageTransfer.DownloadAsync(http, file, content, ct);
+        var (file, range, content) = await files.OpenDownloadAsync(
+            bucket, fileId, http.Request.Headers.Range, [], bypassPermissions: true, ct);
+        return await StorageTransfer.DownloadAsync(http, bucket, file, range, content, ct);
     }
 
     private static async Task<IResult> UpdateFile(
@@ -184,7 +199,7 @@ public static class ConsoleStorageEndpoints
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var file = await files.RenameAsync(bucket, fileId, req.Name, [], bypassPermissions: true, ct);
         await AuditAsync(db, http, project.Id, "storage.files.update", $"bucket/{bucketId}/file/{fileId}", ct);
-        return Results.Ok(FileResponse.From(file));
+        return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
     private static async Task<IResult> DeleteFile(
@@ -196,6 +211,29 @@ public static class ConsoleStorageEndpoints
         await files.DeleteAsync(bucket, fileId, [], bypassPermissions: true, ct);
         await AuditAsync(db, http, project.Id, "storage.files.delete", $"bucket/{bucketId}/file/{fileId}", ct);
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> GetFilePermissions(
+        string bucketId, string fileId, HttpContext http, BucketsService buckets, FilesService files,
+        CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var file = await files.GetAsync(bucket, fileId, [], bypassPermissions: true, ct);
+        return Results.Ok(new FilePermissionsResponse(await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
+    }
+
+    private static async Task<IResult> UpdateFilePermissions(
+        string bucketId, string fileId, UpdateFilePermissionsRequest req, HttpContext http, PraxyDb db,
+        BucketsService buckets, FilesService files, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var permissions = await files.ReplaceFilePermissionsAsync(
+            bucket, fileId, req.Permissions ?? [], [], bypassPermissions: true, ct);
+        await AuditAsync(db, http, project.Id, "storage.files.permissions",
+            $"bucket/{bucketId}/file/{fileId}", ct);
+        return Results.Ok(new FilePermissionsResponse(permissions));
     }
 
     private static async Task AuditAsync(

@@ -18,7 +18,8 @@ public sealed class PostgresChunkFileStore(PraxyDb db) : IFileStore
     public FileWriteStream OpenWrite(Guid fileId, int chunkSizeBytes) =>
         new ChunkWriteStream(db, fileId, chunkSizeBytes);
 
-    public Stream OpenRead(Guid fileId) => new ChunkReadStream(db, fileId);
+    public Stream OpenRead(Guid fileId, int chunkSizeBytes, long offset = 0, long? length = null) =>
+        new ChunkReadStream(db, fileId, chunkSizeBytes, offset, length);
 
     public async Task DeleteAsync(Guid fileId, CancellationToken ct)
     {
@@ -65,27 +66,58 @@ internal sealed class ChunkWriteStream(PraxyDb db, Guid fileId, int chunkSizeByt
 /// Streams chunks back in order from one cursor: a single ordered read, with Npgsql in
 /// <see cref="CommandBehavior.SequentialAccess"/> mode so each <c>bytea</c> value is pulled off the
 /// wire as the caller consumes it instead of being materialized per row.
+///
+/// <para>
+/// A range narrows that cursor rather than being skipped over afterwards. The chunk layout makes
+/// the arithmetic exact — and it uses the file's <b>own</b> recorded chunk size, never the
+/// configured default, so retuning <c>Praxy:Storage:ChunkSizeBytes</c> can't misaddress a byte of
+/// anything already stored:
+/// </para>
+/// <code>
+/// firstChunk  = offset / chunkSize          lastChunk = (offset + length - 1) / chunkSize
+/// skipInFirst = offset % chunkSize
+/// </code>
+/// <para>
+/// The leading partial chunk is trimmed by Postgres (<c>substr</c>) rather than read and discarded
+/// here: with the column at <c>STORAGE EXTERNAL</c> that skips the TOAST slices outright. The
+/// trailing one is trimmed by <c>_remaining</c> as the caller reads, so a range never returns more
+/// bytes than it asked for even though its last chunk usually contains more.
+/// </para>
 /// </summary>
-internal sealed class ChunkReadStream(PraxyDb db, Guid fileId) : Stream
+internal sealed class ChunkReadStream(PraxyDb db, Guid fileId, int chunkSizeBytes, long offset, long? length)
+    : Stream
 {
     private NpgsqlCommand? _command;
     private NpgsqlDataReader? _reader;
     private Stream? _chunk;
     private bool _finished;
     private long _position;
+    private long _remaining = length ?? long.MaxValue;
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
     {
         if (buffer.IsEmpty) return 0;
         while (true)
         {
-            if (_finished) return 0;
+            if (_finished || _remaining <= 0) return 0;
 
             if (_reader is null)
             {
+                var chunks = ChunkRange.For(offset, length, chunkSizeBytes);
                 _command = await PostgresChunkFileStore.CommandAsync(
-                    db, """SELECT data FROM praxy.file_chunks WHERE file_id = @file_id ORDER BY "index" """, ct);
+                    db,
+                    """
+                    SELECT CASE WHEN "index" = @first THEN substr(data, @skip) ELSE data END
+                    FROM praxy.file_chunks
+                    WHERE file_id = @file_id AND "index" >= @first AND (@last < 0 OR "index" <= @last)
+                    ORDER BY "index"
+                    """, ct);
                 _command.Parameters.AddWithValue("file_id", fileId);
+                _command.Parameters.AddWithValue("first", chunks.FirstChunk);
+                // substr is 1-based, so a zero skip is `from 1` — the whole chunk.
+                _command.Parameters.AddWithValue("skip", chunks.SkipInFirstChunk + 1);
+                // -1 stands for "no upper bound", so an open-ended read is the same one statement.
+                _command.Parameters.AddWithValue("last", chunks.LastChunk ?? -1);
                 _reader = await _command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
             }
 
@@ -99,10 +131,14 @@ internal sealed class ChunkReadStream(PraxyDb db, Guid fileId) : Stream
                 _chunk = await _reader.GetStreamAsync(0, ct);
             }
 
-            var read = await _chunk.ReadAsync(buffer, ct);
+            // Never hand back more than the range asked for: the last chunk of a range usually
+            // runs past its end.
+            var wanted = (int)Math.Min(buffer.Length, _remaining);
+            var read = await _chunk.ReadAsync(buffer[..wanted], ct);
             if (read > 0)
             {
                 _position += read;
+                _remaining -= read;
                 return read;
             }
 

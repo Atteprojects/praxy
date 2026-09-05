@@ -20,7 +20,7 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
 {
     public async Task<Bucket> CreateAsync(
         string projectId, string key, string name, long? maxFileSizeBytes, string[]? allowedMimeTypes,
-        CancellationToken ct)
+        bool? fileSecurity, string[]? inlineTypes, CancellationToken ct)
     {
         var fields = new Dictionary<string, string[]>();
         if (!Keys.IsValid(key))
@@ -28,6 +28,7 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 128)
             fields["name"] = ["Must be between 1 and 128 characters."];
         var normalizedMimeTypes = NormalizeMimeTypes(allowedMimeTypes, fields);
+        var normalizedInlineTypes = NormalizeInlineTypes(inlineTypes, fields);
         if (maxFileSizeBytes is < 1)
             fields["maxFileSizeBytes"] = ["Must be at least 1 byte."];
         if (fields.Count > 0)
@@ -44,6 +45,8 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
             Name = name.Trim(),
             MaxFileSizeBytes = ClampFileSize(maxFileSizeBytes ?? options.DefaultBucketMaxFileSizeBytes, budget),
             AllowedMimeTypes = normalizedMimeTypes,
+            FileSecurity = fileSecurity ?? false,
+            InlineTypes = normalizedInlineTypes,
         };
 
         db.Buckets.Add(bucket);
@@ -74,7 +77,7 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
 
     public async Task<Bucket> UpdateAsync(
         Bucket bucket, string? name, bool? enabled, long? maxFileSizeBytes, string[]? allowedMimeTypes,
-        bool clearAllowedMimeTypes, CancellationToken ct)
+        bool clearAllowedMimeTypes, bool? fileSecurity, string[]? inlineTypes, CancellationToken ct)
     {
         // Validate everything before touching the entity: a rejected update must leave the tracked
         // bucket exactly as it was, not half-applied and relying on nobody calling SaveChanges after.
@@ -83,6 +86,11 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
             fields["name"] = ["Must be between 1 and 128 characters."];
         var normalizedMimeTypes = allowedMimeTypes is not null
             ? NormalizeMimeTypes(allowedMimeTypes, fields)
+            : null;
+        // Unlike the mime-type allow-list, [] here is meaningful on its own (serve nothing inline,
+        // the default) rather than a "clear it" signal, so it needs no companion flag.
+        var normalizedInlineTypes = inlineTypes is not null
+            ? NormalizeInlineTypes(inlineTypes, fields)
             : null;
         if (maxFileSizeBytes is < 1)
             fields["maxFileSizeBytes"] = ["Must be at least 1 byte."];
@@ -97,6 +105,10 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
             bucket.AllowedMimeTypes = null;
         if (enabled is not null)
             bucket.Enabled = enabled.Value;
+        if (fileSecurity is not null)
+            bucket.FileSecurity = fileSecurity.Value;
+        if (inlineTypes is not null)
+            bucket.InlineTypes = normalizedInlineTypes;
         if (maxFileSizeBytes is { } max)
         {
             var budget = await quotas.GetStorageBudgetAsync(bucket.ProjectId, ct);
@@ -176,6 +188,30 @@ public sealed class BucketsService(PraxyDb db, QuotaService quotas, StorageOptio
     /// </summary>
     private static long ClampFileSize(long requested, StorageBudget budget) =>
         Math.Min(requested, budget.MaxFileSizeBytes);
+
+    /// <summary>
+    /// Inline types are validated against <see cref="InlineTypes.Safe"/> at write time so a bucket
+    /// can never carry a grant that reads as protection-shaped configuration but is silently
+    /// ignored when serving. The serve path intersects with the same set again — this check is the
+    /// loud one, that one is the security control.
+    /// </summary>
+    private static string[]? NormalizeInlineTypes(string[]? types, Dictionary<string, string[]> fields)
+    {
+        if (types is null || types.Length == 0)
+            return null;
+        var normalized = types.Select(t => (t ?? "").Trim().ToLowerInvariant()).Distinct().ToArray();
+        var invalid = normalized.Where(t => !InlineTypes.IsSafe(t)).ToArray();
+        if (invalid.Length > 0)
+        {
+            fields["inlineTypes"] =
+            [
+                $"Cannot be served inline: {string.Join(", ", invalid)}. " +
+                $"Allowed: {string.Join(", ", InlineTypes.Safe)}.",
+            ];
+            return null;
+        }
+        return normalized;
+    }
 
     /// <summary>Empty means "any type", which is stored as null so there is one representation of "no restriction".</summary>
     private static string[]? NormalizeMimeTypes(string[]? patterns, Dictionary<string, string[]> fields)

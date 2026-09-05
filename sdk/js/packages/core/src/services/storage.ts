@@ -21,13 +21,20 @@ export class StorageService {
    * The whole file is sent in one request — there is no resumable protocol — and the server streams
    * it into storage inside a single transaction, so a failed or over-quota upload leaves nothing
    * behind rather than a partial file.
+   *
+   * `permissions` are the new file's own grants (`read`/`update`/`delete` only — a file can't grant
+   * its own creation), accepted only on a bucket with file security on. They travel in the query
+   * because the body *is* the bytes. There is no auto-grant to the uploader, exactly as there is
+   * none for a row: pass `read("user:<id>")` yourself if that is what you want.
    */
   createFile(
     bucketId: string,
-    input: { name: string; bytes: Uint8Array; mimeType?: string },
+    input: { name: string; bytes: Uint8Array; mimeType?: string; permissions?: string[] },
   ): Promise<StoredFile> {
+    const query: Record<string, string[]> = { name: [input.name] };
+    if (input.permissions?.length) query.permissions = input.permissions;
     return this.client.request<StoredFile>("POST", this.filesPath(bucketId), {
-      query: { name: [input.name] },
+      query,
       bodyBytes: input.bytes,
       contentType: input.mimeType,
     });

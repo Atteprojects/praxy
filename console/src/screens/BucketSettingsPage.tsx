@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useTeams } from "../api/auth";
 import { ApiError } from "../api/client";
 import {
-  useBucket, useBucketPermissions, useDeleteBucket, useUpdateBucket, useUpdateBucketPermissions,
+  useBucket, useBucketPermissions, useDeleteBucket, useInlineTypes, useUpdateBucket,
+  useUpdateBucketPermissions,
 } from "../api/storage";
 import { AddRoleButton, RoleLabel } from "../components/RolePicker";
 import { useToast } from "../components/toast";
@@ -44,6 +45,7 @@ export function BucketSettingsPage() {
   const updatePermissions = useUpdateBucketPermissions(projectId, bucketId);
   const updateBucket = useUpdateBucket(projectId, bucketId);
   const deleteBucket = useDeleteBucket(projectId);
+  const inlineTypes = useInlineTypes(projectId);
 
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [confirmName, setConfirmName] = useState("");
@@ -57,6 +59,13 @@ export function BucketSettingsPage() {
   const current = permissions.data.permissions;
   const matrix = parsePermissions(current);
   const roles = [...matrix.keys()];
+
+  function toggleInlineType(type: string, enabled: boolean) {
+    const currentTypes = bucket.data!.inlineTypes;
+    updateBucket.mutate({
+      inlineTypes: enabled ? [...currentTypes, type] : currentTypes.filter((t) => t !== type),
+    });
+  }
 
   function applyPreset(preset: "public-read" | "signed-in-users") {
     const replaces = roles.length > 0 ? " Replaced the existing grants." : "";
@@ -111,6 +120,51 @@ export function BucketSettingsPage() {
             )}
             .
           </p>
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">File security</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Off (default): only the bucket matrix below governs access — every file is treated the
+            same. On: files also carry their own grants, set when they are uploaded or from the
+            file's Permissions sheet. Those grants are <span className="text-ink-300">additive</span>:
+            a bucket-level grant still reaches every file, so "each user sees only their own uploads"
+            means granting <span className="font-mono">create</span> here and no{" "}
+            <span className="font-mono">read</span> at all.
+          </p>
+          <Toggle
+            checked={bucket.data.fileSecurity}
+            onChange={(value) => updateBucket.mutate({ fileSecurity: value })}
+            label="Enable file security"
+          />
+        </section>
+
+        <section className="surface p-5">
+          <h2 className="mb-1 text-sm font-medium text-ink-100">Inline serving</h2>
+          <p className="mb-3 text-xs text-ink-500">
+            Downloads are sent as attachments by default, because a file's type is whatever its
+            uploader claimed — rendering one in this origin would run it against your console
+            session. Types ticked here are served inline instead. The list is fixed and cannot
+            include <span className="font-mono">text/html</span> or{" "}
+            <span className="font-mono">image/svg+xml</span>, which carry script.
+          </p>
+          {inlineTypes.isPending ? (
+            <Spinner />
+          ) : (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3">
+              {(inlineTypes.data?.types ?? []).map((type) => (
+                <label key={type} className="flex cursor-pointer items-center gap-2 text-xs text-ink-300">
+                  <input
+                    type="checkbox"
+                    className="accent-iris-500"
+                    checked={bucket.data.inlineTypes.includes(type)}
+                    onChange={(e) => toggleInlineType(type, e.target.checked)}
+                  />
+                  <span className="font-mono">{type}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="surface p-5">

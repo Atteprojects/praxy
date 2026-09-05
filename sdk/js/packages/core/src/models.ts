@@ -133,6 +133,12 @@ export interface StoredFile {
   checksum: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The file's own grants, in the same `action("role")` grammar a row's `$permissions` uses. Empty
+   * unless the bucket has file security on — nothing consults them otherwise. They are *additive*:
+   * a bucket-level grant reaches every file regardless of what is listed here.
+   */
+  $permissions: string[];
 }
 
 export interface StoredFileList {

@@ -22,17 +22,27 @@ final class StorageService {
   /// The whole file is sent in one request — there is no resumable protocol — and
   /// the server streams it into storage inside a single transaction, so a failed
   /// or over-quota upload leaves nothing behind rather than a partial file.
+  ///
+  /// [permissions] are the new file's own grants (`read`/`update`/`delete` only —
+  /// a file can't grant its own creation), accepted only on a bucket with file
+  /// security on. They travel in the query because the body *is* the bytes. There
+  /// is no auto-grant to the uploader, exactly as there is none for a row: pass
+  /// `read("user:<id>")` yourself if that is what you want.
   Future<StoredFile> createFile(
     String bucketId, {
     required String name,
     required List<int> bytes,
     String? mimeType,
+    List<String>? permissions,
   }) async => StoredFile.fromJson(
     requireJson(
       await _client.request(
         method: 'POST',
         path: '/v1/storage/buckets/$bucketId/files',
-        query: {'name': [name]},
+        query: {
+          'name': [name],
+          if (permissions != null && permissions.isNotEmpty) 'permissions': permissions,
+        },
         bodyBytes: bytes,
         contentType: mimeType,
       ),

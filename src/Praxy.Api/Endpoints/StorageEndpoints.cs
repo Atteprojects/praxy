@@ -49,9 +49,15 @@ public static class StorageEndpoints
             // `Produces<Stream>`, not a bare `Produces(200, contentType: …)`: without a response
             // *type* the generator emits no `content` block at all, and the endpoint reads as
             // undocumented (caught by OpenApiDocumentTests, which exists for exactly this).
-            .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream");
+            .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream")
+            .Produces<Stream>(StatusCodes.Status206PartialContent, "application/octet-stream");
         group.MapPatch("/buckets/{bucketId}/files/{fileId}", UpdateFile).Produces<FileResponse>();
         group.MapDelete("/buckets/{bucketId}/files/{fileId}", DeleteFile).Produces(StatusCodes.Status204NoContent);
+
+        group.MapGet("/buckets/{bucketId}/files/{fileId}/permissions", GetFilePermissions)
+            .Produces<FilePermissionsResponse>();
+        group.MapPatch("/buckets/{bucketId}/files/{fileId}/permissions", UpdateFilePermissions)
+            .Produces<FilePermissionsResponse>();
     }
 
     // ---- buckets ---------------------------------------------------------------------------
@@ -62,7 +68,8 @@ public static class StorageEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.StorageWrite);
         var bucket = await buckets.CreateAsync(
-            project.Id, req.Key, req.Name, req.MaxFileSizeBytes, req.AllowedMimeTypes, ct);
+            project.Id, req.Key, req.Name, req.MaxFileSizeBytes, req.AllowedMimeTypes,
+            req.FileSecurity, req.InlineTypes, ct);
         return Results.Created($"/v1/storage/buckets/{Ids.Wire(bucket.Id)}", BucketResponse.From(bucket));
     }
 
@@ -90,7 +97,7 @@ public static class StorageEndpoints
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         bucket = await buckets.UpdateAsync(
             bucket, req.Name, req.Enabled, req.MaxFileSizeBytes, req.AllowedMimeTypes,
-            clearAllowedMimeTypes: false, ct);
+            clearAllowedMimeTypes: false, req.FileSecurity, req.InlineTypes, ct);
         return Results.Ok(BucketResponse.From(bucket));
     }
 
@@ -136,7 +143,8 @@ public static class StorageEndpoints
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
         var file = await StorageTransfer.UploadAsync(http, quotas, files, bucket, roles, bypass, ct);
         return Results.Created(
-            $"/v1/storage/buckets/{bucketId}/files/{Ids.Wire(file.Id)}", FileResponse.From(file));
+            $"/v1/storage/buckets/{bucketId}/files/{Ids.Wire(file.Id)}",
+            FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
     private static async Task<IResult> ListFiles(
@@ -148,7 +156,7 @@ public static class StorageEndpoints
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
         var (total, list) = await files.ListAsync(bucket, Limit(http), Offset(http), roles, bypass, ct);
-        return Results.Ok(new FileListResponse(total, [.. list.Select(FileResponse.From)]));
+        return Results.Ok(await FileListResponse.FromAsync(files, bucket, total, list, ct));
     }
 
     private static async Task<IResult> GetFile(
@@ -159,7 +167,8 @@ public static class StorageEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
-        return Results.Ok(FileResponse.From(await files.GetAsync(bucket, fileId, roles, bypass, ct)));
+        var file = await files.GetAsync(bucket, fileId, roles, bypass, ct);
+        return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
     private static async Task<IResult> DownloadFile(
@@ -170,8 +179,9 @@ public static class StorageEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
-        var (file, content) = await files.OpenDownloadAsync(bucket, fileId, roles, bypass, ct);
-        return await StorageTransfer.DownloadAsync(http, file, content, ct);
+        var (file, range, content) = await files.OpenDownloadAsync(
+            bucket, fileId, http.Request.Headers.Range, roles, bypass, ct);
+        return await StorageTransfer.DownloadAsync(http, bucket, file, range, content, ct);
     }
 
     private static async Task<IResult> UpdateFile(
@@ -182,7 +192,8 @@ public static class StorageEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
-        return Results.Ok(FileResponse.From(await files.RenameAsync(bucket, fileId, req.Name, roles, bypass, ct)));
+        var file = await files.RenameAsync(bucket, fileId, req.Name, roles, bypass, ct);
+        return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
     private static async Task<IResult> DeleteFile(
@@ -195,6 +206,35 @@ public static class StorageEndpoints
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
         await files.DeleteAsync(bucket, fileId, roles, bypass, ct);
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> GetFilePermissions(
+        string bucketId, string fileId, HttpContext http, BucketsService buckets, FilesService files,
+        IRoleResolver roleResolver, CancellationToken ct)
+    {
+        RequireScopeIfKey(http, ApiKeyScopes.StorageRead);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
+        var file = await files.GetAsync(bucket, fileId, roles, bypass, ct);
+        return Results.Ok(new FilePermissionsResponse(await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
+    }
+
+    /// <summary>
+    /// Gated on <c>update</c> for the file itself, not on a bucket-management scope — which is the
+    /// difference between this and the bucket permission matrix above. Re-sharing a file you own is
+    /// an end-user action; reconfiguring the bucket is not.
+    /// </summary>
+    private static async Task<IResult> UpdateFilePermissions(
+        string bucketId, string fileId, UpdateFilePermissionsRequest req, HttpContext http,
+        BucketsService buckets, FilesService files, IRoleResolver roleResolver, CancellationToken ct)
+    {
+        RequireScopeIfKey(http, ApiKeyScopes.StorageWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
+        return Results.Ok(new FilePermissionsResponse(await files.ReplaceFilePermissionsAsync(
+            bucket, fileId, req.Permissions ?? [], roles, bypass, ct)));
     }
 
     // ---- helpers ---------------------------------------------------------------------------

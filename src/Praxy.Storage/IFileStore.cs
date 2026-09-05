@@ -17,10 +17,26 @@ public interface IFileStore
     FileWriteStream OpenWrite(Guid fileId, int chunkSizeBytes);
 
     /// <summary>
-    /// A forward-only read stream over the file's bytes in order. Never materializes the whole
-    /// file — the caller copies it straight to a response body.
+    /// A forward-only read stream over <paramref name="length"/> bytes of the file starting at
+    /// <paramref name="offset"/> (the whole file, in order, with the defaults). Never materializes
+    /// it — the caller copies it straight to a response body.
+    ///
+    /// <para>
+    /// The range is part of the seam rather than something the endpoint does above it, and that is
+    /// deliberate: skipping bytes off the front of a full stream works for the Postgres backend and
+    /// would quietly ruin the next one, since an S3-compatible store serves a range with a native
+    /// ranged GET and would otherwise have to fetch a whole object to answer 1 KB
+    /// (docs/research/storage.md).
+    /// </para>
+    ///
+    /// <para>
+    /// <paramref name="chunkSizeBytes"/> is the file's own recorded chunk size — passed in, exactly
+    /// as <see cref="OpenWrite"/> takes it, because the caller already holds the metadata row and a
+    /// store re-reading it would be both a second round trip and a second source of truth. A
+    /// backend that doesn't chunk ignores it.
+    /// </para>
     /// </summary>
-    Stream OpenRead(Guid fileId);
+    Stream OpenRead(Guid fileId, int chunkSizeBytes, long offset = 0, long? length = null);
 
     /// <summary>
     /// Drops a file's bytes. Deleting the metadata row cascades to the same rows, so this exists

@@ -773,9 +773,13 @@ export interface Bucket {
   key: string;
   name: string;
   enabled: boolean;
+  /** On: files also carry their own grants, consulted when the bucket matrix doesn't already allow the action. */
+  fileSecurity: boolean;
   maxFileSizeBytes: number;
   /** Absent means any type is accepted — check with `== null`, not `=== null` (see the file header). */
   allowedMimeTypes?: string[];
+  /** Types this bucket serves inline instead of as a download. Always present; empty means none. */
+  inlineTypes: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -787,6 +791,15 @@ export interface BucketList {
 
 export interface BucketPermissions {
   permissions: string[];
+}
+
+export interface FilePermissions {
+  permissions: string[];
+}
+
+/** The types this build will serve inline — server-owned, so the console never hard-codes them. */
+export interface InlineTypeList {
+  types: string[];
 }
 
 export interface StoredFile {
@@ -801,6 +814,11 @@ export interface StoredFile {
   checksum: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The file's own grants, same spelling and grammar as a row's. Empty whenever the bucket has
+   * `fileSecurity` off — nothing consults them then.
+   */
+  $permissions: string[];
 }
 
 export interface StoredFileList {
