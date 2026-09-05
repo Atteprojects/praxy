@@ -26,11 +26,18 @@ public sealed class DerivativesService(
     {
         var key = await ResolveKeyAsync(file, request, ct);
 
-        if (await FindAsync(file.Id, key, ct) is { } cached)
+        if (key.IsCacheable && await FindAsync(file.Id, key, ct) is { } cached)
             return (cached, derivativeStore.OpenRead(cached.Id, cached.ChunkSizeBytes));
 
         var sourceBytes = await ReadSourceBytesAsync(file, ct);
         var encoded = transformer.Transform(sourceBytes, key);
+
+        // A custom background is served straight from memory and never stored — see
+        // DerivativeKey.IsCacheable for why a color is the one transform parameter that cannot join
+        // the key. Nothing is written, so nothing counts against the storage quota either: this
+        // spends CPU per request instead of rows, which is the whole point of the bypass.
+        if (!key.IsCacheable)
+            return (UnsavedDerivative(file, key, encoded), new MemoryStream(encoded, writable: false));
 
         var budget = await quotas.GetStorageBudgetAsync(bucket.ProjectId, ct);
         if (encoded.Length > budget.Remaining)
@@ -48,6 +55,7 @@ public sealed class DerivativesService(
             Height = key.Height,
             Format = key.Format,
             Quality = key.Quality,
+            Gravity = key.Gravity,
             MimeType = key.MimeType,
             SizeBytes = 0,
             ChunkSizeBytes = options.ChunkSizeBytes,
@@ -74,6 +82,28 @@ public sealed class DerivativesService(
         return (derivative, derivativeStore.OpenRead(derivative.Id, derivative.ChunkSizeBytes));
     }
 
+    /// <summary>
+    /// The metadata a bypassed (uncached) derivative still needs to be served: enough for the
+    /// response's <c>Content-Type</c> and <c>Content-Length</c>, with an empty <see cref="Guid"/> id
+    /// standing in for the row that deliberately does not exist. Never attached to the context, so it
+    /// cannot be saved by a later <c>SaveChanges</c> on the same scope.
+    /// </summary>
+    private static FileDerivative UnsavedDerivative(StoredFile file, DerivativeKey key, byte[] encoded) => new()
+    {
+        Id = Guid.Empty,
+        FileId = file.Id,
+        Width = key.Width,
+        Height = key.Height,
+        Format = key.Format,
+        Quality = key.Quality,
+        Gravity = key.Gravity,
+        MimeType = key.MimeType,
+        SizeBytes = encoded.Length,
+        ChunkSizeBytes = 0,
+        ChunkCount = 0,
+        Checksum = "",
+    };
+
     /// <summary>Every existing derivative for one file — the console's "which sizes exist" list.</summary>
     public Task<List<FileDerivative>> ListAsync(Guid fileId, CancellationToken ct) =>
         db.FileDerivatives.Where(d => d.FileId == fileId).OrderBy(d => d.CreatedAt).ToListAsync(ct);
@@ -92,7 +122,7 @@ public sealed class DerivativesService(
     private Task<FileDerivative?> FindAsync(Guid fileId, DerivativeKey key, CancellationToken ct) =>
         db.FileDerivatives.FirstOrDefaultAsync(d =>
             d.FileId == fileId && d.Width == key.Width && d.Height == key.Height &&
-            d.Format == key.Format && d.Quality == key.Quality, ct);
+            d.Format == key.Format && d.Quality == key.Quality && d.Gravity == key.Gravity, ct);
 
     private async Task StoreAsync(FileDerivative derivative, byte[] encoded, CancellationToken ct)
     {
@@ -146,8 +176,14 @@ public sealed class DerivativesService(
         using var codec = SKCodec.Create(data) ??
             throw new PraxyException(400, ErrorTypes.FileTransformInvalid, "This file could not be decoded as an image.");
 
-        file.Width = codec.Info.Width;
-        file.Height = codec.Info.Height;
+        // Cached as the EXIF-corrected, visually-upright size, not the raw encoded one — a
+        // single-axis request (?width= alone) derives the other axis from this aspect ratio, and a
+        // rotated phone photo's encoded width/height are swapped relative to how it actually displays.
+        // ImageTransformer.Transform applies the same correction to the real pixels; this only needs
+        // to agree with it, not redo it, since a header probe never decodes.
+        var swapped = ImageTransformer.SwapsDimensions(codec.EncodedOrigin);
+        file.Width = swapped ? codec.Info.Height : codec.Info.Width;
+        file.Height = swapped ? codec.Info.Width : codec.Info.Height;
         await db.SaveChangesAsync(ct);
         return (file.Width.Value, file.Height.Value);
     }

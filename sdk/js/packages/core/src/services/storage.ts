@@ -11,6 +11,26 @@ export interface FileTransformOptions {
   height?: number;
   format?: "png" | "jpeg" | "webp";
   quality?: number;
+  /**
+   * The crop anchor when both `width` and `height` are given and the aspect ratios differ.
+   * `"center"` (the default) crops evenly on both edges; the rest anchor the crop to that edge or
+   * corner instead — `"top"` for a portrait-to-square avatar crop that shouldn't cut off a head.
+   * Has no effect without both dimensions.
+   */
+  gravity?:
+    | "center" | "top-left" | "top" | "top-right"
+    | "left" | "right"
+    | "bottom-left" | "bottom" | "bottom-right";
+  /**
+   * Six hex digits without `#` (e.g. `"ffffff"`) — what transparent pixels are flattened onto when
+   * the output format has no alpha channel. Only `jpeg` is affected; `png` and `webp` keep their
+   * transparency, so the value is ignored for them. Defaults to white.
+   *
+   * Unlike every other option here, a custom background is **generated per request and not cached**:
+   * a colour has 16.7M values and could otherwise be walked to fill the derivative cache. Expect it
+   * to cost CPU on each request rather than storage.
+   */
+  background?: string;
 }
 
 /**
@@ -79,6 +99,8 @@ export class StorageService {
     if (transform?.height !== undefined) query.height = [String(transform.height)];
     if (transform?.format !== undefined) query.format = [transform.format];
     if (transform?.quality !== undefined) query.quality = [String(transform.quality)];
+    if (transform?.gravity !== undefined) query.gravity = [transform.gravity];
+    if (transform?.background !== undefined) query.background = [transform.background];
 
     return this.client.requestBytes(
       "GET", `${this.filesPath(bucketId)}/${encodeURIComponent(fileId)}/download`, { query },

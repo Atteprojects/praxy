@@ -14775,6 +14775,7 @@
           "height",
           "format",
           "quality",
+          "gravity",
           "mimeType",
           "sizeBytes",
           "createdAt"
@@ -14811,6 +14812,9 @@
               "string"
             ],
             "format": "int32"
+          },
+          "gravity": {
+            "type": "string"
           },
           "mimeType": {
             "type": "string"

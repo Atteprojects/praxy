@@ -26,18 +26,19 @@ internal static class StorageTransfer
         http.Request.Query["permissions"] is { Count: > 0 } values ? [.. values!] : null;
 
     /// <summary>
-    /// The download endpoint's <c>?width=/?height=/?format=/?quality=</c>. An absent parameter is
-    /// <c>null</c> (not requested); a present-but-unparseable one is a clean 400 here rather than
-    /// silently collapsing to "not requested" — a typo'd <c>?width=abc</c> should fail loudly, the
-    /// same way an out-of-ladder value does in <see cref="ImageTransforms.Resolve"/>, not fall
-    /// through to serving the plain, untransformed file.
+    /// The download endpoint's <c>?width=/?height=/?format=/?quality=/?gravity=</c>. An absent
+    /// parameter is <c>null</c> (not requested); a present-but-unparseable one is a clean 400 here
+    /// rather than silently collapsing to "not requested" — a typo'd <c>?width=abc</c> should fail
+    /// loudly, the same way an out-of-ladder value does in <see cref="ImageTransforms.Resolve"/>, not
+    /// fall through to serving the plain, untransformed file.
     /// </summary>
     public static TransformRequest ParseTransform(HttpContext http)
     {
         var query = http.Request.Query;
         return new TransformRequest(
             ParseInt("width", query["width"]), ParseInt("height", query["height"]),
-            query["format"].FirstOrDefault(), ParseInt("quality", query["quality"]));
+            query["format"].FirstOrDefault(), ParseInt("quality", query["quality"]),
+            query["gravity"].FirstOrDefault(), query["background"].FirstOrDefault());
     }
 
     private static int? ParseInt(string paramName, Microsoft.Extensions.Primitives.StringValues values)

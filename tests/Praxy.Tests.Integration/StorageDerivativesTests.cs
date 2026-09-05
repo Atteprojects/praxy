@@ -139,6 +139,123 @@ public class StorageDerivativesTests(PostgresContainerFixture pg) : AuthTestBase
         Assert.Equal(0L, await ScalarAsync("SELECT count(*) FROM praxy.file_derivatives"));
     }
 
+    /// <summary>Bug #1 from docs/handoff/storage-transform-gravity-prompt.md: JPEG has no alpha, so a transparent source needs an explicit fill rather than Skia's own (surprising) default.</summary>
+    [Fact]
+    public async Task A_transparent_png_converted_to_jpeg_lands_on_white_not_black()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var payload = EncodeHalfTransparentPng(100, 100);
+        var fileId = await UploadFileAsync(ctx, payload, "image/png", "logo.png");
+
+        var response = await DownloadAsync(ctx, fileId, "?format=jpeg");
+        Assert.Equal(200, (int)response.StatusCode);
+        var bitmap = DecodeBitmap(await response.Content.ReadAsByteArrayAsync());
+
+        // Left half was opaque blue — unaffected by the flatten.
+        AssertColorClose(SKColors.Blue, bitmap.GetPixel(10, 50), tolerance: 40);
+        // Right half was fully transparent — must come back white, not Skia's default black.
+        AssertColorClose(SKColors.White, bitmap.GetPixel(90, 50), tolerance: 15);
+    }
+
+    /// <summary>
+    /// The caller-settable half of bug #1: an explicit background reaches the encoder, and a
+    /// transparent source lands on it rather than on the white default.
+    /// </summary>
+    [Fact]
+    public async Task An_explicit_background_is_used_instead_of_the_white_default()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fileId = await UploadFileAsync(ctx, EncodeHalfTransparentPng(100, 100), "image/png", "logo.png");
+
+        var response = await DownloadAsync(ctx, fileId, "?format=jpeg&background=ff0000");
+        Assert.Equal(200, (int)response.StatusCode);
+        var bitmap = DecodeBitmap(await response.Content.ReadAsByteArrayAsync());
+
+        AssertColorClose(SKColors.Blue, bitmap.GetPixel(10, 50), tolerance: 40);
+        // The transparent half now carries the requested red, not white and not Skia's black.
+        AssertColorClose(SKColors.Red, bitmap.GetPixel(90, 50), tolerance: 20);
+    }
+
+    /// <summary>
+    /// <b>The security property the parameter is shaped around.</b> A color has 16.7M values, so it
+    /// can never join the stored key the way ladder-bounded dimensions do — a walked
+    /// <c>?background=</c> has to cost zero rows. Asserting the derivative count rather than timing is
+    /// what makes that checkable: three distinct custom backgrounds, still only the one row the
+    /// default request created.
+    /// </summary>
+    [Fact]
+    public async Task Custom_backgrounds_are_generated_per_request_and_never_cached()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fileId = await UploadFileAsync(ctx, EncodeHalfTransparentPng(100, 100), "image/png", "logo.png");
+
+        // The default (no ?background=) is cacheable and creates exactly one row.
+        Assert.Equal(200, (int)(await DownloadAsync(ctx, fileId, "?format=jpeg")).StatusCode);
+        var afterDefault = await ScalarAsync("SELECT count(*) FROM praxy.file_derivatives");
+        Assert.Equal(1L, afterDefault);
+
+        foreach (var hex in new[] { "ff0000", "00ff00", "0000ff" })
+            Assert.Equal(200, (int)(await DownloadAsync(ctx, fileId, $"?format=jpeg&background={hex}")).StatusCode);
+
+        // Still one: every custom background was served from memory.
+        Assert.Equal(afterDefault, await ScalarAsync("SELECT count(*) FROM praxy.file_derivatives"));
+    }
+
+    [Fact]
+    public async Task A_malformed_background_is_rejected_rather_than_ignored()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fileId = await UploadFileAsync(ctx, EncodeHalfTransparentPng(100, 100), "image/png", "logo.png");
+
+        var response = await DownloadAsync(ctx, fileId, "?format=jpeg&background=%23ffffff");
+        await AssertError(response, 400, ErrorTypes.FileTransformInvalid);
+    }
+
+    /// <summary>Feature #3: cropping a portrait source to a square keeps the requested edge instead of always centering.</summary>
+    [Fact]
+    public async Task A_gravity_top_crop_of_a_tall_source_keeps_the_top_not_the_middle()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        // Top quarter red, the rest blue — center-cropping this to a square lands entirely in the
+        // blue region, so a center pixel landing in red is unambiguous proof gravity was honoured.
+        var payload = EncodeTopBottomPng(width: 100, height: 400, topHeight: 100, SKColors.Red, SKColors.Blue);
+        var fileId = await UploadFileAsync(ctx, payload, "image/png", "portrait.png");
+
+        var defaultCrop = DecodeBitmap(await (await DownloadAsync(ctx, fileId, "?width=100&height=100")).Content.ReadAsByteArrayAsync());
+        AssertColorClose(SKColors.Blue, defaultCrop.GetPixel(64, 64), tolerance: 10);
+
+        var topCrop = DecodeBitmap(await (await DownloadAsync(ctx, fileId, "?width=100&height=100&gravity=top")).Content.ReadAsByteArrayAsync());
+        AssertColorClose(SKColors.Red, topCrop.GetPixel(64, 64), tolerance: 10);
+    }
+
+    /// <summary>
+    /// Bug #2: a phone photo's rotation lives in an EXIF tag, not the pixel data. The fixture is a
+    /// genuine EXIF-tagged JPEG (see Fixtures/README.md), not a canvas-generated one — a
+    /// canvas-generated image has no orientation tag and would pass a broken implementation just as
+    /// easily as a correct one.
+    /// </summary>
+    [Fact]
+    public async Task An_exif_rotated_jpeg_comes_out_upright()
+    {
+        var ctx = await BucketWithGrantsAsync();
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "exif-orientation-6.jpg");
+        var payload = await File.ReadAllBytesAsync(fixturePath);
+        var fileId = await UploadFileAsync(ctx, payload, "image/jpeg", "photo.jpg");
+
+        // format=png with no width/height: forces the corrected-native-size path (the aspect-ratio
+        // probe DerivativesService.SourceDimensionsAsync caches) without a second lossy JPEG
+        // re-encode muddying the pixel assertions below.
+        var response = await DownloadAsync(ctx, fileId, "?format=png");
+        Assert.Equal(200, (int)response.StatusCode);
+        var bitmap = DecodeBitmap(await response.Content.ReadAsByteArrayAsync());
+
+        // Upright means portrait (48x64), not however the sensor stored it (64x48).
+        Assert.Equal(48, bitmap.Width);
+        Assert.Equal(64, bitmap.Height);
+        AssertColorClose(SKColors.Red, bitmap.GetPixel(24, 8), tolerance: 20);
+        AssertColorClose(SKColors.Blue, bitmap.GetPixel(24, 56), tolerance: 20);
+    }
+
     // ---- helpers -------------------------------------------------------------------------------
 
     private sealed record BucketContext(string ProjectId, string BucketId, string UserToken);
@@ -187,24 +304,66 @@ public class StorageDerivativesTests(PostgresContainerFixture pg) : AuthTestBase
         Assert.Equal(height, codec.Info.Height);
     }
 
-    private async Task<string> UploadImageAsync(
-        BucketContext ctx, int width, int height, string? operatorToken = null, bool asOperator = false)
+    private Task<string> UploadImageAsync(
+        BucketContext ctx, int width, int height, string? operatorToken = null, bool asOperator = false) =>
+        UploadFileAsync(ctx, EncodePng(width, height, SKColors.CornflowerBlue), "image/png", "photo.png", operatorToken, asOperator);
+
+    private async Task<string> UploadFileAsync(
+        BucketContext ctx, byte[] payload, string mimeType, string name,
+        string? operatorToken = null, bool asOperator = false)
     {
-        var payload = EncodePng(width, height, SKColors.CornflowerBlue);
         var request = asOperator
             ? Authed(
                 HttpMethod.Post,
-                $"/v1/console/projects/{ctx.ProjectId}/storage/buckets/{ctx.BucketId}/files?name=photo.png",
+                $"/v1/console/projects/{ctx.ProjectId}/storage/buckets/{ctx.BucketId}/files?name={name}",
                 operatorToken!)
             : DataPlane(
-                HttpMethod.Post, $"/v1/storage/buckets/{ctx.BucketId}/files?name=photo.png",
+                HttpMethod.Post, $"/v1/storage/buckets/{ctx.BucketId}/files?name={name}",
                 ctx.ProjectId, sessionToken: ctx.UserToken);
         request.Content = new ByteArrayContent(payload);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
 
         var response = await Client.SendAsync(request);
         Assert.Equal(201, (int)response.StatusCode);
         return (await ReadJson(response)).GetProperty("id").GetString()!;
+    }
+
+    /// <summary>Left half opaque blue, right half fully transparent — the transparent-logo shape the JPEG-flatten bug report described.</summary>
+    private static byte[] EncodeHalfTransparentPng(int width, int height)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        canvas.DrawRect(new SKRect(0, 0, width / 2f, height), new SKPaint { Color = SKColors.Blue });
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    /// <summary>A solid <paramref name="top"/>-colored band <paramref name="topHeight"/> pixels tall, <paramref name="bottom"/> for the rest — a portrait source with an unambiguous top edge to crop toward.</summary>
+    private static byte[] EncodeTopBottomPng(int width, int height, int topHeight, SKColor top, SKColor bottom)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(bottom);
+        canvas.DrawRect(new SKRect(0, 0, width, topHeight), new SKPaint { Color = top });
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    private static SKBitmap DecodeBitmap(byte[] encoded)
+    {
+        using var data = SKData.CreateCopy(encoded);
+        using var codec = SKCodec.Create(data);
+        return SKBitmap.Decode(codec);
+    }
+
+    /// <summary>Tolerant color equality: real encoders (JPEG especially) never round-trip a color exactly.</summary>
+    private static void AssertColorClose(SKColor expected, SKColor actual, byte tolerance)
+    {
+        Assert.True(Math.Abs(expected.Red - actual.Red) <= tolerance
+            && Math.Abs(expected.Green - actual.Green) <= tolerance
+            && Math.Abs(expected.Blue - actual.Blue) <= tolerance,
+            $"Expected a color close to {expected} but got {actual}.");
     }
 
     private Task<HttpResponseMessage> DownloadAsync(BucketContext ctx, string fileId, string query) =>

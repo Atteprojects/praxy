@@ -21,4 +21,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- A real, EXIF-tagged JPEG (see Fixtures/README.md) — a canvas-generated image has no
+         orientation tag and would pass a broken implementation, per
+         docs/handoff/storage-transform-gravity-prompt.md. -->
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

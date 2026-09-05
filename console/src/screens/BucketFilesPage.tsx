@@ -205,6 +205,7 @@ function DerivativesSection({ projectId, bucketId, fileId }: {
                 <span>
                   {d.width}×{d.height} · {d.format}
                   {d.quality != null ? ` · q${d.quality}` : ""}
+                  {d.gravity !== "center" ? ` · ${d.gravity}` : ""}
                 </span>
                 <span className="text-ink-600">{formatBytes(d.sizeBytes)}</span>
               </li>

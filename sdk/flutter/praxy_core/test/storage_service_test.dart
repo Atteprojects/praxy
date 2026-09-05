@@ -181,7 +181,7 @@ void main() {
     await client.storage.getFileDownload(
       'b1',
       'f1',
-      transform: const FileTransform(width: 200, height: 100, format: 'webp', quality: 70),
+      transform: const FileTransform(width: 200, height: 100, format: 'webp', quality: 70, gravity: 'top'),
     );
 
     expect(captured.query, {
@@ -189,6 +189,7 @@ void main() {
       'height': ['100'],
       'format': ['webp'],
       'quality': ['70'],
+      'gravity': ['top'],
     });
   });
 

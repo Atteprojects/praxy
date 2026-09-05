@@ -141,7 +141,7 @@ public class FileChunk
 /// own for exactly that reason: every read resolves through the source file's own
 /// <c>FileAccessRules</c> decision, never a second check.
 ///
-/// <c>(FileId, Width, Height, Format, Quality)</c> is unique — the cache key
+/// <c>(FileId, Width, Height, Format, Quality, Gravity)</c> is unique — the cache key
 /// <see cref="Praxy.Storage.ImageTransforms.Resolve"/> computes — so a second request for the same
 /// transform finds this row instead of generating again. <c>Quality</c> is a real column value
 /// (<c>0</c> for lossless <c>png</c>, never <c>null</c>) rather than nullable, because Postgres
@@ -160,6 +160,13 @@ public class FileDerivative
 
     /// <summary>0 (never meaningful) for png; 1-100 for jpeg/webp. See the type-level remarks for why this isn't nullable.</summary>
     public required int Quality { get; set; }
+
+    /// <summary>
+    /// The crop anchor — always a real value from <c>ImageTransforms.Gravities</c>, normalized to
+    /// <c>"center"</c> (never null) whenever this derivative isn't cropped, since gravity has no
+    /// visual effect there and letting it vary anyway would fragment the cache.
+    /// </summary>
+    public required string Gravity { get; set; }
 
     public required string MimeType { get; set; }
     public long SizeBytes { get; set; }
