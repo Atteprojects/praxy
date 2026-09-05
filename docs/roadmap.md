@@ -459,6 +459,17 @@ unchanged, and no second authorization concept is introduced.
   vector — a size above the top rung is a clean `400`, not a silent clamp. Design: the "Phase 3"
   section of `docs/research/storage.md`. This completes the Storage sequence.
 
+**Follow-up, kicked off 2026-09-05** (`docs/handoff/storage-transform-gravity-prompt.md`): two bugs
+found reviewing Phase 3 against Appwrite's `getFilePreview`, both observed on a running instance rather
+than inferred — a transparent PNG converted to JPEG lands on **black** rather than white, and **EXIF
+orientation is ignored**, so phone photos transform sideways (it affects only the transform path, so
+synthetic test images never catch it). Plus `gravity`, the crop anchor, since centre-cropping a
+portrait to a square cuts heads off — which is the avatar case transforms exist for.
+Border/radius/opacity/rotation are deliberately excluded: **every transform parameter multiplies the
+derivative key space**, which is exactly what the ladder exists to bound. `gravity` earns its place as
+a nine-value enum; `rotation` at 360 values and `background` at 16M colours do not, so `background`
+must be bounded into the cache key or dropped for a fixed white flatten.
+
 **Explicitly out of scope for the whole sequence**: CDN integration, signed time-limited URLs, antivirus
 scanning.
 
