@@ -280,12 +280,22 @@ try
     builder.Services.AddSingleton(new StorageOptions(
         ChunkSizeBytes: builder.Configuration.GetValue("Praxy:Storage:ChunkSizeBytes", 524_288),
         DefaultBucketMaxFileSizeBytes: builder.Configuration.GetValue(
-            "Praxy:Storage:DefaultBucketMaxFileSizeBytes", 52_428_800L)));
+            "Praxy:Storage:DefaultBucketMaxFileSizeBytes", 52_428_800L),
+        MaxSourceImagePixels: builder.Configuration.GetValue(
+            "Praxy:Storage:MaxSourceImagePixels", 40_000_000L)));
     // Scoped, not singleton: the chunk store writes through PraxyDb's own connection so its INSERTs
     // join the caller's ambient transaction (docs/research/storage.md's one-transaction rule).
     builder.Services.AddScoped<IFileStore, PostgresChunkFileStore>();
     builder.Services.AddScoped<BucketsService>();
     builder.Services.AddScoped<FilesService>();
+
+    // Storage Phase 3: image transforms. The derivative chunk store is a second, separate IFileStore
+    // implementation (its own table, keyed by derivative id rather than file id) — registered as its
+    // own concrete type, not as IFileStore itself, so it can't be confused with the registration
+    // above at an injection site.
+    builder.Services.AddScoped<PostgresDerivativeChunkFileStore>();
+    builder.Services.AddSingleton<ImageTransformer>();
+    builder.Services.AddScoped<DerivativesService>();
 
     // ---- Post-v0.1.0: retention sweep for praxy.events / webhook_deliveries / praxy.audit_log ----
     builder.Services.AddSingleton(new RetentionOptions(

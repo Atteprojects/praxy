@@ -118,11 +118,22 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
         return new StorageBudget(maxFile, maxTotal, used);
     }
 
-    /// <summary>Sum of every stored file's size in the project. No denormalized counter to drift — the files themselves are the record.</summary>
-    public async Task<long> UsedStorageBytesAsync(string projectId, CancellationToken ct) =>
-        await db.Files
-            .Where(f => db.Buckets.Where(x => x.ProjectId == projectId).Select(x => x.Id).Contains(f.BucketId))
+    /// <summary>
+    /// Sum of every stored file's size in the project, plus every one of their cached derivatives'
+    /// (Storage Phase 3: "derivative bytes count against this quota like any other bytes" — the
+    /// bounded ladder is what keeps that total predictable rather than attacker-controlled). No
+    /// denormalized counter to drift — the files and derivatives themselves are the record.
+    /// </summary>
+    public async Task<long> UsedStorageBytesAsync(string projectId, CancellationToken ct)
+    {
+        var bucketIds = db.Buckets.Where(x => x.ProjectId == projectId).Select(x => x.Id);
+        var fileBytes = await db.Files.Where(f => bucketIds.Contains(f.BucketId))
             .SumAsync(f => (long?)f.SizeBytes, ct) ?? 0L;
+        var derivativeBytes = await db.FileDerivatives
+            .Where(d => db.Files.Where(f => bucketIds.Contains(f.BucketId)).Select(f => f.Id).Contains(d.FileId))
+            .SumAsync(d => (long?)d.SizeBytes, ct) ?? 0L;
+        return fileBytes + derivativeBytes;
+    }
 
     /// <summary>
     /// Sites Phase 2: caps concurrent on-demand preview containers per project. Checked on the

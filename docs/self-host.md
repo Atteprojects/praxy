@@ -152,6 +152,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:Quotas:MaxStorageBytesPerProject` | 5368709120 (5 GB) | Total stored bytes per project (org-overridable). **This is what bounds how large your backups get** — see [Storage and backup size](#storage-and-backup-size). |
 | `Praxy:Storage:ChunkSizeBytes` | 524288 (512 KiB) | Size of each row a file's bytes are split across. A tuning constant: it is recorded on every file as it is written, so changing it affects only *new* uploads and can never invalidate a byte already stored. |
 | `Praxy:Storage:DefaultBucketMaxFileSizeBytes` | 52428800 (50 MB) | Per-file ceiling given to a bucket created without one of its own. Always clamped to `Praxy:Quotas:MaxFileSizeBytes`. |
+| `Praxy:Storage:MaxSourceImagePixels` | 40000000 (40 MP) | Decoded pixel-count ceiling for [image transforms](#image-transforms), checked before the full decode. |
 | `Praxy:Tables:SchemaJobs:PollIntervalSeconds` | 2 | `CREATE INDEX CONCURRENTLY` / type-change job runner cadence. |
 | `Praxy:Tables:SchemaJobs:IndexBuildTimeoutSeconds` | 1800 | Job wall-clock timeout before it's marked failed. |
 | `Praxy:Realtime:MaxConnectionsPerProject` | 1000 | WebSocket connection quota. |
@@ -470,6 +471,15 @@ but worth saying out loud since no other Praxy table churns at this volume — i
 bulk and want the disk back promptly, a manual `VACUUM (FULL) praxy.file_chunks` during a quiet
 window will do it (it takes an exclusive lock; plan accordingly).
 
+**Cached image transforms (`praxy.file_derivatives`/`file_derivative_chunks`) count against this same
+`MaxStorageBytesPerProject` quota and therefore this same backup size** — a thumbnail is still bytes
+in the `praxy` schema. What keeps that total predictable rather than open-ended is the fixed
+dimension ladder (see [Image transforms](#image-transforms) below): every source file has at most a
+handful of possible cached sizes, never one per pixel value a caller happens to request, so the
+worst case is a small, bounded multiple of a project's own uploaded bytes rather than an unbounded
+one. Deleting a source file or purging its derivatives from its file sheet frees this the same way
+deleting the file itself does.
+
 ## Serving files inline
 
 **Every file download is a `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff`,
@@ -499,6 +509,39 @@ decision rather than a setting today; `docs/research/storage.md` records what it
 Range requests need no configuration: `Accept-Ranges: bytes` is advertised on every download, and a
 `Range` header is answered with a `206` whether or not the type is served inline. A partial response
 is still an attachment unless inline was opted in — the two are independent.
+
+## Image transforms
+
+The download endpoint accepts `?width=`/`?height=`/`?format=`/`?quality=` and generates a resized,
+cropped, re-encoded, cached copy of the file — a thumbnail URL, not a separate upload. With none of
+those present, downloads behave exactly as described above, Range included.
+
+**Requested dimensions snap up to a fixed ladder — 64, 128, 256, 512, 1024, 2048 pixels** — so
+`?width=200` is served by the 256-wide derivative. This is a deliberate cache-size control, not an
+ergonomics choice: without it, a caller could walk `?width=1..2000` against one public image and
+generate two thousand cached derivatives from a single source, which is why a size **above the top
+rung (2048) is a clean `400`, not a silent clamp** to the largest available size. Only `image/png`,
+`image/jpeg` and `image/webp` sources can be transformed; every other type gets the same clean `400`
+rather than an attempted decode.
+
+A derivative is a representation of its source file, not a separate resource: it carries no
+permissions of its own and resolves through exactly the source file's own access check, so nothing
+about a bucket's grants or a file's per-file permissions needs to change to use this. Its output type
+is server-chosen (the encoder's), which makes it inherently safer than an uploaded file's own claimed
+type — but the attachment default and the inline-serving allowlist above still apply to it unchanged;
+"it's just a generated thumbnail" is not an exception.
+
+No extra config is needed for ordinary use. One knob exists for defense in depth:
+
+| Config key | Default | What it does |
+|---|---|---|
+| `Praxy:Storage:MaxSourceImagePixels` | 40,000,000 (40 MP) | The source image's *decoded* pixel-count ceiling, checked against its header before the full decode — rejects a decompression bomb (a tiny file whose header claims an enormous size) before it can allocate anything. |
+
+Re-uploading over an existing file id (replacing its bytes in place, same id) purges that file's
+cached derivatives immediately — the one invalidation the database's own cascading delete cannot
+reach on its own, since the file's id doesn't change. A file's sheet in the console (Storage → a
+bucket → Files → a file's permissions button) shows which sizes are cached and their total bytes, and
+offers a manual purge.
 
 ## Backup and restore
 

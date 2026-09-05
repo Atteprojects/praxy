@@ -159,6 +159,51 @@ void main() {
     expect(bytes, [0, 255, 10, 13]);
   });
 
+  test('getFileDownload() with no transform sends no transform query parameters', () async {
+    late TransportRequest captured;
+    final client = _client(
+      (_) => const TransportResponse(statusCode: 200, headers: {}, bodyBytes: [1]),
+      capture: (r) => captured = r,
+    );
+
+    await client.storage.getFileDownload('b1', 'f1');
+
+    expect(captured.query, isEmpty);
+  });
+
+  test('getFileDownload() sends transform parameters as query strings', () async {
+    late TransportRequest captured;
+    final client = _client(
+      (_) => const TransportResponse(statusCode: 200, headers: {}, bodyBytes: [1]),
+      capture: (r) => captured = r,
+    );
+
+    await client.storage.getFileDownload(
+      'b1',
+      'f1',
+      transform: const FileTransform(width: 200, height: 100, format: 'webp', quality: 70),
+    );
+
+    expect(captured.query, {
+      'width': ['200'],
+      'height': ['100'],
+      'format': ['webp'],
+      'quality': ['70'],
+    });
+  });
+
+  test('getFileDownload() sends only the transform parameters that were given', () async {
+    late TransportRequest captured;
+    final client = _client(
+      (_) => const TransportResponse(statusCode: 200, headers: {}, bodyBytes: [1]),
+      capture: (r) => captured = r,
+    );
+
+    await client.storage.getFileDownload('b1', 'f1', transform: const FileTransform(width: 300));
+
+    expect(captured.query, {'width': ['300']});
+  });
+
   test('getFileDownload() maps an error status the same way a JSON call does', () async {
     final client = _client((_) => jsonResponse(401, {
       'message': 'Not permitted to read files in this bucket.',

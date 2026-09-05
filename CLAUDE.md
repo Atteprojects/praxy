@@ -105,7 +105,7 @@ Filled in as phases land — keep this section current.
   so logging never adds request-path latency, and retention-eligible from day one
   (`Praxy:Retention:SiteRequestsMaxAgeDays`, default 7 — much shorter than the other retention windows
   given this table's expected volume) — see `docs/handoff/sites-request-logs-report.md`.
-- Storage (post-v0.1.0 initiative, Phases 1-2, 2026-09-03/04): file bytes live in Postgres, split across
+- Storage (post-v0.1.0 initiative, Phases 1-3, 2026-09-03/04/05): file bytes live in Postgres, split across
   `praxy.file_chunks` rows behind an `IFileStore` seam (`src/Praxy.Storage`) — no second datastore,
   nothing on disk. Needs no extra runtime dependency. Tunable via `Praxy:Storage:ChunkSizeBytes`
   (512 KiB; recorded per file, so retuning never invalidates stored bytes) and
@@ -121,7 +121,24 @@ Filled in as phases land — keep this section current.
   serving** (per-bucket `inline_types`, intersected with the hard-coded `InlineTypes.Safe` set that
   can never hold `text/html`/`image/svg+xml`; `nosniff` on every response regardless). No new config
   knobs — both new controls are per-bucket settings on the console's bucket Settings tab. See
-  `docs/self-host.md`'s "Serving files inline" and `docs/handoff/storage-phase-2-report.md`.
+  `docs/self-host.md`'s "Serving files inline" and `docs/handoff/storage-phase-2-report.md`. Phase 3
+  (2026-09-05, completing the Storage sequence) added **image transforms** — `?width=`/`?height=`/
+  `?format=`/`?quality=` on the download endpoint, generating a cached derivative via **SkiaSharp**
+  (`SkiaSharp.NativeAssets.Linux.NoDependencies`, pinned in `docs/research/dotnet-stack.md` — no
+  `apt-get` line needed, this feature renders no text). Requested dimensions **snap up to a fixed
+  ladder** (64/128/256/512/1024/2048; above the top rung is a clean `400`, never a silent clamp) —
+  the control that keeps the cache bounded rather than attacker-walkable. Derivatives live in
+  `praxy.file_derivatives`/`file_derivative_chunks` (own chunk rows behind the same `IFileStore`
+  seam, FK `ON DELETE CASCADE` off `files`) and are **never a resource of their own** — no
+  permissions, resolved entirely through the source file's own `FileAccessRules` check. Tunable via
+  `Praxy:Storage:MaxSourceImagePixels` (40 MP; the decoded pixel-count ceiling checked before the
+  full decode, so a decompression bomb is rejected before it can allocate anything) — derivative
+  bytes count against `MaxStorageBytesPerProject` like any other bytes, so backup size grows with
+  them too. Phase 3 also added **replacing a file's bytes in place** (`PUT .../files/{fileId}`, same
+  id) — Phase 1 had no such capability, and adding it was necessary because it is the one place
+  derivative invalidation doesn't fall out of the schema on its own (re-uploading over a file id
+  purges its derivatives explicitly; deleting the file itself already cascades). See
+  `docs/self-host.md`'s "Image transforms" and `docs/handoff/storage-phase-3-report.md`.
 - Dev console: `npm run dev --prefix console` — port 5173, proxies `/v1` to 5090
 - Console prod build: `npm run build --prefix console` · EF migration: `dotnet ef migrations add <Name>`
   from `src/Praxy.Persistence` (local tool manifest pins dotnet-ef 10.0.11)

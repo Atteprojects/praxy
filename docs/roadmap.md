@@ -446,12 +446,18 @@ unchanged, and no second authorization concept is introduced.
   per-file permissions are **additive, not restrictive**, exactly like row security — a bucket-level
   `read("any")` grant means everyone reads every file, so "users only read their own uploads" means
   granting no bucket read at all. Design: the "Phase 2" section of `docs/research/storage.md`.
-- **Phase 3 — designed 2026-09-04** (kickoff: `docs/handoff/storage-phase-3-prompt.md`) — on-the-fly
-  resize/crop/format/quality with cached derivatives. Two decisions worth knowing without opening the
-  design: **SkiaSharp, not ImageSharp** — ImageSharp's v4 build-time licence enforcement would land on
-  every self-hoster's `docker compose up --build`; and **requested dimensions snap up to a fixed
-  ladder** (64/128/256/512/1024/2048), because arbitrary `?width=` plus a cache is a
-  storage-amplification vector. Design: the "Phase 3" section of `docs/research/storage.md`.
+- **Phase 3 — image transforms** — **shipped 2026-09-05** (kickoff:
+  `docs/handoff/storage-phase-3-prompt.md`, report: `docs/handoff/storage-phase-3-report.md`) —
+  on-the-fly resize/crop/format/quality with cached derivatives, keyed by
+  `(file_id, width, height, format, quality)` in a new `file_derivatives` table pointing at their own
+  chunk rows (`file_derivative_chunks`), never `files`/`file_chunks` themselves — a derivative is a
+  representation of its source file, not a resource of its own, and resolves through exactly the
+  source's own `FileAccessRules` decision. Two decisions worth knowing without opening the design:
+  **SkiaSharp, not ImageSharp** — ImageSharp's v4 build-time licence enforcement would land on every
+  self-hoster's `docker compose up --build`; and **requested dimensions snap up to a fixed ladder**
+  (64/128/256/512/1024/2048), because arbitrary `?width=` plus a cache is a storage-amplification
+  vector — a size above the top rung is a clean `400`, not a silent clamp. Design: the "Phase 3"
+  section of `docs/research/storage.md`. This completes the Storage sequence.
 
 **Explicitly out of scope for the whole sequence**: CDN integration, signed time-limited URLs, antivirus
 scanning.

@@ -1,6 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Storage Phase 3 (image transforms). Pinned per docs/research/dotnet-stack.md's verified
+         pin: MIT, net10.0-targeted, no build-time licence enforcement (unlike ImageSharp v4). The
+         NoDependencies variant ships libSkiaSharp.so without fontconfig, which this feature never
+         needs since it renders no text. -->
+    <PackageReference Include="SkiaSharp" Version="4.151.2" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 

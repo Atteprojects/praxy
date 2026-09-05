@@ -50,12 +50,23 @@ public static class ConsoleStorageEndpoints
             .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream")
             .Produces<Stream>(StatusCodes.Status206PartialContent, "application/octet-stream");
         admin.MapPatch("/buckets/{bucketId}/files/{fileId}", UpdateFile).Produces<FileResponse>();
+        admin.MapPut("/buckets/{bucketId}/files/{fileId}", ReplaceFile)
+            .Produces<FileResponse>()
+            .Accepts<Stream>("*/*");
         admin.MapDelete("/buckets/{bucketId}/files/{fileId}", DeleteFile).Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/buckets/{bucketId}/files/{fileId}/permissions", GetFilePermissions)
             .Produces<FilePermissionsResponse>();
         admin.MapPatch("/buckets/{bucketId}/files/{fileId}/permissions", UpdateFilePermissions)
             .Produces<FilePermissionsResponse>();
+
+        // Storage Phase 3: the file sheet's "which sizes exist, total bytes" plus a purge action.
+        // Console-only — the data plane has no need to enumerate a file's cached derivatives, only
+        // to fetch one via the download endpoint's transform parameters.
+        admin.MapGet("/buckets/{bucketId}/files/{fileId}/derivatives", ListDerivatives)
+            .Produces<FileDerivativeListResponse>();
+        admin.MapDelete("/buckets/{bucketId}/files/{fileId}/derivatives", PurgeDerivatives)
+            .Produces(StatusCodes.Status204NoContent);
     }
 
     // ---- usage -----------------------------------------------------------------------------
@@ -186,9 +197,10 @@ public static class ConsoleStorageEndpoints
     {
         var project = ConsoleProjectFilter.Current(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
-        var (file, range, content) = await files.OpenDownloadAsync(
-            bucket, fileId, http.Request.Headers.Range, [], bypassPermissions: true, ct);
-        return await StorageTransfer.DownloadAsync(http, bucket, file, range, content, ct);
+        var download = await files.OpenDownloadAsync(
+            bucket, fileId, http.Request.Headers.Range, StorageTransfer.ParseTransform(http),
+            [], bypassPermissions: true, ct);
+        return await StorageTransfer.DownloadAsync(http, bucket, download, ct);
     }
 
     private static async Task<IResult> UpdateFile(
@@ -199,6 +211,18 @@ public static class ConsoleStorageEndpoints
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var file = await files.RenameAsync(bucket, fileId, req.Name, [], bypassPermissions: true, ct);
         await AuditAsync(db, http, project.Id, "storage.files.update", $"bucket/{bucketId}/file/{fileId}", ct);
+        return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
+    }
+
+    private static async Task<IResult> ReplaceFile(
+        string bucketId, string fileId, HttpContext http, PraxyDb db, BucketsService buckets,
+        FilesService files, QuotaService quotas, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var file = await StorageTransfer.ReplaceAsync(
+            http, quotas, files, bucket, fileId, [], bypassPermissions: true, ct);
+        await AuditAsync(db, http, project.Id, "storage.files.replace", $"bucket/{bucketId}/file/{fileId}", ct);
         return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 
@@ -234,6 +258,31 @@ public static class ConsoleStorageEndpoints
         await AuditAsync(db, http, project.Id, "storage.files.permissions",
             $"bucket/{bucketId}/file/{fileId}", ct);
         return Results.Ok(new FilePermissionsResponse(permissions));
+    }
+
+    // ---- derivatives (Storage Phase 3) ------------------------------------------------------
+
+    private static async Task<IResult> ListDerivatives(
+        string bucketId, string fileId, HttpContext http, BucketsService buckets, FilesService files,
+        DerivativesService derivatives, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var file = await files.GetAsync(bucket, fileId, [], bypassPermissions: true, ct);
+        var list = await derivatives.ListAsync(file.Id, ct);
+        return Results.Ok(FileDerivativeListResponse.From(list));
+    }
+
+    private static async Task<IResult> PurgeDerivatives(
+        string bucketId, string fileId, HttpContext http, PraxyDb db, BucketsService buckets,
+        FilesService files, DerivativesService derivatives, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var file = await files.GetAsync(bucket, fileId, [], bypassPermissions: true, ct);
+        await derivatives.PurgeAsync(file.Id, ct);
+        await AuditAsync(db, http, project.Id, "storage.files.derivatives.purge", $"bucket/{bucketId}/file/{fileId}", ct);
+        return Results.NoContent();
     }
 
     private static async Task AuditAsync(

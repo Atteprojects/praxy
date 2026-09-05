@@ -2,6 +2,28 @@ import '../client.dart';
 import '../json_utils.dart';
 import '../models.dart';
 
+/// Storage Phase 3: on-the-fly resize/crop/format/quality on the download endpoint.
+/// Dimensions snap up to a fixed ladder server-side (64/128/256/512/1024/2048) — a
+/// storage-amplification control, not an SDK-side detail to replicate — so a size
+/// above the top rung is rejected rather than clamped.
+final class FileTransform {
+  const FileTransform({this.width, this.height, this.format, this.quality});
+
+  final int? width;
+  final int? height;
+
+  /// `png` | `jpeg` | `webp`.
+  final String? format;
+  final int? quality;
+
+  Map<String, List<String>> toQuery() => {
+    if (width != null) 'width': ['$width'],
+    if (height != null) 'height': ['$height'],
+    if (format != null) 'format': [format!],
+    if (quality != null) 'quality': ['$quality'],
+  };
+}
+
 /// The data-plane storage surface (`/v1/storage`). Five methods: upload, list,
 /// read metadata, download bytes, delete. Bucket configuration and its permission
 /// matrix are a console/operator concern and stay out of this SDK, the same line
@@ -72,12 +94,26 @@ final class StorageService {
     ),
   );
 
-  /// The file's bytes. Buffered whole in memory here — the server streams them, but
-  /// `Transport` returns a complete response body, so a very large download is the
-  /// caller's memory to budget for.
-  Future<List<int>> getFileDownload(String bucketId, String fileId) => _client.requestBytes(
+  /// The file's bytes — or, with [transform], a generated derivative's bytes instead.
+  /// Buffered whole in memory either way: the server streams them, but `Transport`
+  /// returns a complete response body, so a very large download (or a request for the
+  /// source's own native size with no [transform] at all) is the caller's memory to
+  /// budget for.
+  ///
+  /// A derivative resolves through exactly the same permission check as the source
+  /// file — it is a representation of that file, not a resource with grants of its
+  /// own — and Range never applies to one, since a transform request always returns
+  /// the whole generated image. Requested dimensions snap up to a fixed ladder
+  /// server-side (64/128/256/512/1024/2048); a size above the top rung is rejected
+  /// rather than clamped.
+  Future<List<int>> getFileDownload(
+    String bucketId,
+    String fileId, {
+    FileTransform? transform,
+  }) => _client.requestBytes(
     method: 'GET',
     path: '/v1/storage/buckets/$bucketId/files/$fileId/download',
+    query: transform?.toQuery() ?? const {},
   );
 
   Future<void> deleteFile(String bucketId, String fileId) async {

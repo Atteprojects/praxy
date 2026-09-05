@@ -87,6 +87,17 @@ public class StoredFile
     public long SizeBytes { get; set; }
 
     /// <summary>
+    /// Storage Phase 3: the source's decoded pixel dimensions, probed and cached here the first time
+    /// any transform request needs them (never at upload time — plenty of files are never
+    /// transformed) rather than on every request that omits one axis, which would otherwise mean
+    /// re-reading and re-parsing the whole source on every such request forever. Null for every file
+    /// until then, and for every file that is never transformed at all. Cleared back to null by
+    /// <c>FilesService.ReplaceBytesAsync</c> — the probe is only valid for the bytes it measured.
+    /// </summary>
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+
+    /// <summary>
     /// The chunk size this file was actually written with, recorded per file rather than read from
     /// config at read time. Changing <c>Praxy:Storage:ChunkSizeBytes</c> is therefore a tuning
     /// change for *new* uploads only and can never invalidate a byte already stored.
@@ -121,5 +132,54 @@ public class FileChunk
     /// of. See <c>StorageEngineTests.File_chunk_data_column_uses_external_storage</c> — the setting
     /// is invisible from behavior alone, so it is asserted rather than assumed.
     /// </summary>
+    public required byte[] Data { get; set; }
+}
+
+/// <summary>
+/// Storage Phase 3: one cached image transform of a <see cref="StoredFile"/> — a representation of
+/// that file, not a resource of its own (docs/research/storage.md). It carries no permissions of its
+/// own for exactly that reason: every read resolves through the source file's own
+/// <c>FileAccessRules</c> decision, never a second check.
+///
+/// <c>(FileId, Width, Height, Format, Quality)</c> is unique — the cache key
+/// <see cref="Praxy.Storage.ImageTransforms.Resolve"/> computes — so a second request for the same
+/// transform finds this row instead of generating again. <c>Quality</c> is a real column value
+/// (<c>0</c> for lossless <c>png</c>, never <c>null</c>) rather than nullable, because Postgres
+/// treats every <c>NULL</c> in a unique index as distinct and would otherwise let duplicate <c>png</c>
+/// derivatives through.
+/// </summary>
+public class FileDerivative
+{
+    public required Guid Id { get; set; }
+    public required Guid FileId { get; set; }
+    public required int Width { get; set; }
+    public required int Height { get; set; }
+
+    /// <summary>png | jpeg | webp — the encoder's choice, never the uploader's, which is what makes a derivative's type safer than its source's (docs/research/storage.md).</summary>
+    public required string Format { get; set; }
+
+    /// <summary>0 (never meaningful) for png; 1-100 for jpeg/webp. See the type-level remarks for why this isn't nullable.</summary>
+    public required int Quality { get; set; }
+
+    public required string MimeType { get; set; }
+    public long SizeBytes { get; set; }
+    public required int ChunkSizeBytes { get; set; }
+    public int ChunkCount { get; set; }
+    public required string Checksum { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
+/// A derivative's own chunk rows — the exact analogue of <see cref="FileChunk"/> one level down, in a
+/// separate table rather than <c>file_chunks</c> itself: that table's FK targets <c>files.id</c>, and
+/// a derivative is deliberately not a row in <c>files</c> (it would then be listable, permissionable,
+/// and quota-countable as an independent resource, which is precisely what "a representation, not a
+/// resource of its own" rules out). Same chunk-and-stream shape behind the same <c>IFileStore</c>
+/// seam, addressed by the derivative's own id instead of a file's.
+/// </summary>
+public class FileDerivativeChunk
+{
+    public required Guid DerivativeId { get; set; }
+    public required int Index { get; set; }
     public required byte[] Data { get; set; }
 }

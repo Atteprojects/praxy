@@ -525,6 +525,15 @@ const bytes = await authed.storage.getFileDownload(bucketId, fileId);
 const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
 ```
 
+Pass `transform` for a generated, cached derivative instead of the original bytes — a resized/cropped/
+re-encoded copy, resolved through exactly the same permission check as the file itself. Dimensions
+snap up server-side to a fixed ladder (64/128/256/512/1024/2048); a size above 2048 is a clean error,
+never a silent clamp.
+
+```ts
+const thumbnail = await authed.storage.getFileDownload(bucketId, fileId, { width: 200, format: "webp" });
+```
+
 ### Delete a file
 
 ```ts
@@ -589,8 +598,9 @@ authed.realtime.close();
   starting the flow and handling the callback redirect is `@praxy/nextjs`'s Route Handler.
 - **Bucket management** — creating buckets and editing their permission matrix is a console/operator
   concern, the same line this package draws against schema management.
-- **Renaming a stored file, HTTP `Range` requests, and image transforms** — the first is an API route
-  this SDK deliberately doesn't wrap yet; the other two don't exist server-side (Storage Phase 2/3).
+- **Renaming a stored file** — an API route this SDK deliberately doesn't wrap yet. HTTP `Range`
+  requests the server already honours; they're a transport concern, so use them through your own
+  HTTP client if you need partial reads.
 - **Typed row codegen** — see `@praxy/codegen`.
 - **React bindings** — see `@praxy/react`.
 

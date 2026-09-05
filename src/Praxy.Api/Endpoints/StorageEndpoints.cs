@@ -52,6 +52,13 @@ public static class StorageEndpoints
             .Produces<Stream>(StatusCodes.Status200OK, "application/octet-stream")
             .Produces<Stream>(StatusCodes.Status206PartialContent, "application/octet-stream");
         group.MapPatch("/buckets/{bucketId}/files/{fileId}", UpdateFile).Produces<FileResponse>();
+        // Storage Phase 3: replaces the file's bytes in place (same id) rather than creating a new
+        // file — the capability re-upload-and-purge-derivatives needs. `*/*` for the same reason
+        // CreateFile's Accept is: the body is the new bytes, and the request's Content-Type becomes
+        // the stored file's mime type.
+        group.MapPut("/buckets/{bucketId}/files/{fileId}", ReplaceFile)
+            .Produces<FileResponse>()
+            .Accepts<Stream>("*/*");
         group.MapDelete("/buckets/{bucketId}/files/{fileId}", DeleteFile).Produces(StatusCodes.Status204NoContent);
 
         group.MapGet("/buckets/{bucketId}/files/{fileId}/permissions", GetFilePermissions)
@@ -179,9 +186,9 @@ public static class StorageEndpoints
         var project = DataPlaneEndpoints.CurrentProject(http);
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
-        var (file, range, content) = await files.OpenDownloadAsync(
-            bucket, fileId, http.Request.Headers.Range, roles, bypass, ct);
-        return await StorageTransfer.DownloadAsync(http, bucket, file, range, content, ct);
+        var download = await files.OpenDownloadAsync(
+            bucket, fileId, http.Request.Headers.Range, StorageTransfer.ParseTransform(http), roles, bypass, ct);
+        return await StorageTransfer.DownloadAsync(http, bucket, download, ct);
     }
 
     private static async Task<IResult> UpdateFile(
@@ -193,6 +200,18 @@ public static class StorageEndpoints
         var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
         var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
         var file = await files.RenameAsync(bucket, fileId, req.Name, roles, bypass, ct);
+        return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
+    }
+
+    private static async Task<IResult> ReplaceFile(
+        string bucketId, string fileId, HttpContext http, BucketsService buckets, FilesService files,
+        QuotaService quotas, IRoleResolver roleResolver, CancellationToken ct)
+    {
+        RequireScopeIfKey(http, ApiKeyScopes.StorageWrite);
+        var project = DataPlaneEndpoints.CurrentProject(http);
+        var bucket = await buckets.GetAsync(project.Id, bucketId, ct);
+        var (roles, bypass) = await RowEndpoints.CallerAsync(http, roleResolver);
+        var file = await StorageTransfer.ReplaceAsync(http, quotas, files, bucket, fileId, roles, bypass, ct);
         return Results.Ok(FileResponse.From(file, await files.GetFilePermissionsAsync(bucket, file.Id, ct)));
     }
 

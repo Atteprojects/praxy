@@ -26,6 +26,30 @@ internal static class StorageTransfer
         http.Request.Query["permissions"] is { Count: > 0 } values ? [.. values!] : null;
 
     /// <summary>
+    /// The download endpoint's <c>?width=/?height=/?format=/?quality=</c>. An absent parameter is
+    /// <c>null</c> (not requested); a present-but-unparseable one is a clean 400 here rather than
+    /// silently collapsing to "not requested" — a typo'd <c>?width=abc</c> should fail loudly, the
+    /// same way an out-of-ladder value does in <see cref="ImageTransforms.Resolve"/>, not fall
+    /// through to serving the plain, untransformed file.
+    /// </summary>
+    public static TransformRequest ParseTransform(HttpContext http)
+    {
+        var query = http.Request.Query;
+        return new TransformRequest(
+            ParseInt("width", query["width"]), ParseInt("height", query["height"]),
+            query["format"].FirstOrDefault(), ParseInt("quality", query["quality"]));
+    }
+
+    private static int? ParseInt(string paramName, Microsoft.Extensions.Primitives.StringValues values)
+    {
+        var raw = values.FirstOrDefault();
+        if (raw is null) return null;
+        if (!int.TryParse(raw, out var value))
+            throw new PraxyException(400, ErrorTypes.FileTransformInvalid, $"'{paramName}' must be a whole number.");
+        return value;
+    }
+
+    /// <summary>
     /// Runs one upload with the request-body limit lifted to this project's resolved
     /// <c>MaxFileSizeBytes</c>.
     ///
@@ -63,6 +87,32 @@ internal static class StorageTransfer
     }
 
     /// <summary>
+    /// Same request-body-limit dance as <see cref="UploadAsync"/>, for replacing an existing file's
+    /// bytes in place instead of creating a new one.
+    /// </summary>
+    public static async Task<StoredFile> ReplaceAsync(
+        HttpContext http, QuotaService quotas, FilesService files, Bucket bucket, string fileId,
+        string[] callerRoles, bool bypassPermissions, CancellationToken ct)
+    {
+        var budget = await quotas.GetStorageBudgetAsync(bucket.ProjectId, ct);
+        var maxFileSize = Math.Min(bucket.MaxFileSizeBytes, budget.MaxFileSizeBytes);
+        if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } feature)
+            feature.MaxRequestBodySize = maxFileSize;
+
+        try
+        {
+            return await files.ReplaceBytesAsync(
+                bucket, fileId, FileName(http), http.Request.ContentType, http.Request.ContentLength,
+                http.Request.Body, callerRoles, bypassPermissions, ct);
+        }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            throw new PraxyException(400, ErrorTypes.FileSizeExceeded,
+                $"This file exceeds the {maxFileSize} byte limit for this bucket.");
+        }
+    }
+
+    /// <summary>
     /// Streams the file's bytes to the response. Headers are set from the metadata row and the
     /// chunks are copied straight through — the whole file is never materialized, which is the
     /// only reason a multi-gigabyte download is affordable at all.
@@ -91,45 +141,48 @@ internal static class StorageTransfer
     /// headers for any other reason re-opens the hole above.
     /// </para>
     /// </remarks>
-    public static async Task<IResult> DownloadAsync(
-        HttpContext http, Bucket bucket, StoredFile file, ByteRangeRequest range, Stream? content,
-        CancellationToken ct)
+    public static async Task<IResult> DownloadAsync(HttpContext http, Bucket bucket, FileDownload download, CancellationToken ct)
     {
         // 416: the client asked for bytes this file doesn't have. Content-Range reports the real
         // size so it can retry correctly, and it survives the throw because ErrorHandlingMiddleware
-        // writes the envelope onto this same response rather than resetting it.
-        if (range.Outcome == ByteRangeOutcome.Unsatisfiable)
+        // writes the envelope onto this same response rather than resetting it. Never reached for a
+        // derivative — FileDownload.ForDerivative always resolves to ByteRangeOutcome.Full.
+        if (download.Range.Outcome == ByteRangeOutcome.Unsatisfiable)
         {
-            http.Response.Headers.ContentRange = $"bytes */{file.SizeBytes}";
+            http.Response.Headers.ContentRange = $"bytes */{download.SizeBytes}";
             throw new PraxyException(416, ErrorTypes.FileRangeNotSatisfiable,
-                $"That range lies outside this file's {file.SizeBytes} bytes.");
+                $"That range lies outside this file's {download.SizeBytes} bytes.");
         }
 
         // Non-null for every outcome but the 416 above, which has already returned.
-        await using (var body = content!)
+        await using (var body = download.Content!)
         {
-            http.Response.ContentType = file.MimeType;
-            // Advertised on every response, so a media player knows it can seek at all.
-            http.Response.Headers.AcceptRanges = "bytes";
+            http.Response.ContentType = download.MimeType;
+            // Advertised only for the plain-file path — a media player probing for seek support on a
+            // generated derivative would otherwise be told it can Range a resource that ignores it.
+            if (download.SupportsRange)
+                http.Response.Headers.AcceptRanges = "bytes";
             http.Response.Headers.XContentTypeOptions = "nosniff";
             // Orthogonal to the range: a 206 is still an attachment unless this bucket opted this
-            // exact type into inline serving. Adding partial content must not quietly drop that.
+            // exact type into inline serving. Adding partial content must not quietly drop that. A
+            // derivative's type is the encoder's own choice, never the uploader's — safer than the
+            // source, but still gated by the same two-part check (docs/research/storage.md).
             http.Response.Headers.ContentDisposition =
-                InlineTypes.ServesInline(bucket.InlineTypes, file.MimeType)
-                    ? ContentDisposition.Inline(file.Name)
-                    : ContentDisposition.Attachment(file.Name);
+                InlineTypes.ServesInline(bucket.InlineTypes, download.MimeType)
+                    ? ContentDisposition.Inline(download.File.Name)
+                    : ContentDisposition.Attachment(download.File.Name);
 
-            if (range.Outcome == ByteRangeOutcome.Partial)
+            if (download.Range.Outcome == ByteRangeOutcome.Partial)
             {
                 http.Response.StatusCode = StatusCodes.Status206PartialContent;
-                http.Response.Headers.ContentRange = $"bytes {range.Start}-{range.End}/{file.SizeBytes}";
+                http.Response.Headers.ContentRange = $"bytes {download.Range.Start}-{download.Range.End}/{download.SizeBytes}";
                 // The length of the *part*, not of the file. Getting this wrong makes players hang
                 // waiting for bytes that never come rather than failing loudly.
-                http.Response.ContentLength = range.Length;
+                http.Response.ContentLength = download.Range.Length;
             }
             else
             {
-                http.Response.ContentLength = file.SizeBytes;
+                http.Response.ContentLength = download.SizeBytes;
             }
 
             await body.CopyToAsync(http.Response.Body, ct);

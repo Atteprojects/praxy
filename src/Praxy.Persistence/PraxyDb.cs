@@ -51,6 +51,8 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
     public DbSet<StoredFile> Files => Set<StoredFile>();
     public DbSet<FilePermission> FilePermissions => Set<FilePermission>();
     public DbSet<FileChunk> FileChunks => Set<FileChunk>();
+    public DbSet<FileDerivative> FileDerivatives => Set<FileDerivative>();
+    public DbSet<FileDerivativeChunk> FileDerivativeChunks => Set<FileDerivativeChunk>();
     public DbSet<VcsInstallation> VcsInstallations => Set<VcsInstallation>();
     public DbSet<MessagingProvider> MessagingProviders => Set<MessagingProvider>();
     public DbSet<MessagingTopic> MessagingTopics => Set<MessagingTopic>();
@@ -488,6 +490,27 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
             e.HasKey(x => new { x.FileId, x.Index });
             e.Property(x => x.Data).HasColumnType("bytea");
             e.HasOne<StoredFile>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<FileDerivative>(e =>
+        {
+            e.ToTable("file_derivatives");
+            e.Property(x => x.Format).HasMaxLength(16);
+            e.Property(x => x.MimeType).HasMaxLength(255);
+            e.Property(x => x.Checksum).HasMaxLength(64);
+            e.HasOne<StoredFile>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
+            // The cache key itself: a second request resolving to the same tuple finds this row
+            // instead of generating again. Unique so concurrent misses can race an insert and let
+            // the loser's 23505 tell it to re-read rather than serializing behind a lock.
+            e.HasIndex(x => new { x.FileId, x.Width, x.Height, x.Format, x.Quality }).IsUnique();
+        });
+
+        b.Entity<FileDerivativeChunk>(e =>
+        {
+            e.ToTable("file_derivative_chunks");
+            e.HasKey(x => new { x.DerivativeId, x.Index });
+            e.Property(x => x.Data).HasColumnType("bytea");
+            e.HasOne<FileDerivative>().WithMany().HasForeignKey(x => x.DerivativeId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<VcsInstallation>(e =>
