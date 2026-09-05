@@ -840,6 +840,8 @@ export interface FileDerivative {
   format: string;
   /** Absent for `png` — lossless, quality has no meaning. */
   quality?: number;
+  /** The crop anchor — always present; `"center"` for an uncropped derivative is the real value, not a missing one. */
+  gravity: string;
   mimeType: string;
   sizeBytes: number;
   createdAt: string;

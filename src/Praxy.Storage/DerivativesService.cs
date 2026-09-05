@@ -48,6 +48,7 @@ public sealed class DerivativesService(
             Height = key.Height,
             Format = key.Format,
             Quality = key.Quality,
+            Gravity = key.Gravity,
             MimeType = key.MimeType,
             SizeBytes = 0,
             ChunkSizeBytes = options.ChunkSizeBytes,
@@ -92,7 +93,7 @@ public sealed class DerivativesService(
     private Task<FileDerivative?> FindAsync(Guid fileId, DerivativeKey key, CancellationToken ct) =>
         db.FileDerivatives.FirstOrDefaultAsync(d =>
             d.FileId == fileId && d.Width == key.Width && d.Height == key.Height &&
-            d.Format == key.Format && d.Quality == key.Quality, ct);
+            d.Format == key.Format && d.Quality == key.Quality && d.Gravity == key.Gravity, ct);
 
     private async Task StoreAsync(FileDerivative derivative, byte[] encoded, CancellationToken ct)
     {
@@ -146,8 +147,14 @@ public sealed class DerivativesService(
         using var codec = SKCodec.Create(data) ??
             throw new PraxyException(400, ErrorTypes.FileTransformInvalid, "This file could not be decoded as an image.");
 
-        file.Width = codec.Info.Width;
-        file.Height = codec.Info.Height;
+        // Cached as the EXIF-corrected, visually-upright size, not the raw encoded one — a
+        // single-axis request (?width= alone) derives the other axis from this aspect ratio, and a
+        // rotated phone photo's encoded width/height are swapped relative to how it actually displays.
+        // ImageTransformer.Transform applies the same correction to the real pixels; this only needs
+        // to agree with it, not redo it, since a header probe never decodes.
+        var swapped = ImageTransformer.SwapsDimensions(codec.EncodedOrigin);
+        file.Width = swapped ? codec.Info.Height : codec.Info.Width;
+        file.Height = swapped ? codec.Info.Width : codec.Info.Height;
         await db.SaveChangesAsync(ct);
         return (file.Width.Value, file.Height.Value);
     }

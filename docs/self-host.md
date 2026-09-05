@@ -512,9 +512,9 @@ is still an attachment unless inline was opted in — the two are independent.
 
 ## Image transforms
 
-The download endpoint accepts `?width=`/`?height=`/`?format=`/`?quality=` and generates a resized,
-cropped, re-encoded, cached copy of the file — a thumbnail URL, not a separate upload. With none of
-those present, downloads behave exactly as described above, Range included.
+The download endpoint accepts `?width=`/`?height=`/`?format=`/`?quality=`/`?gravity=` and generates a
+resized, cropped, re-encoded, cached copy of the file — a thumbnail URL, not a separate upload. With
+none of those present, downloads behave exactly as described above, Range included.
 
 **Requested dimensions snap up to a fixed ladder — 64, 128, 256, 512, 1024, 2048 pixels** — so
 `?width=200` is served by the 256-wide derivative. This is a deliberate cache-size control, not an
@@ -523,6 +523,18 @@ generate two thousand cached derivatives from a single source, which is why a si
 rung (2048) is a clean `400`, not a silent clamp** to the largest available size. Only `image/png`,
 `image/jpeg` and `image/webp` sources can be transformed; every other type gets the same clean `400`
 rather than an attempted decode.
+
+A phone photo's rotation lives in an EXIF tag, not the pixel data — the transform pipeline reads it
+(`SKCodec.EncodedOrigin`) and corrects the image before resizing/cropping, so a sideways or upside-down
+source comes out upright. **A source with no alpha-capable target format (converting to `jpeg`) is
+flattened onto white** rather than whatever black or garbage a codec's own default happens to produce,
+since a transparent-background logo or icon is exactly what this feature is asked to thumbnail; `png`
+and `webp` targets keep the source's alpha channel unchanged. When both `width` and `height` are given
+and the source's aspect ratio doesn't match, `?gravity=` picks which edge survives the crop instead of
+always centering — `center` (default), `top-left`, `top`, `top-right`, `left`, `right`, `bottom-left`,
+`bottom`, `bottom-right` (Appwrite's own naming) — so an avatar crop can anchor to `top` instead of
+cutting off a head. `gravity` has no effect (and is folded to `center` for caching purposes) unless the
+request actually crops.
 
 A derivative is a representation of its source file, not a separate resource: it carries no
 permissions of its own and resolves through exactly the source file's own access check, so nothing

@@ -87,14 +87,16 @@ public sealed record StorageUsageResponse(long UsedBytes, long MaxBytes, long Ma
 /// Storage Phase 3: one cached transform of a file. <c>quality</c> is reported as the public API's
 /// natural <c>null</c> for the lossless-png sentinel (the entity's <c>0</c>, which exists only to
 /// keep Postgres's per-NULL-is-distinct unique index behaving — see <c>FileDerivative</c>'s remarks)
-/// rather than leaking that storage detail into the wire shape.
+/// rather than leaking that storage detail into the wire shape. <c>gravity</c> is always present
+/// (never absent or null) — <c>"center"</c> for an uncropped derivative isn't a missing value, it's
+/// the real, normalized one.
 /// </summary>
 public sealed record FileDerivativeResponse(
-    string Id, int Width, int Height, string Format, int? Quality, string MimeType, long SizeBytes,
-    DateTimeOffset CreatedAt)
+    string Id, int Width, int Height, string Format, int? Quality, string Gravity, string MimeType,
+    long SizeBytes, DateTimeOffset CreatedAt)
 {
     public static FileDerivativeResponse From(FileDerivative d) => new(
-        Ids.Wire(d.Id), d.Width, d.Height, d.Format, d.Quality == 0 ? null : d.Quality,
+        Ids.Wire(d.Id), d.Width, d.Height, d.Format, d.Quality == 0 ? null : d.Quality, d.Gravity,
         d.MimeType, d.SizeBytes, d.CreatedAt);
 }
 

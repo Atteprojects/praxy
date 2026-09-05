@@ -7,7 +7,7 @@ import '../models.dart';
 /// storage-amplification control, not an SDK-side detail to replicate — so a size
 /// above the top rung is rejected rather than clamped.
 final class FileTransform {
-  const FileTransform({this.width, this.height, this.format, this.quality});
+  const FileTransform({this.width, this.height, this.format, this.quality, this.gravity});
 
   final int? width;
   final int? height;
@@ -16,11 +16,17 @@ final class FileTransform {
   final String? format;
   final int? quality;
 
+  /// The crop anchor when both [width] and [height] are given and the aspect ratios differ:
+  /// `center` (the default) | `top-left` | `top` | `top-right` | `left` | `right` | `bottom-left` |
+  /// `bottom` | `bottom-right`. Has no effect without both dimensions.
+  final String? gravity;
+
   Map<String, List<String>> toQuery() => {
     if (width != null) 'width': ['$width'],
     if (height != null) 'height': ['$height'],
     if (format != null) 'format': [format!],
     if (quality != null) 'quality': ['$quality'],
+    if (gravity != null) 'gravity': [gravity!],
   };
 }
 

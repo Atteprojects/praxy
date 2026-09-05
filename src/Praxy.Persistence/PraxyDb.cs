@@ -496,13 +496,14 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
         {
             e.ToTable("file_derivatives");
             e.Property(x => x.Format).HasMaxLength(16);
+            e.Property(x => x.Gravity).HasMaxLength(16);
             e.Property(x => x.MimeType).HasMaxLength(255);
             e.Property(x => x.Checksum).HasMaxLength(64);
             e.HasOne<StoredFile>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
             // The cache key itself: a second request resolving to the same tuple finds this row
             // instead of generating again. Unique so concurrent misses can race an insert and let
             // the loser's 23505 tell it to re-read rather than serializing behind a lock.
-            e.HasIndex(x => new { x.FileId, x.Width, x.Height, x.Format, x.Quality }).IsUnique();
+            e.HasIndex(x => new { x.FileId, x.Width, x.Height, x.Format, x.Quality, x.Gravity }).IsUnique();
         });
 
         b.Entity<FileDerivativeChunk>(e =>

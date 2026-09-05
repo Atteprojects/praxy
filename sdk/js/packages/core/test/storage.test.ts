@@ -124,8 +124,12 @@ describe("StorageService", () => {
 
   it("getFileDownload() sends transform parameters as query strings", async () => {
     const { client, captured } = clientCapturing(bytesResponse(200, new Uint8Array([1])));
-    await client.storage.getFileDownload("b1", "f1", { width: 200, height: 100, format: "webp", quality: 70 });
-    expect(captured().query).toEqual({ width: ["200"], height: ["100"], format: ["webp"], quality: ["70"] });
+    await client.storage.getFileDownload("b1", "f1", {
+      width: 200, height: 100, format: "webp", quality: 70, gravity: "top",
+    });
+    expect(captured().query).toEqual({
+      width: ["200"], height: ["100"], format: ["webp"], quality: ["70"], gravity: ["top"],
+    });
   });
 
   it("getFileDownload() sends only the transform parameters that were given", async () => {

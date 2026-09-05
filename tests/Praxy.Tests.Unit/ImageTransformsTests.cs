@@ -118,4 +118,97 @@ public class ImageTransformsTests
         Assert.Throws<PraxyException>(() =>
             ImageTransforms.Resolve(new TransformRequest(200, null, "jpeg", 101), Jpeg, 100, 100));
     }
+
+    [Fact]
+    public void Gravity_defaults_to_center()
+    {
+        var key = ImageTransforms.Resolve(new TransformRequest(200, 300, null, null), Jpeg, 4000, 3000);
+        Assert.Equal("center", key.Gravity);
+    }
+
+    [Fact]
+    public void Gravity_is_kept_when_the_request_actually_crops()
+    {
+        var key = ImageTransforms.Resolve(new TransformRequest(200, 300, null, null, "top"), Jpeg, 4000, 3000);
+        Assert.True(key.Crop);
+        Assert.Equal("top", key.Gravity);
+    }
+
+    [Fact]
+    public void Gravity_is_normalized_to_center_when_there_is_no_crop_to_anchor()
+    {
+        // Only one axis given (or neither) — no crop, so a caller's gravity is inert and must not
+        // fragment the cache the way an honoured one legitimately would.
+        var widthOnly = ImageTransforms.Resolve(new TransformRequest(200, null, null, null, "top"), Jpeg, 4000, 2000);
+        Assert.False(widthOnly.Crop);
+        Assert.Equal("center", widthOnly.Gravity);
+
+        var heightOnly = ImageTransforms.Resolve(new TransformRequest(null, 200, null, null, "bottom-right"), Jpeg, 4000, 2000);
+        Assert.False(heightOnly.Crop);
+        Assert.Equal("center", heightOnly.Gravity);
+
+        var neither = ImageTransforms.Resolve(new TransformRequest(null, null, null, null, "left"), Jpeg, 800, 600);
+        Assert.False(neither.Crop);
+        Assert.Equal("center", neither.Gravity);
+    }
+
+    [Fact]
+    public void Different_gravity_on_an_otherwise_identical_crop_is_a_different_key()
+    {
+        var top = ImageTransforms.Resolve(new TransformRequest(200, 300, null, null, "top"), Jpeg, 4000, 3000);
+        var bottom = ImageTransforms.Resolve(new TransformRequest(200, 300, null, null, "bottom"), Jpeg, 4000, 3000);
+        Assert.NotEqual(top, bottom);
+        Assert.Equal(top with { Gravity = "bottom" }, bottom);
+    }
+
+    [Fact]
+    public void Unsupported_gravity_is_rejected_even_on_a_request_that_would_not_crop()
+    {
+        // Validated unconditionally: a typo shouldn't be silently swallowed just because this
+        // particular request happens not to need a crop.
+        var ex = Assert.Throws<PraxyException>(() =>
+            ImageTransforms.Resolve(new TransformRequest(200, null, null, null, "strat"), Jpeg, 4000, 2000));
+        Assert.Equal(ErrorTypes.FileTransformInvalid, ex.Type);
+        Assert.Equal(400, ex.Code);
+    }
+
+    [Theory]
+    // Wider-than-target source (scaled cover is 300x100 against a 100x100 target): all horizontal
+    // leftover (200px), no vertical leftover.
+    [InlineData("center", 100, 0, 100, 100)]
+    [InlineData("top-left", 0, 0, 100, 100)]
+    [InlineData("top", 100, 0, 100, 100)]
+    [InlineData("top-right", 200, 0, 100, 100)]
+    [InlineData("left", 0, 0, 100, 100)]
+    [InlineData("right", 200, 0, 100, 100)]
+    [InlineData("bottom-left", 0, 0, 100, 100)]
+    [InlineData("bottom", 100, 0, 100, 100)]
+    [InlineData("bottom-right", 200, 0, 100, 100)]
+    public void Gravity_offset_against_a_wider_than_target_source(
+        string gravity, int expectedLeft, int expectedTop, int targetWidth, int targetHeight)
+    {
+        var (left, top) = ImageTransforms.GravityOffset(gravity, coverWidth: 300, coverHeight: 100, targetWidth, targetHeight);
+        Assert.Equal(expectedLeft, left);
+        Assert.Equal(expectedTop, top);
+    }
+
+    [Theory]
+    // Taller-than-target source (scaled cover is 100x300 against a 100x100 target): all vertical
+    // leftover (200px), no horizontal leftover.
+    [InlineData("center", 0, 100, 100, 100)]
+    [InlineData("top-left", 0, 0, 100, 100)]
+    [InlineData("top", 0, 0, 100, 100)]
+    [InlineData("top-right", 0, 0, 100, 100)]
+    [InlineData("left", 0, 100, 100, 100)]
+    [InlineData("right", 0, 100, 100, 100)]
+    [InlineData("bottom-left", 0, 200, 100, 100)]
+    [InlineData("bottom", 0, 200, 100, 100)]
+    [InlineData("bottom-right", 0, 200, 100, 100)]
+    public void Gravity_offset_against_a_taller_than_target_source(
+        string gravity, int expectedLeft, int expectedTop, int targetWidth, int targetHeight)
+    {
+        var (left, top) = ImageTransforms.GravityOffset(gravity, coverWidth: 100, coverHeight: 300, targetWidth, targetHeight);
+        Assert.Equal(expectedLeft, left);
+        Assert.Equal(expectedTop, top);
+    }
 }

@@ -11,6 +11,16 @@ export interface FileTransformOptions {
   height?: number;
   format?: "png" | "jpeg" | "webp";
   quality?: number;
+  /**
+   * The crop anchor when both `width` and `height` are given and the aspect ratios differ.
+   * `"center"` (the default) crops evenly on both edges; the rest anchor the crop to that edge or
+   * corner instead — `"top"` for a portrait-to-square avatar crop that shouldn't cut off a head.
+   * Has no effect without both dimensions.
+   */
+  gravity?:
+    | "center" | "top-left" | "top" | "top-right"
+    | "left" | "right"
+    | "bottom-left" | "bottom" | "bottom-right";
 }
 
 /**
@@ -79,6 +89,7 @@ export class StorageService {
     if (transform?.height !== undefined) query.height = [String(transform.height)];
     if (transform?.format !== undefined) query.format = [transform.format];
     if (transform?.quality !== undefined) query.quality = [String(transform.quality)];
+    if (transform?.gravity !== undefined) query.gravity = [transform.gravity];
 
     return this.client.requestBytes(
       "GET", `${this.filesPath(bucketId)}/${encodeURIComponent(fileId)}/download`, { query },
