@@ -162,6 +162,18 @@ Filled in as phases land — keep this section current.
 - API reference: `docs/api-reference.md` explains how the OpenAPI document ships (dev-only live at
   `/scalar/v1`/`/openapi/v1.json`; a committed, regeneratable snapshot at `docs/openapi/v1.json` for
   everyone else).
+- Security review Phase 1 (2026-09-05, `docs/handoff/security-review-phase-1-report.md`): the
+  container boundary. Functions got its own dedicated Docker network (`praxy-functions`, no longer
+  shared with `postgres` — verified live) — **upgrading past this point needs `docker compose down`
+  before `docker compose up -d --build`, not the usual in-place upgrade**, or Compose refuses to
+  reuse the renamed network; see `docs/self-host.md`'s Upgrading section for the exact error and why
+  it fails safe rather than partially. Every function/site container now also runs `CapDrop: ["ALL"]`,
+  `SecurityOpt: ["no-new-privileges"]`, a `PidsLimit` (`Praxy:Functions:PidsLimit`/
+  `Praxy:Sites:PidsLimit`, 256/512 default), and a non-root user baked into the generated Dockerfile —
+  automatic, nothing to configure. Also fixed: a warm function container could carry one app user's
+  `PRAXY_FUNCTION_JWT`/`PRAXY_FUNCTION_USER_ID` into a *different* user's later invocation of the same
+  function (`WarmPool` never updates a reused container's env) — any invocation carrying an
+  invocation-scoped credential is now never pooled.
 
 ## Session end — handoff protocol
 

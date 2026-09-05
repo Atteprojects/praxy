@@ -213,6 +213,22 @@ behavior — correct only when `api` runs bare on the host (`dotnet run`, e.g. l
 inside Compose. If you run `api` in a container outside this repo's own compose file, set this to
 whatever Docker network that container and its Docker daemon's function containers share.
 
+**`praxy-functions` carries no other traffic.** `api` also joins `praxy-sites` (for Sites'
+containers) and the stack's own unnamed default network (for reaching `postgres` and being reached
+by `caddy`) — but `postgres` and `caddy` do **not** join `praxy-functions`. Attacker-authored function
+code can only ever reach other function containers and `api` itself on that network, never the
+database — see the [Upgrading](#upgrading) note below if you're updating an instance from before this
+was true.
+
+**Container hardening.** Every function (and site) container runs `CapDrop: ["ALL"]`,
+`SecurityOpt: ["no-new-privileges"]`, a `PidsLimit` (`Praxy:Functions:PidsLimit`/`Praxy:Sites:PidsLimit`,
+256/512 by default — a fork bomb is bounded, not just memory- and CPU-limited), and as a non-root user
+(`65534:65534`, nobody/nogroup) baked into the generated Dockerfile for every runtime — Node, Dart,
+and Sites' Next.js — chosen because it's present in every base image's `/etc/passwd` by default,
+unlike a named user that isn't guaranteed to exist (`dart:3.13.0` has no pre-made low-privilege user
+of its own the way `node:22-alpine` does). `ReadonlyRootfs` is deliberately not set — see
+`docs/handoff/security-review-phase-1-report.md` for what was tested and why it's deferred.
+
 ### Who can invoke a function
 
 Each function carries an `execute` list of roles (`any`, `guests`, `users`, `users/verified`,
@@ -615,6 +631,36 @@ same row content and `_created_at` timestamp — as before the simulated disaste
 `docs/handoff/phase-9-report.md` for the full transcript.
 
 ## Upgrading
+
+> **Security review Phase 1 requires a full `docker compose down` first — the normal
+> `docker compose up -d --build` upgrade fails outright for this one release.** Before this phase,
+> `deploy/docker-compose.yml` named its Compose `default` network `praxy-functions`; `postgres`
+> joined that same network with no `networks:` key of its own, so every function container —
+> attacker-authored code — shared a network with the database (confirmed live on praxycore.dev). The
+> fix gives Functions its own dedicated network, symmetric with Sites, and stops naming the
+> api/postgres/caddy network `praxy-functions` at all. That's a Compose-level identity change, not
+> just a config value, and it does not upgrade cleanly in place: running `docker compose up -d
+> --build` directly against an already-running old-topology instance fails with
+> `network praxy-functions was found but has incorrect label com.docker.compose.network set to
+> "default" (expected: "praxy-functions")` — verified by hand, not assumed — and leaves the instance
+> running unchanged on the old (vulnerable) topology rather than partially migrating, so this fails
+> safe, but it does fail. The fix is `docker compose down && docker compose up -d --build` — the one
+> release where the normally near-zero-downtime upgrade briefly stops `postgres` and `caddy` too, not
+> just `api`. Verified end to end: an already-running instance with a warm function container
+> attached to the old network tears down cleanly (`WarmPool` stops its own containers on `api`
+> shutdown, so nothing is left stranded on the network `down` needs to remove), the new topology comes
+> up with `postgres` on a separate network from every function container, and existing projects,
+> functions and their deployment images survive untouched. A **site** container is not stopped by
+> `down` the same way — it runs under Docker's own `RestartPolicy: unless-stopped`, independent of
+> `api`'s lifecycle, so an active site's network (`praxy-sites`, unaffected by this specific fix) can
+> report "resource still in use" during `down`; that's expected and harmless here since `praxy-sites`
+> isn't being renamed, but keep in mind for any *future* release that does touch it.
+>
+> **Container hardening ships in the same release**: every function/site container now runs
+> `CapDrop: ["ALL"]`, `SecurityOpt: ["no-new-privileges"]`, a `PidsLimit`, and as a non-root user —
+> nothing to configure, applies automatically to every deployment built after upgrading (an
+> already-built image only picks up the non-root `USER` on its *next* build, since that's baked into
+> the generated Dockerfile).
 
 > **Geo columns/`near` queries need a Postgres image swap — plain `postgres:17-alpine` to
 > `postgis/postgis:17-3.6-alpine`.** Same Postgres 17 underneath (PostGIS images are the official

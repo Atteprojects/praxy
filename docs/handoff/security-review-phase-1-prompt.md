@@ -1,5 +1,7 @@
 # Session task — Security review, Phase 1: the container boundary
 
+> **Status: shipped.** See `docs/handoff/security-review-phase-1-report.md`.
+
 ## Why this exists
 
 Storage Phases 1–3 and their follow-up shipped a stored XSS (introduced by a *design document*, not an
