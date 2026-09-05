@@ -4,10 +4,12 @@
 
 Phase 1 (`docs/handoff/security-review-phase-1-report.md`) closed the container-execution boundary:
 Functions got its own Docker network (no longer sharing one with Postgres), both executors gained
-`PidsLimit`/`CapDrop`/`SecurityOpt`/a non-root user, and — found during that phase, not on the
-starting list — a warm function container could serve one app user's `PRAXY_FUNCTION_JWT` into a
-different user's invocation. This is Phase 2 of three: the HTTP edge, where attacker-controlled bytes
-and hostnames meet the response.
+`PidsLimit`/`CapDrop`/`SecurityOpt`/a non-root user and (in follow-up) a read-only rootfs with
+size-capped tmpfs, and — found during that phase, not on the starting list — a warm function
+container could serve one app user's `PRAXY_FUNCTION_JWT` into a different user's invocation. A
+follow-up review then added two more findings and reopened all five of that phase's accepted risks,
+closing them. Ten findings in total. This is Phase 2 of three: the HTTP edge, where
+attacker-controlled bytes and hostnames meet the response.
 
 Read `docs/research/security-review.md` first — the threat model, actor definitions, and report format
 all come from it, and Phase 1's report shows the format applied — then `CLAUDE.md`. Work on a new
@@ -26,6 +28,33 @@ Same discipline as Phase 1:
 - **Every fix carries a regression test** — the shape that matters is the isolation/correctness
   property actually holding, not a config value or a happy-path assertion.
 - **No new features.**
+
+## Three things Phase 1 learned the hard way — apply them here
+
+Not general advice. Each of these cost real time in Phase 1 or its review, and each maps onto
+something this phase will actually do.
+
+1. **Review your own fixes as adversarially as the original code.** Phase 1's two highest-severity
+   *new* findings were introduced or widened by fixes made in that same phase — the credential
+   isolation fix (never pool a container carrying a user's JWT) silently removed the only bound on
+   how many containers could exist, because non-pooled containers left the pool's accounting
+   entirely. **A security fix is not automatically a net improvement.** Before writing the report,
+   re-read your own diff asking what each fix now makes possible that wasn't possible before —
+   especially anything that changes how a resource is allocated, reused, or freed.
+2. **Assert the live property, not the configuration.** Phase 1 already said this; what it did not
+   know is how thoroughly it would be vindicated. A new cap was read by the code that needed it but
+   never bound from configuration in `Program.cs` — dead config. A test asserting
+   `MaxConcurrentIsolatedContainers == 2` would have passed; the test asserting the live container
+   count failed and exposed it. **When you add a knob, the test must prove the knob changes
+   behaviour**, not that the value round-trips. The same class of bug is one line away in any option
+   record with positional defaults.
+3. **"Verified end to end" against a *fresh* instance is not verification.** Phase 1's documented
+   upgrade procedure was genuinely tested — on a from-scratch instance, where the failure could not
+   occur. Against the real production box, which had history, the procedure was incomplete and the
+   deploy would have failed. For this phase that matters directly: a bucket with files uploaded
+   before a fix, a site deployed from an older image, a derivative cached under the previous
+   behaviour — **exercise the upgrade path on state that predates your change**, not only on
+   something you just created.
 
 ## The two actors — rate every finding under both (unchanged from Phase 1)
 
@@ -49,9 +78,12 @@ don't re-litigate it.
 with `text/html`/`image/svg+xml` permanently excluded, unconditional `nosniff` — so the job there is
 **verification that it's still true**, not fresh discovery. The undiscovered surface is newer:
 
-- **The transform/derivative path** (`docs/handoff/storage-phase-3-report.md`, extended by
-  `docs/handoff/storage-phase-2-report.md`'s follow-up fixing a stored XSS, a production crash, and two
-  transform correctness bugs — all in code that predates this exact review). `?width=`/`?height=`/
+- **The transform/derivative path** (`docs/handoff/storage-phase-3-report.md`, then
+  `docs/handoff/storage-transform-gravity-report.md`, which fixed two transform correctness bugs and
+  added `gravity`/`background`; the stored XSS and the production crash were
+  `docs/handoff/storage-phase-2-report.md`. All of it predates this review, and the two transform bugs
+  were found only by comparing output against Appwrite on a running instance — no synthetic test image
+  could have caught either). `?width=`/`?height=`/
   `?format=`/`?quality=` on the download endpoint, the dimension ladder meant to keep the derivative
   cache bounded (does it actually reject every input that should snap to `400` rather than silently
   clamping?), `MaxSourceImagePixels`'s decompression-bomb check (does it run *before* any real
