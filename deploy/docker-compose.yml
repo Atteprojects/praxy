@@ -137,9 +137,19 @@ networks:
   default:
   # Functions' own network, separate from the api/postgres/caddy network above — see the api
   # service's Praxy__Functions__DockerNetwork above and docs/self-host.md's Functions section.
+  #
+  # security-review-phase-1 (finding G): function and site containers have outbound internet access
+  # by default, and that is a deliberate decision rather than an oversight — a function calling a
+  # third-party API, or a site fetching data at request time, is the normal case. If you run code
+  # you don't trust and want to take that away, uncomment `internal: true` on either network below.
+  # It blocks outbound traffic only; api still reaches the containers on the network, so Functions
+  # and Sites keep working. Anything that calls out (npm at *runtime*, a payment API, a webhook)
+  # stops working, and builds are unaffected either way since they run on the daemon's own network.
   praxy-functions:
     name: praxy-functions
+    # internal: true
   # Sites' own network, separate from Functions' — see the api service's Praxy__Sites__DockerNetwork
   # above and docs/self-host.md's Sites section.
   praxy-sites:
     name: praxy-sites
+    # internal: true   # see the note on praxy-functions above

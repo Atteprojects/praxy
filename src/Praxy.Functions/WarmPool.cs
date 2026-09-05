@@ -16,6 +16,38 @@ public sealed class WarmPool(DockerExecutor docker, FunctionsOptions options) : 
     private readonly Dictionary<Guid, WarmEntry> _byDeployment = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
 
+    /// <summary>
+    /// Bounds how many *non-poolable* containers can exist at once. These never enter
+    /// <see cref="_byDeployment"/>, so <see cref="EvictOverflowAsync"/> never sees them and
+    /// <see cref="FunctionsOptions.WarmPoolSize"/> does not bound them — and since an invocation
+    /// triggered by an app user is always non-poolable (it carries that user's JWT), that is the
+    /// primary data-plane path, not an edge case. Without this, concurrent user-triggered
+    /// invocations spawn one container each: the functions rate limiter partitions per caller and
+    /// is a fixed window, so it bounds arrival rate, not concurrency.
+    ///
+    /// <para>Lives here, rather than in <c>FunctionExecutionService</c>, because this is the
+    /// singleton that owns container-count accounting — but it is reserved and released by that
+    /// service, whose <c>RunAsync</c> is the scope a slot is actually held for.</para>
+    /// </summary>
+    private readonly SemaphoreSlim _isolatedSlots =
+        new(options.MaxConcurrentIsolatedContainers, options.MaxConcurrentIsolatedContainers);
+
+    /// <summary>
+    /// Waits up to <see cref="FunctionsOptions.IsolatedContainerWaitSeconds"/> for capacity to run
+    /// one non-poolable container, smoothing a burst rather than failing at the boundary. Returns
+    /// false when the wait elapsed — the caller must surface that as a loud, retryable failure and
+    /// must NOT start a container. Every successful reservation must be paired with exactly one
+    /// <see cref="ReleaseIsolatedSlot"/>.
+    /// </summary>
+    public async Task<bool> TryReserveIsolatedSlotAsync(CancellationToken ct) =>
+        await _isolatedSlots.WaitAsync(TimeSpan.FromSeconds(options.IsolatedContainerWaitSeconds), ct);
+
+    /// <summary>Releases a slot taken by <see cref="TryReserveIsolatedSlotAsync"/>. Call in a <c>finally</c>, after the container is stopped.</summary>
+    public void ReleaseIsolatedSlot() => _isolatedSlots.Release();
+
+    /// <summary>Free non-poolable slots — for tests and diagnostics.</summary>
+    public int AvailableIsolatedSlots => _isolatedSlots.CurrentCount;
+
     /// <summary>Stops every warm container on shutdown — otherwise every restart leaks whatever was warm at the time, in dev and in production alike.</summary>
     public async ValueTask DisposeAsync()
     {

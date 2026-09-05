@@ -183,6 +183,14 @@ public sealed class SiteBuildWorker(
                     lock (logLock) logBuffer.Append(line);
                 }, ct);
             }
+
+            // security-review-phase-1 follow-up (finding E): record which base image this build
+            // actually resolved to, so tag drift is auditable after the fact instead of invisible.
+            if (result.Success
+                && await docker.TryResolveImageDigestAsync(options.NodeBaseImage, ct) is { } digest)
+            {
+                lock (logLock) logBuffer.Append($"Base image {options.NodeBaseImage} resolved to {digest}\n");
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
