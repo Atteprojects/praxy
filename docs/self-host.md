@@ -683,7 +683,23 @@ same row content and `_created_at` timestamp — as before the simulated disaste
 > `network praxy-functions was found but has incorrect label com.docker.compose.network set to
 > "default" (expected: "praxy-functions")` — verified by hand, not assumed — and leaves the instance
 > running unchanged on the old (vulnerable) topology rather than partially migrating, so this fails
-> safe, but it does fail. The fix is `docker compose down && docker compose up -d --build` — the one
+> safe, but it does fail. The upgrade is **three** steps, not two:
+>
+> ```bash
+> docker compose -f deploy/docker-compose.yml --profile https down
+> docker network rm praxy-functions
+> docker compose -f deploy/docker-compose.yml --profile https up -d --build
+> ```
+>
+> **The middle step is required and easy to miss** — found running this against praxycore.dev, after
+> the two-step version was written. `down` does *not* remove the old `praxy-functions` network:
+> Compose looks its networks up by the `com.docker.compose.network` label, the surviving network
+> still carries the old value (`default`), and the new file declares that name under a new key, so
+> `down` skips it entirely — its output mentions only `praxy_default` and `praxy-sites`. The network
+> is left behind, empty, still labelled `default`, which is exactly the state that makes the next
+> `up` fail with the error above. Removing it is safe precisely because `down` has already stopped
+> everything attached to it (`docker network inspect praxy-functions` shows no containers); confirm
+> that before removing if you want to be sure. This is the one
 > release where the normally near-zero-downtime upgrade briefly stops `postgres` and `caddy` too, not
 > just `api`. Verified end to end: an already-running instance with a warm function container
 > attached to the old network tears down cleanly (`WarmPool` stops its own containers on `api`
