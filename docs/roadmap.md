@@ -537,6 +537,34 @@ reason this exists; and no new features. Design: `docs/research/security-review.
 
 ---
 
+## Untrusted multitenancy (assessment only — not scheduled)
+
+**Decided 2026-09-06**: Praxy will *eventually* host **untrusted** tenants — a hosted product where
+strangers deploy code onto one instance — not merely multiple trusted teams. That is a direction, not
+a schedule, and nothing is scoped or scheduled from it yet. `docs/research/multitenancy.md` records
+what it actually requires, checked against the running system rather than assumed.
+
+The tenant seam already exists and is load-bearing: `Organization`/`OrganizationMember` have been
+modeled since Phase 0, projects belong to orgs, org quotas are enforced, and authorization joins
+through membership today. What's missing is the lifecycle (create/rename/switch, invites) plus
+operator OAuth — ordinary feature work, and **not** the hard part.
+
+The hard part is four designs that are correct for one trusted operator and wrong for strangers: the
+**Docker socket** (root-equivalent host access per build), a **single Postgres superuser** with
+tenant isolation enforced only in application code, a **flat container network** where one tenant's
+container can reach another's, and **tenant content served from the console's own origin**. Only the
+first constrains present work — the other three are additive later.
+
+**What this changes right now: almost nothing, deliberately.** Feature work continues, geo included.
+The one standing rule that falls out of it: the Docker client is currently confined to exactly two
+files (`DockerExecutor`, `SiteDockerExecutor`) with fifteen consumers going through them — verified,
+not hoped — so any replacement (gVisor/Kata, Firecracker, a remote builder) stays contained. Keeping
+it that way is the whole of the near-term discipline; the choice itself can wait.
+
+No phase prompt exists for this on purpose, so nobody starts building it by accident.
+
+---
+
 ---
 
 ## Rules that hold across every phase
