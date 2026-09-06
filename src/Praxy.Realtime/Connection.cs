@@ -22,6 +22,22 @@ public sealed class Connection
     /// <summary>Operator console connections and bypass-flagged API keys: fan-out matches on subscribed channel alone, skipping role/permission intersection entirely — the realtime analogue of <c>ApiKey.BypassRowPermissions</c>.</summary>
     public bool Bypass { get; init; }
 
+    /// <summary>
+    /// security-review-phase-3: for a bypass connection backed by an API key, the resource words
+    /// (<c>"databases"</c>, <c>"buckets"</c>, <c>"users"</c>, <c>"teams"</c>) that key's own scopes
+    /// actually cover — <see cref="ConnectionRegistry.Reindex"/> refuses to index a bypass
+    /// subscription (exact channel or <c>"&lt;resource&gt;.*"</c> firehose) outside this set. Null for
+    /// an operator console connection (Bypass is still true, but an operator's own project access has
+    /// no scope concept to narrow it by — unrestricted, same as before this check existed) and for
+    /// every non-bypass connection (irrelevant there; matching is by role intersection instead).
+    /// Without this, a key minted with only <c>databases.read</c> plus the independently-settable
+    /// <c>BypassRowPermissions</c> flag — an ordinary "trusted server key for the database" grant —
+    /// could firehose-subscribe to <c>users.*</c>/<c>teams.*</c>/<c>buckets.*</c> and receive every
+    /// account, membership, and file event in the project despite never holding
+    /// <c>users.read</c>/<c>teams.read</c>/<c>storage.read</c>.
+    /// </summary>
+    public HashSet<string>? AllowedBypassResources { get; init; }
+
     private volatile string[] _roles = [];
     public string[] Roles { get => _roles; set => _roles = value; }
 

@@ -70,6 +70,12 @@ public sealed class ConnectionRegistry
             foreach (var (subscriptionId, channels) in connection.Subscriptions)
                 foreach (var channel in channels)
                 {
+                    // security-review-phase-3: a scoped bypass key only ever reaches the resource
+                    // words its own scopes cover — see AllowedBypassResources' remarks. An operator
+                    // connection (AllowedBypassResources null) is unrestricted, same as before.
+                    if (connection.AllowedBypassResources is { } allowed && !allowed.Contains(ResourceWord(channel)))
+                        continue;
+
                     // "<resource>.*" is a bypass-only firehose (the console inspector can't know
                     // every table's concrete channel string up front) — never honored for a
                     // non-bypass connection, which would defeat deny-by-default.
@@ -115,6 +121,13 @@ public sealed class ConnectionRegistry
 
         connection.IndexEntries.Clear();
         connection.IndexEntries.UnionWith(desiredRoles);
+    }
+
+    /// <summary>The leading dot-segment of a channel or firehose prefix (<c>"databases"</c> from both <c>"databases.*"</c> and an exact row channel) — what <see cref="Connection.AllowedBypassResources"/> is keyed by.</summary>
+    private static string ResourceWord(string channel)
+    {
+        var dot = channel.IndexOf('.');
+        return dot < 0 ? channel : channel[..dot];
     }
 
     private void RemoveRoleEntry(Connection connection, string role, string channel, string subscriptionId)

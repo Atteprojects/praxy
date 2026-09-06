@@ -2,6 +2,7 @@ using System.Formats.Tar;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Praxy.Tests.Integration.Infrastructure;
 
 namespace Praxy.Tests.Integration;
@@ -76,6 +77,42 @@ public class FunctionWarmPoolCredentialIsolationTests(PostgresContainerFixture p
         // most recent cold start happened to carry.
         var responseA2 = await InvokeAsUserAsync(projectId, functionId, tokenA);
         Assert.Equal(userAId, responseA2.GetProperty("userId").GetString());
+    }
+
+    /// <summary>
+    /// security-review-phase-3: PRAXY_FUNCTION_JWT used to be minted with the flat, 15-minute
+    /// AccountJwtService.DefaultLifetime regardless of how long the invocation carrying it could
+    /// possibly run — a sync invocation capped at MaxSyncTimeoutSeconds got a token valid up to 30x
+    /// longer than the request that could ever legitimately use it. It's now sized to the
+    /// invocation's own timeout instead. This function's timeoutSeconds is 15 (CreateFunctionAsync's
+    /// fixed value); the minted JWT's exp must land near "now + 15s + grace", nowhere near "now +
+    /// 900s" the old flat lifetime would have produced.
+    /// </summary>
+    [Fact]
+    public async Task The_minted_function_jwts_lifetime_is_bounded_by_the_invocations_own_timeout_not_a_flat_default()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (token, _) = await SignupAsync(projectId, "user@example.com");
+
+        var functionId = await CreateFunctionAsync(operatorToken, projectId, "echo-identity", execute: ["users"]);
+        var deploymentId = await UploadDeploymentAsync(operatorToken, projectId, functionId,
+            BuildTar(("index.js", EchoIdentityJs)));
+        await WaitForDeploymentStatusAsync(operatorToken, projectId, functionId, deploymentId, "ready");
+
+        var before = DateTimeOffset.UtcNow;
+        var response = await InvokeAsUserAsync(projectId, functionId, token);
+        var jwt = response.GetProperty("jwt").GetString()!;
+
+        var payload = jwt.Split('.')[1];
+        var claims = JsonNode.Parse(Praxy.Auth.Secrets.FromBase64Url(payload))!;
+        var exp = DateTimeOffset.FromUnixTimeSeconds(claims["exp"]!.GetValue<long>());
+        var lifetime = exp - before;
+
+        // CreateFunctionAsync's fixed timeoutSeconds (15) plus JwtGraceSeconds (10), with slack for
+        // this test's own wall-clock jitter — comfortably clear of the old flat 900s default either
+        // way, so this bound only ever fails if the fix regresses back toward that flat lifetime.
+        Assert.True(lifetime < TimeSpan.FromSeconds(60),
+            $"expected the JWT lifetime to track the function's own 15s timeout, got {lifetime}");
     }
 
     private async Task<JsonElement> InvokeAsUserAsync(string projectId, string functionId, string sessionToken)

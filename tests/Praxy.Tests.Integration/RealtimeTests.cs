@@ -140,6 +140,74 @@ public class RealtimeTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.Equal(WebSocketMessageType.Close, result.MessageType);
     }
 
+    /// <summary>
+    /// security-review-phase-3: a <c>BypassRowPermissions</c> key scoped only to
+    /// <c>databases.read</c> — an ordinary "trusted server, only touches the database" grant, not a
+    /// crafted one — must not be able to firehose-subscribe to a resource type its own scopes never
+    /// covered. Before the fix, the only realtime scope check was a single hardcoded
+    /// <c>databases.read</c> gate at connect time, and bypass firehose matching keyed purely on the
+    /// event's own type prefix, so this exact key could see every app user's account events
+    /// (password/email changes, session creation) project-wide.
+    /// </summary>
+    [Fact]
+    public async Task A_bypass_key_scoped_only_to_databases_read_cannot_firehose_user_events()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var created = await Client.SendAsync(Authed(HttpMethod.Post, $"/v1/console/projects/{projectId}/keys",
+            operatorToken, new { name = "db server key", scopes = new[] { "databases.read" }, bypassRowPermissions = true }));
+        Assert.Equal(201, (int)created.StatusCode);
+        var apiKey = (await ReadJson(created)).GetProperty("secret").GetString()!;
+
+        using var socket = await ConnectWithApiKeyTicketAsync(projectId, apiKey);
+        await SubscribeAsync(socket, "s1", "users.*");
+
+        var (victimToken, _) = await SignupAsync(projectId, "victim@example.com");
+        var rename = await Client.SendAsync(DataPlane(HttpMethod.Patch, "/v1/account/name", projectId,
+            sessionToken: victimToken, body: new { name = "Renamed" }));
+        Assert.Equal(200, (int)rename.StatusCode);
+
+        await AssertSilentAsync(socket);
+    }
+
+    /// <summary>The mirror image of the test above: a bypass key that actually holds <c>users.read</c> keeps working — the fix narrows the firehose by scope, it doesn't remove it.</summary>
+    [Fact]
+    public async Task A_bypass_key_holding_users_read_still_receives_the_user_firehose()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var created = await Client.SendAsync(Authed(HttpMethod.Post, $"/v1/console/projects/{projectId}/keys",
+            operatorToken, new { name = "admin key", scopes = new[] { "databases.read", "users.read" }, bypassRowPermissions = true }));
+        Assert.Equal(201, (int)created.StatusCode);
+        var apiKey = (await ReadJson(created)).GetProperty("secret").GetString()!;
+
+        using var socket = await ConnectWithApiKeyTicketAsync(projectId, apiKey);
+        await SubscribeAsync(socket, "s1", "users.*");
+
+        var (userToken, _) = await SignupAsync(projectId, "renamed@example.com");
+        var rename = await Client.SendAsync(DataPlane(HttpMethod.Patch, "/v1/account/name", projectId,
+            sessionToken: userToken, body: new { name = "Renamed" }));
+        Assert.Equal(200, (int)rename.StatusCode);
+
+        var evt = await ReceiveMessageAsync(socket);
+        Assert.Equal("event", evt.GetProperty("type").GetString());
+    }
+
+    /// <summary>
+    /// security-review-phase-3: minting a ticket for a key never checked <c>RequireRealtimeScope</c>
+    /// — only the socket-connect and ticket-redeem paths did — so a key missing
+    /// <c>databases.read</c> could still successfully mint a ticket, and only found out it was
+    /// useless one round trip later at redemption. Low practical impact (redemption still caught
+    /// it), but an inconsistency worth closing: mint should fail the same way connect does.
+    /// </summary>
+    [Fact]
+    public async Task Minting_a_ticket_for_a_key_without_the_realtime_scope_fails_at_mint_time()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, apiKey) = await CreateApiKeyAsync(operatorToken, projectId, "storage.read");
+
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Post, "/v1/realtime/ticket", projectId, apiKey: apiKey));
+        await AssertError(response, 401, "general_unauthorized_scope");
+    }
+
     [Fact]
     public async Task An_unknown_project_is_rejected_before_the_upgrade()
     {
@@ -161,6 +229,20 @@ public class RealtimeTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     private async Task<WebSocket> ConnectWithTicketAsync(string projectId, string sessionToken)
     {
         var response = await Client.SendAsync(DataPlane(HttpMethod.Post, "/v1/realtime/ticket", projectId, sessionToken: sessionToken));
+        Assert.Equal(200, (int)response.StatusCode);
+        var body = await ReadJson(response);
+        var ticket = body.GetProperty("ticket").GetString();
+
+        var wsClient = Factory.Server.CreateWebSocketClient();
+        var socket = await wsClient.ConnectAsync(
+            new Uri(Factory.Server.BaseAddress, $"/v1/realtime?project={projectId}&ticket={ticket}"), CancellationToken.None);
+        await ReceiveMessageAsync(socket); // "connected"
+        return socket;
+    }
+
+    private async Task<WebSocket> ConnectWithApiKeyTicketAsync(string projectId, string apiKey)
+    {
+        var response = await Client.SendAsync(DataPlane(HttpMethod.Post, "/v1/realtime/ticket", projectId, apiKey: apiKey));
         Assert.Equal(200, (int)response.StatusCode);
         var body = await ReadJson(response);
         var ticket = body.GetProperty("ticket").GetString();

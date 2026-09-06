@@ -97,7 +97,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
         {
             // Production path — unchanged from Phase 1.
             if (site is null || !site.Enabled || site.ActiveDeploymentId is not { } activeId
-                || !registry.TryGet(activeId, out running!))
+                || !registry.TryGet(activeId, site.Id, out running!))
             {
                 await WriteNotDeployedAsync(ctx, "This site is not currently deployed.");
                 return;
@@ -113,7 +113,12 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
             }
             resolvedDeploymentId = deploymentId;
 
-            if (!registry.TryGet(deploymentId, out running!))
+            // security-review-phase-3: a registry hit is only trustworthy once it's proven to belong
+            // to *this* site — see TryGet's own remarks. Without the siteId check here, an attacker
+            // supplies any other site's deployment id as this hostname's preview label and this branch
+            // would forward that other project's live traffic, since a hit skips the ownership query
+            // below entirely.
+            if (!registry.TryGet(deploymentId, site.Id, out running!))
             {
                 var deployment = await db.SiteDeployments.AsNoTracking()
                     .FirstOrDefaultAsync(d => d.Id == deploymentId && d.SiteId == site.Id, ctx.RequestAborted);
@@ -148,7 +153,7 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted, timeoutCts.Token);
                 try
                 {
-                    running = await registry.StartOrJoinAsync(deploymentId, async startCt =>
+                    running = await registry.StartOrJoinAsync(deploymentId, site.Id, async startCt =>
                     {
                         var envVars = await sites.DecryptedEnvVarsAsync(site.Id, startCt);
                         return await docker.StartContainerAsync(deployment.ImageTag!, envVars, deployment.Id.ToString(), startCt);
@@ -189,7 +194,8 @@ public sealed class SiteProxyMiddleware(RequestDelegate next, ILogger<SiteProxyM
 
         var site = await db.Sites.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == domain.SiteId && s.Enabled, ctx.RequestAborted);
-        if (site is null || site.ActiveDeploymentId is not { } activeId || !registry.TryGet(activeId, out var running))
+        if (site is null || site.ActiveDeploymentId is not { } activeId
+            || !registry.TryGet(activeId, site.Id, out var running))
         {
             await WriteNotDeployedAsync(ctx, "This site is not currently deployed.");
             return true;

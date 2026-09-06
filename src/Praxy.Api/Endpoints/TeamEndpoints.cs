@@ -177,22 +177,24 @@ public static class TeamEndpoints
         string teamId, string membershipId, HttpContext http, TeamsService teams, CancellationToken ct)
     {
         var project = DataPlaneEndpoints.CurrentProject(http);
-        var principal = AppPrincipalFilter.Current(http);
+
+        // security-review-phase-3: authenticate/authorize the caller's *kind* before ever touching
+        // the database, same as every other handler in this file (RequireTeamAccessAsync) — this one
+        // used to check scope only in its Key branch, and only after loading the team and membership,
+        // so an unscoped/unauthenticated caller could tell "exists" (404 from the loads) apart from
+        // "doesn't exist" (401 from the scope check that ran after them). RequireUserOrScope throws
+        // for a Guest immediately; a Key still needs TeamsWrite regardless of self-removal, since a
+        // key has no "self" to remove.
+        var (user, _) = AppPrincipalFilter.RequireUserOrScope(http, ApiKeyScopes.TeamsWrite);
         if (!Ids.TryParseWire(teamId, out var parsedTeamId))
             throw PraxyException.NotFound(ErrorTypes.TeamNotFound, "Team not found.");
         var team = await teams.GetTeamAsync(project.Id, parsedTeamId, ct);
         var membership = await GetMembershipAsync(teams, team.Id, membershipId, ct);
 
-        // Self-removal is always allowed; otherwise it takes a team owner or a scoped key.
-        if (principal is RequestPrincipal.AppUser(var user, _))
-        {
-            if (membership.UserId != user.Id && !await teams.IsTeamOwnerAsync(team.Id, user.Id, ct))
-                throw PraxyException.Unauthorized("Only team owners can remove other members.");
-        }
-        else
-        {
-            AppPrincipalFilter.RequireScope(http, ApiKeyScopes.TeamsWrite);
-        }
+        // Self-removal is always allowed for a session; otherwise it takes a team owner. A key
+        // already proved TeamsWrite above and needs no further check here.
+        if (user is not null && membership.UserId != user.User.Id && !await teams.IsTeamOwnerAsync(team.Id, user.User.Id, ct))
+            throw PraxyException.Unauthorized("Only team owners can remove other members.");
 
         await teams.DeleteMembershipAsync(project.Id, membership, ct);
         return Results.NoContent();

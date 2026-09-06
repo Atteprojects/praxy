@@ -1,9 +1,42 @@
+using Praxy.Core;
 using Praxy.Tests.Integration.Infrastructure;
 
 namespace Praxy.Tests.Integration;
 
 public class TeamsTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
+    /// <summary>
+    /// security-review-phase-3: DeleteMembership used to load the team and membership before
+    /// checking the caller's scope, so an unauthenticated (or wrong-scope) caller got 404 for a
+    /// membership id that doesn't exist but 401 for one that does — an existence oracle the rest of
+    /// this codebase deliberately avoids everywhere else (scope/permission checks always run before
+    /// the resource load, precisely so "doesn't exist" and "exists but you can't touch it" answer
+    /// identically). Both requests below must come back exactly the same way.
+    /// </summary>
+    [Fact]
+    public async Task An_unauthenticated_delete_cannot_tell_a_real_membership_from_a_made_up_one()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var (_, key) = await CreateApiKeyAsync(operatorToken, projectId, "teams.read", "teams.write");
+        var team = await ReadJson(await Client.SendAsync(DataPlane(
+            HttpMethod.Post, "/v1/teams", projectId, apiKey: key, body: new { name = "Rocket" })));
+        var teamId = team.GetProperty("id").GetString()!;
+        var membership = await ReadJson(await Client.SendAsync(DataPlane(
+            HttpMethod.Post, $"/v1/teams/{teamId}/memberships", projectId, apiKey: key,
+            body: new { email = "member@example.com", roles = new[] { "editor" } })));
+        var realMembershipId = membership.GetProperty("id").GetString()!;
+        var madeUpMembershipId = Ids.Wire(Guid.NewGuid());
+
+        var realDelete = await Client.SendAsync(DataPlane(
+            HttpMethod.Delete, $"/v1/teams/{teamId}/memberships/{realMembershipId}", projectId));
+        var madeUpDelete = await Client.SendAsync(DataPlane(
+            HttpMethod.Delete, $"/v1/teams/{teamId}/memberships/{madeUpMembershipId}", projectId));
+
+        Assert.Equal((int)madeUpDelete.StatusCode, (int)realDelete.StatusCode);
+        await AssertError(realDelete, 401, "general_unauthorized");
+        await AssertError(madeUpDelete, 401, "general_unauthorized");
+    }
+
     [Fact]
     public async Task Client_invite_emails_a_link_and_acceptance_creates_a_session_and_the_team_role()
     {

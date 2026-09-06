@@ -32,7 +32,13 @@ public sealed class FunctionExecutionService(
     /// </summary>
     public async Task RunAsync(FunctionExecution execution, CancellationToken ct)
     {
-        var fn = await db.Functions.FirstOrDefaultAsync(f => f.Id == execution.FunctionId, ct);
+        // security-review-phase-3: every current FunctionExecution creator stamps ProjectId from the
+        // very same already-project-scoped fn/claimed row it takes FunctionId from (FunctionsService,
+        // FunctionEventDispatcher, FunctionScheduler), so these can never actually disagree today —
+        // but nothing enforced that invariant here, and this is the lookup that feeds both the minted
+        // JWT's project claim and PRAXY_PROJECT_ID below. Checking it explicitly means a future
+        // creation path (or a hand-inserted row) can't silently mint credentials for the wrong project.
+        var fn = await db.Functions.FirstOrDefaultAsync(f => f.Id == execution.FunctionId && f.ProjectId == execution.ProjectId, ct);
         if (fn is null || !fn.Enabled || fn.ActiveDeploymentId is not { } deploymentId)
         {
             await FinalizeAsync(execution.Id, null, "failed", 0, "", "", null, false,
@@ -49,8 +55,8 @@ public sealed class FunctionExecutionService(
             return;
         }
 
-        var env = await BuildEnvAsync(fn, execution, ct);
         var timeoutSeconds = execution.Async ? fn.TimeoutSeconds : Math.Min(fn.TimeoutSeconds, options.MaxSyncTimeoutSeconds);
+        var env = await BuildEnvAsync(fn, execution, timeoutSeconds, ct);
         var wasWarm = pool.IsWarm(deploymentId);
 
         // security-review-phase-1: a container carrying an invocation-scoped credential
@@ -124,7 +130,17 @@ public sealed class FunctionExecutionService(
         }
     }
 
-    private async Task<Dictionary<string, string>> BuildEnvAsync(FunctionDef fn, FunctionExecution execution, CancellationToken ct)
+    /// <summary>
+    /// security-review-phase-3: a few seconds beyond <paramref name="timeoutSeconds"/> for the actual
+    /// callback HTTP round trip (container start, DNS/connect, the JWT-verification call itself),
+    /// not a second invocation window — the container carrying this JWT is stopped the moment this
+    /// invocation ends (see identityScoped's remarks in <see cref="RunAsync"/>), so nothing can use
+    /// the extra time to run new work.
+    /// </summary>
+    private const int JwtGraceSeconds = 10;
+
+    private async Task<Dictionary<string, string>> BuildEnvAsync(
+        FunctionDef fn, FunctionExecution execution, int timeoutSeconds, CancellationToken ct)
     {
         var stored = await db.FunctionEnvVars.Where(v => v.FunctionId == fn.Id).ToListAsync(ct);
         var env = new Dictionary<string, string>();
@@ -137,11 +153,21 @@ public sealed class FunctionExecutionService(
         // "Scoped user JWT injected into invocations that need to act as a specific user" —
         // research/appwrite-api.md's Phase-7-required JWT flow. Only present when the caller that
         // triggered this execution was a specific app user, never for event/schedule/console triggers.
+        //
+        // security-review-phase-1's own follow-up question, answered here: now that this JWT is
+        // guaranteed freshly minted per invocation (never sitting in a warm container's env), its
+        // lifetime is sized to the invocation it was minted for — timeoutSeconds (the sync-endpoint's
+        // 30s cap, or the function's own up-to-900s async ceiling) plus JwtGraceSeconds — rather than
+        // the flat 15-minute AccountJwtService.DefaultLifetime shared with the self-service
+        // /account/jwts endpoint. A sync invocation used to get a token valid up to 30x longer than
+        // the request that could ever use it; a function exfiltrating its own JWT (a compromised
+        // dependency logging it, or phoning it home) now only ever holds a bearer credential for
+        // roughly as long as the invocation that leaked it could possibly still be running.
         var triggeredBy = execution.TriggeredBy;
         if (triggeredBy is not null && triggeredBy.StartsWith("user:", StringComparison.Ordinal) &&
             Ids.TryParseWire(triggeredBy["user:".Length..], out var userId))
         {
-            env["PRAXY_FUNCTION_JWT"] = jwts.Mint(execution.ProjectId, userId, AccountJwtService.DefaultLifetime);
+            env["PRAXY_FUNCTION_JWT"] = jwts.Mint(execution.ProjectId, userId, TimeSpan.FromSeconds(timeoutSeconds + JwtGraceSeconds));
             env["PRAXY_FUNCTION_USER_ID"] = triggeredBy["user:".Length..];
         }
         // The gap this fills (see docs/handoff/functions-scheduled-credentials-report.md): a

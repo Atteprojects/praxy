@@ -31,7 +31,7 @@ public sealed partial class SitesService(
         await db.Sites.FirstOrDefaultAsync(s => s.Id == id && s.ProjectId == projectId, ct)
         ?? throw PraxyException.NotFound(ErrorTypes.SiteNotFound, "Site not found.");
 
-    public bool IsRunning(Site site) => site.ActiveDeploymentId is { } id && registry.TryGet(id, out _);
+    public bool IsRunning(Site site) => site.ActiveDeploymentId is { } id && registry.TryGet(id, site.Id, out _);
 
     public async Task<Site> CreateAsync(string projectId, string key_, string name, string rootDirectory, CancellationToken ct)
     {
@@ -203,7 +203,7 @@ public sealed partial class SitesService(
         // If this exact deployment was already running as an on-demand preview container (Phase 2),
         // promote it directly instead of starting a second one for the same image — an optimization,
         // not required for correctness (the cold-start branch below is just as correct).
-        if (!registry.TryGet(deployment.Id, out var running))
+        if (!registry.TryGet(deployment.Id, site.Id, out var running))
         {
             var envVars = await DecryptedEnvVarsAsync(site.Id, ct);
             running = await docker.StartContainerAsync(deployment.ImageTag, envVars, deployment.Id.ToString(), ct);
@@ -220,7 +220,7 @@ public sealed partial class SitesService(
         // ordering has to close it explicitly instead. The proxy never observes a moment with no
         // entry to serve: readers between here and the DB commit still see the old deployment id and
         // find its still-running container untouched below.
-        registry.Set(deployment.Id, running);
+        registry.Set(deployment.Id, site.Id, running);
 
         site.ActiveDeploymentId = deployment.Id;
         site.UpdatedAt = DateTimeOffset.UtcNow;
@@ -318,6 +318,21 @@ public sealed partial class SitesService(
         if (!RepositoryPattern().IsMatch(repositoryFullName) || string.IsNullOrWhiteSpace(productionBranch) || productionBranch.Length > 256)
             throw new PraxyException(400, ErrorTypes.SiteGitRepositoryInvalid,
                 "Invalid repository or branch.");
+
+        // security-review-phase-3: HandleGitPushAsync below resolves a push purely by matching
+        // RepositoryFullName, with no notion of which installation authorized which connection
+        // (GitHubAppService's own remark: "Praxy never tracked which installation covered which
+        // repository"). Two different PROJECTS connecting the identical repo string would therefore
+        // both redeploy off the same push — one project's build triggered, and its commit metadata
+        // copied into a deployment row, by a push the other project's team never asked for. A site
+        // and a function *within the same project* connecting the same repo is the documented,
+        // intended case (independent per-resource-type builds off one source) and stays allowed.
+        var connectedElsewhere =
+            await db.Sites.AnyAsync(s => s.RepositoryFullName == repositoryFullName && s.ProjectId != site.ProjectId, ct)
+            || await db.Functions.AnyAsync(f => f.RepositoryFullName == repositoryFullName && f.ProjectId != site.ProjectId, ct);
+        if (connectedElsewhere)
+            throw new PraxyException(409, ErrorTypes.VcsRepositoryAlreadyConnected,
+                $"'{repositoryFullName}' is already connected to a site or function in a different project.");
 
         await github.EnsureRepositoryAccessibleAsync(repositoryFullName, ct);
         var branches = await github.ListBranchesForRepositoryAsync(repositoryFullName, ct);

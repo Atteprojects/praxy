@@ -499,6 +499,63 @@ public class StorageEngineTests(PostgresContainerFixture pg) : AuthTestBase(pg)
             404, ErrorTypes.BucketNotFound);
     }
 
+    /// <summary>
+    /// security-review-phase-3: closes a coverage gap the review noted rather than a bug it found —
+    /// <c>Another_projects_bucket_is_not_reachable</c> above only exercised the console (operator)
+    /// surface. The data plane resolves a bucket independently (<c>X-Praxy-Project</c> header + an
+    /// API key scoped to that project, not an operator session), so it needs its own proof that a
+    /// key minted for project B cannot reach project A's bucket by naming its id.
+    /// </summary>
+    [Fact]
+    public async Task A_data_plane_api_key_cannot_reach_another_projects_bucket_by_id()
+    {
+        var (operatorToken, projectA) = await SetupProjectAsync("A");
+        var bucketId = await CreateBucketAsync(operatorToken, projectA, "mine");
+
+        var projectB = (await ReadJson(await Client.SendAsync(Authed(
+            HttpMethod.Post, "/v1/console/projects", operatorToken, new { name = "B" }))))
+            .GetProperty("id").GetString()!;
+        var (_, keyForB) = await CreateApiKeyAsync(operatorToken, projectB, "storage.read");
+
+        await AssertError(
+            await Client.SendAsync(DataPlane(
+                HttpMethod.Get, $"/v1/storage/buckets/{bucketId}", projectB, apiKey: keyForB)),
+            404, ErrorTypes.BucketNotFound);
+    }
+
+    /// <summary>
+    /// security-review-phase-3: the other half of the same coverage gap — a file id is scoped by
+    /// <c>(bucket_id, id)</c>, not by id alone (<c>FilesService.FindAsync</c>), so naming a real file
+    /// from bucket A through bucket B's own route must 404 even though both buckets are in the same
+    /// project and the caller can read both.
+    /// </summary>
+    [Fact]
+    public async Task A_file_uploaded_to_one_bucket_is_not_reachable_through_a_sibling_buckets_route()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var ctxA = await BucketWithGrantsAsync((operatorToken, projectId));
+        var bucketB = await CreateBucketAsync(operatorToken, projectId, "sibling");
+        await SetPermissionsAsync(operatorToken, projectId, bucketB, ["""read("users")"""]);
+
+        var uploaded = await UploadAsync(ctxA, "mine.bin", Payload(64));
+        var fileId = uploaded.GetProperty("id").GetString()!;
+
+        await AssertError(
+            await Client.SendAsync(DataPlane(
+                HttpMethod.Get, $"/v1/storage/buckets/{bucketB}/files/{fileId}", projectId, sessionToken: ctxA.UserToken)),
+            404, ErrorTypes.FileNotFound);
+        await AssertError(
+            await Client.SendAsync(DataPlane(
+                HttpMethod.Get, $"/v1/storage/buckets/{bucketB}/files/{fileId}/download", projectId, sessionToken: ctxA.UserToken)),
+            404, ErrorTypes.FileNotFound);
+
+        // Sanity check: the same id through its own bucket's route still works — the 404s above are
+        // the cross-bucket check firing, not the file/session being broken some other way.
+        var ownRoute = await Client.SendAsync(DataPlane(
+            HttpMethod.Get, $"/v1/storage/buckets/{ctxA.BucketId}/files/{fileId}", projectId, sessionToken: ctxA.UserToken));
+        Assert.Equal(200, (int)ownRoute.StatusCode);
+    }
+
     [Fact]
     public async Task A_duplicate_bucket_key_conflicts()
     {
