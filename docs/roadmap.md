@@ -553,10 +553,21 @@ setup is a selling point; none of this hardening should land in the self-hosted 
 Appwrite does the same — the OSS product keeps the simple execution model and Cloud adds isolation
 that isn't in the repo.
 
-**One fork decides whether those four matter at all**: *one instance per tenant* (isolation at the
-infrastructure layer, all four evaporate, the codebase needs almost nothing, higher cost per customer)
-versus *many tenants per instance* (far cheaper, and all four become real engineering). Worth deciding
-first, since it can make the rest moot — and it commits nobody to building anything.
+**The infrastructure model decides whether those four matter at all**, and it is a spectrum rather
+than a binary: *one instance per tenant* (isolation at the infrastructure layer, all four evaporate,
+the codebase needs almost nothing), *cells* of 50-200 tenants per instance (the middle most SaaS
+converges on), or *one shared instance* (cheapest, and all four become real engineering). Worth
+deciding first since it can make the rest moot, and it commits nobody to building anything.
+
+**The cost of one-instance-per-tenant is not the obvious one.** Money per customer is visible; the
+one that bites a small team is **fleet upgrades**, which scale with customers. Praxy helps here —
+migrations run themselves at startup under a `pg_advisory_lock`, so an update is "new image, restart"
+with no separate migration step to orchestrate — but a failed migration is then a *failed startup* on
+one tenant, found from monitoring; version skew becomes permanent; and backward compatibility stops
+being optional, since a fleet mid-rollout cannot be coordinated the way one instance can. Tens of
+tenants is a cron job; the low hundreds is a real job; past that you want cells — and cells need the
+same isolation work as a shared instance. **So instance-per-tenant defers that work rather than
+escaping it**, which is worth choosing deliberately rather than by accident.
 
 **What's already in Praxy's favour**, verified: the tenant seam exists and is load-bearing
 (`Organization`/`OrganizationMember` since Phase 0, org quotas enforced, authorization already joins
@@ -565,10 +576,10 @@ through them; the daemon endpoint and network are already configuration, just in
 than per-tenant; and superuser is needed for exactly one statement at migration time (PostGIS), so a
 non-superuser runtime looks like configuration rather than redesign.
 
-**Working direction, taken 2026-09-06**: fork A (one instance per tenant), on the grounds that it
-keeps both products as the same software and A→B is far easier than un-sharing a shared instance.
-Recorded for consistency, not committed — free-tier economics haven't been modelled, and that is the
-thing that would argue for B.
+**Working direction, taken 2026-09-06**: one instance per tenant, on the grounds that it keeps both
+products as the same software and needs none of the four solved. Recorded for consistency, not
+committed, and taken knowing it is a *first* answer — revisit at the low hundreds of tenants, or
+sooner if free-tier economics demand it.
 
 **The one thing needed under either fork** is the org lifecycle — create/rename/switch, invites,
 operator OAuth (which `CLAUDE.md` already defers to exactly this). Ordinary feature work, commits you
