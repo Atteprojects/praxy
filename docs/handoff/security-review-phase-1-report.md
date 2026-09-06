@@ -342,9 +342,34 @@ died badly, which is worth seeing.
   sweep the first's live containers. If Praxy ever runs multiple api instances, this needs an
   instance id in the label rather than removal by label alone.
 
+**Correction, found during Phase 2's review — this fix had two defects of its own.** The test went
+flaky: it failed twice in a full-suite run and passed alone, which is the signature. Both causes were
+real, and the first hid the second:
+
+- **The count was a lie.** The loop called the shared `StopAndRemoveAsync`, which swallows its own
+  failures by design (right for best-effort cleanup on the request path), and incremented
+  unconditionally — so `reclaimed` counted *attempts*, and the log line said "Reclaimed N orphaned
+  function container(s)" whether or not anything was reclaimed. The assertion built on it was
+  meaningless too.
+- **One contended container abandoned the whole sweep.** With the swallowing removed, the real error
+  surfaced immediately: `409 Conflict — "removal of container X is already in progress"`. A graceful
+  shutdown's own removals can still be settling when the next process starts and sweeps, so on a fast
+  restart this is expected rather than exceptional — and it would have thrown out of the loop, leaving
+  every orphan *after* the contended one unreclaimed. Exactly backwards for a reclaim mechanism, and
+  invisible for as long as the count kept swallowing failures.
+
+Now: force-remove directly (an abandoned container has nothing to drain, and the graceful path cost
+`WaitBeforeKillSeconds` *per orphan* — turning crash recovery into a multi-second startup stall),
+counting only removals that actually happened, with not-found and conflict both treated as "not this
+process's reclaim" and the loop continuing. The test polls for the container's absence instead of
+asserting on the instant after, since Docker acknowledges a removal before the container leaves the
+list. Verified by reproducing the original failure condition deliberately — four leftover labelled
+containers for the sweep to work through first — where the pre-correction code failed and the
+corrected code passes.
+
 **Test.** `FunctionContainerIsolationTests.An_orphaned_function_container_left_by_a_crash_is_reclaimed`
 — creates a container carrying the real label to stand in for a crash orphan, runs the reclaim, and
-asserts it is gone. The startup wiring itself is a single call inside an already-registered hosted
+polls until it is gone. The startup wiring itself is a single call inside an already-registered hosted
 service and is not separately covered.
 
 ## 3. Accepted risks — reopened, and all closed
