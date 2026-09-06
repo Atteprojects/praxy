@@ -22,7 +22,7 @@ before/after evidence quoted in that finding's own section, except where noted a
 | B | A `BypassRowPermissions` key scoped only to `databases.read` could firehose-subscribe to `users.*`/`teams.*`/`buckets.*` and see every account/membership/file event | N/A (needs a key) | **High** | **Fixed** |
 | C | Minting a realtime ticket for a key never checked the realtime scope (only connect/redeem did) | N/A | Low | **Fixed** |
 | D | `DELETE .../teams/{id}/memberships/{id}` let an unauthenticated caller distinguish "exists" (404) from "doesn't exist" (401) | Low | Low | **Fixed** |
-| E | Two different projects could both connect a site/function to the identical GitHub repository, so one push redeploys both | Informational (needs console access) | Medium → **Critical under multitenancy** | **Fixed** |
+| E | Two different projects could both connect a site/function to the identical GitHub repository, so one push redeploys both | Informational (needs console access) | Medium → **Critical under multitenancy** | **Fixed for new connections**; pairs that already exist are untouched — see the finding |
 | F | `PRAXY_FUNCTION_JWT`'s lifetime was a flat 15 minutes regardless of the invocation's own timeout | N/A | Medium | **Fixed** |
 | G | `FunctionExecutionService.RunAsync` looked up a function by id alone, with no defense-in-depth project check | N/A (not reachable today) | Low | **Fixed** (hardening) |
 | H | Storage's additive bucket/per-file permission model, and cross-bucket/cross-project file-id confusion | N/A | N/A | **Verified sound, no defect found** (2 coverage tests added) |
@@ -244,6 +244,35 @@ fully closed.
 
 **Test.** `VcsRepositoryIsolationTests.cs` (new file): the three tests above.
 
+**Residual, found in review before merge: this closes the door, not the room.** The guard is at
+*connect* time; the harm happens at *push* time, and `HandleGitPushAsync` is unchanged — it still
+resolves a push purely by `db.Sites.Where(s => s.RepositoryFullName == evt.RepositoryFullName)` with
+no project predicate at all. So an instance that **already** has two projects on one repository stays
+fully exposed: every push still fans out to both, and nothing detects, warns, or reports it. Only new
+connections are prevented.
+
+This is the case the prompt's own lesson 3 exists for — "exercise the property against state that
+predates whatever you change" — and this finding's tests create both projects fresh, so the
+pre-existing shape was never exercised.
+
+**Not fixed, deliberately.** Making `HandleGitPushAsync` fail closed on an ambiguous match would
+silently stop deploying for an instance whose (insecure) setup currently works, which is a worse
+failure than the one it prevents, and picking a winner between two equally valid claims is a design
+decision rather than a review fix. Recorded as an accepted risk instead, with the detection query an
+operator can actually run:
+
+```sql
+SELECT repository_full_name, count(DISTINCT project_id) AS projects
+FROM (SELECT project_id, repository_full_name FROM praxy.sites WHERE repository_full_name IS NOT NULL
+      UNION ALL
+      SELECT project_id, repository_full_name FROM praxy.functions WHERE repository_full_name IS NOT NULL) r
+GROUP BY repository_full_name HAVING count(DISTINCT project_id) > 1;
+```
+
+Zero rows means nothing to do. **Checked against praxycore.dev: zero rows** — its only
+repository-connected pair is a site and a function within the same project, which is the documented,
+intended case. Any row returned should be disconnected from all but one project by hand.
+
 ### F — `PRAXY_FUNCTION_JWT`'s lifetime was flat regardless of the invocation's own timeout
 
 **The question.** Phase 1's own follow-up, explicitly deferred to this phase
@@ -395,6 +424,12 @@ which connection authorized a given push is thrown away immediately after parsin
   meaningful engineering work against a shipped subsystem, not a review-phase-sized fix. Recorded again
   in this report specifically because Phase 3's own mandate is authorization/credential review, and this
   is now the single largest asymmetry left in the credential story across all three subsystems.
+
+- **Finding E's pre-existing pairs** (described in its own section) — the connect-time guard does not
+  reach two projects that were *already* sharing a repository when it shipped; `HandleGitPushAsync`
+  still matches across every project. Accepted rather than fixed, because failing closed on an
+  ambiguous match would silently stop deploying for a setup that currently works. Detection query in
+  the finding; praxycore.dev returns zero rows.
 
 - **Finding L (decision-logic duplication)** — see its own note in §2/§5. Accepted as documentation of a
   real drift risk rather than fixed, since building a genuine shared abstraction across Tables' raw-SQL
