@@ -576,6 +576,45 @@ to neither fork, and the only part that can start before the fork is decided.
 
 ---
 
+## Organization lifecycle (post-v0.1.0 initiative)
+
+The one piece of managed-hosting groundwork required under **either** infrastructure fork
+(`docs/research/multitenancy.md`), buildable now and committing to neither. Also worth having on its
+own: an operator today gets exactly one organization, created at signup and named "Personal", with no
+way to make another, rename it, or let a colleague in.
+
+The model has been there since Phase 0 and is load-bearing — `Organization`/`OrganizationMember`,
+projects belong to orgs, org quotas enforced, authorization already joins through membership. Three
+things are missing, and one of them is a trap: **`OrganizationMember.Role` is written once at signup
+and never read**, so every member is effectively an owner; enforcing it is a behaviour change, not a
+new feature. The console's `HomeRedirect` also states its assumption outright — *"list orgs, take the
+first — there is exactly one"* — which is the single line multi-org switching invalidates.
+
+**Organizations are not Teams.** Both have `owner`/`member`; they are different layers.
+Organizations hold console *operators* and own projects; Teams hold *app users* and live inside one
+project. A future session will conflate them if it doesn't read the design doc's comparison table
+first — and security-review Phase 3's Finding D was a membership information leak in Teams, so the
+resemblance is a trap with precedent.
+
+- **Phase 1 — the org itself**: create, rename, delete (empty only — no cascade, no `force`, matching
+  how the engine treats every other destructive action), and multi-org switching in the console. Goes
+  first because it makes "exactly one org" false, which is what everything else assumes. No membership
+  changes.
+- **Phase 2 — members and roles**: invite by email (mirroring Teams' proven
+  `SecretHash`/`InvitedAt`/`Confirmed` shape, as a pattern rather than shared code), accept, remove,
+  change role, and enforce `owner` vs `member` for the first time. The phase that most needs the
+  security review's habits, since it adds a whole new authorization surface — and Phase 3's Finding D
+  is the specific thing to re-read before shipping it.
+- **Phase 3 — operator OAuth**: what `CLAUDE.md` means by deferring operator OAuth to "future
+  multitenancy work". Separable and last — an invited colleague can already accept with
+  email+password — and it needs its own design pass, since operator OAuth is not app-user OAuth and
+  the existing Google provider code is written for the latter.
+
+**Explicitly out of scope for the whole sequence**: per-project operator roles, organization billing
+or plans, and transferring a project between organizations. Design: `docs/research/organizations.md`.
+
+---
+
 ---
 
 ## Rules that hold across every phase
