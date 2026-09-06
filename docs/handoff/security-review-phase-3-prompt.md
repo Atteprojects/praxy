@@ -36,9 +36,10 @@ Same discipline as Phases 1 and 2:
 
 ## What Phases 1 and 2 learned the hard way — apply them here too
 
-1. **Review your own fixes as adversarially as the original code.** Phase 1's two highest-severity new
-   findings were introduced by fixes made in that same phase. Before writing the report, re-read your
-   own diff asking what each fix now makes possible that wasn't possible before.
+1. **Review your own fixes as adversarially as the original code.** Phase 1's highest-severity new
+   finding was introduced by a fix made in that same phase (the credential-isolation fix removed the
+   only bound on how many containers could exist), and a second was widened by one. Before writing the
+   report, re-read your own diff asking what each fix now makes possible that wasn't possible before.
 2. **Assert the live property, not the configuration.** A test asserting a config value round-trips
    passes even when the thing it's supposed to control was never actually wired up — Phase 1 found this
    exact bug for `MaxConcurrentIsolatedContainers`. For this phase specifically: a permission-boundary
@@ -52,6 +53,19 @@ Same discipline as Phases 1 and 2:
    malicious file — an ordinary extreme-aspect-ratio screenshot was enough. Prefer reproducing an
    isolation failure with an ordinary second project/second user/second function before reaching for
    something adversarial-looking; if the ordinary case already breaks isolation, that's the finding.
+5. **Pick the boundary case most likely to break your fix, not the one easiest to reason about.**
+   Phase 2's own fix was reviewed and corrected before merge: it bounded a derived image dimension at
+   the ladder's top rung, and the boundary test written for it used a **1:1 square source** — the one
+   aspect ratio where that bound cannot bite. It passed, and every ordinary photo (3:4, 9:16, A4) was
+   silently rejected by the fix. A boundary test you chose because it was convenient proves the fix
+   compiles, not that it's right. For this phase: don't test isolation between two projects you set up
+   identically — test it where the two differ in whatever way the code path actually branches on.
+6. **Observability that lies is worse than none, and it hides the next bug.** Phase 1's orphan-container
+   reclaim counted removal *attempts*, not removals, because the helper it called swallows its own
+   failures — so the startup log reported successes that never happened. That false count concealed a
+   second, worse defect (one contended container aborted the entire sweep) for a whole phase. This phase
+   is entirely about whether a check *actually happens*: treat any log line, counter, or return value
+   that reports success without proving it as a finding in its own right, not just a cosmetic issue.
 
 ## The two actors — rate every finding under both (unchanged from Phases 1 and 2)
 
@@ -90,6 +104,21 @@ conceded; don't re-litigate it.
   a different project's connection to the same repo?), `FunctionExecutionWorker`/`SiteBuildWorker`/
   schedulers (do they carry the right project scope through to whatever they act on, or could a
   claimed-row's project id and its actual target project ever disagree?).
+- **API key scopes — the whole model, which no phase has reviewed yet.** `ApiKeyScopes`
+  (`src/Praxy.Auth/ApiKeyService.cs`) defines twelve scopes including `storage.read`/`storage.write`
+  and `execution.read`/`execution.write`, and a key is the primary non-session way into the data
+  plane. Neither Phase 1 nor Phase 2 touched it, and it is squarely this phase's subject. Is **every**
+  data-plane endpoint actually scope-gated, or do some reach the resource without a `RequireScope`
+  call at all (the function invoke path has one — is that the rule or the exception)? Does a key
+  issued for project A resolve against project B? Does a read-scoped key reach any write path? Are
+  scopes checked before or after the resource is loaded, and does that ordering leak existence?
+- **The several principal/project resolution entry points, and whether they agree.** There is not one
+  way into "who is calling and for which project" — there are at least
+  `DataPlaneEndpoints.CurrentProject`, `ConsoleProjectFilter.Current`, `OperatorAuth.Current` and
+  `AppPrincipal.Current`. Drift between two of them is precisely the shape of bug this phase is
+  hunting: a resource reachable through one entry point with a check the other applies and it doesn't.
+  Map which endpoints use which, and look hardest wherever a resource is reachable through more than
+  one.
 - **Cross-project id confusion generally.** Anywhere a request supplies an id (a file id, a bucket id, a
   function id, a table id) — is it always scoped by `WHERE project_id = @callersProject AND id = @id`,
   or is there a path that looks up by id alone and checks project membership afterward (a TOCTOU-shaped
