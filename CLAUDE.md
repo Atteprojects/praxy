@@ -202,6 +202,33 @@ Filled in as phases land — keep this section current.
   never rejects. No new configuration from either fix. `ByteRanges`, `SiteProxyMiddleware`'s
   `X-Forwarded-*` handling, and `SiteHostPattern`/`_ask-tls` were all independently re-verified sound
   against a running instance, not just read.
+- Security review Phase 3 (2026-09-06, `docs/handoff/security-review-phase-3-report.md`, completing
+  the initiative): authorization and project isolation. No new configuration; one new error type
+  (`vcs_repository_already_connected`). The one to know about:
+  **`SiteContainerRegistry.TryGet` now requires the owning site id** — it is a single process-wide
+  dictionary holding every project's containers, and the preview branch checked it *before* the
+  ownership query (which only ran on a miss), so any deployment id learned from anywhere reached that
+  project's live container as a full proxy pass-through. The id is mandatory rather than
+  defence-in-depth: the unsafe call can no longer be written. Also: a `BypassRowPermissions` API key
+  now only reaches the realtime firehose resources its own scopes cover
+  (`Connection.AllowedBypassResources`, null = operator console = unrestricted, as before);
+  `PRAXY_FUNCTION_JWT`'s lifetime is the invocation's own timeout plus a few seconds rather than a
+  flat 15 minutes; and **a repository may not be connected to two different projects** — one push
+  would redeploy both, since `HandleGitPushAsync` matches on repository name alone. That last guard is
+  connect-time only: pairs that already exist are untouched, and `docs/handoff/security-review-phase-3-report.md`
+  carries the detection query.
+- Organizations Phase 1 (2026-09-06, `docs/handoff/organizations-phase-1-report.md`): the console's
+  organization lifecycle — create, rename, delete-when-empty, and multi-org switching. **No membership
+  changes**: `OrganizationMember.Role` is still written at signup and never read, so every member is
+  effectively an owner until Phase 2 enables it deliberately. Delete has no `force` — an org holding
+  projects is a `409`, and an operator always keeps at least one. New knob:
+  `Praxy:Quotas:MaxOrganizationsPerOperator` (10) — **the only quota scoped to an operator rather than
+  an organization**, because organizations are what every other quota is scoped *to*; without it an
+  operator at their `MaxProjects` ceiling could create another org for a fresh allowance, making every
+  per-org limit advisory. `POST /v1/console/projects` now takes an optional `organizationId` and
+  infers one only while unambiguous, failing loudly rather than silently picking the oldest membership
+  once several exist. Design and the remaining phases (members/roles, then operator OAuth):
+  `docs/research/organizations.md`.
 
 ## Session end — handoff protocol
 
