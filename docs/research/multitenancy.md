@@ -1,177 +1,143 @@
-# Untrusted multitenancy — architecture assessment
+# Self-hosted and managed — what a two-product model requires
 
 ## Context
 
-The owner decided (2026-09-06) that Praxy will **eventually** host *untrusted* tenants — a hosted
-product where people who don't know each other deploy code onto one instance — rather than only
-multiple trusted teams inside one organization.
+The owner decided (2026-09-06) to follow Appwrite's shape: **ship the self-hosted product and also
+run a managed version of it.** That means two products from one codebase, with genuinely different
+security requirements — the self-hosted instance is run by the person who trusts everyone on it, and
+the managed one hosts strangers who don't trust each other.
 
-That decision doesn't start the work. It does change what the work *is*, and it makes some
-architectural choices urgent well before any of it is built, because several current designs are
-things a later multitenancy release would have to undo rather than extend.
+This document works out what that actually costs. Every claim is checked against the code or the live
+praxycore.dev instance, and the check is quoted. It is deliberately **not** a phase plan and there is
+no handoff prompt for it, because nothing here is scheduled — producing one would invite someone to
+start building.
 
-This document records what untrusted tenancy actually requires, established by reading the running
-system rather than by speculation — every claim below was checked against the code or the live
-praxycore.dev instance, and the check is quoted. It is deliberately **not** a phase plan: producing a
-phase-1 prompt now would invite someone to start building, and the owner said "eventually."
+Companion to `docs/research/security-review.md`, whose three phases rated every finding under two
+actor models precisely so this document could exist
+(`docs/handoff/security-review-phase-3-report.md` §5).
 
-Companion to `docs/research/security-review.md`, whose three phases produced the prerequisite list
-this builds on (`docs/handoff/security-review-phase-3-report.md` §5). That review rated every finding
-under two actor models precisely so this document could exist.
+## The reframe: most of what looks like debt is a self-host feature
 
-## The good news: the tenant seam is already there
+Four designs in Praxy today are correct for one trusted operator and wrong for strangers: the
+**Docker socket** (root-equivalent host access per build), a **single Postgres superuser** with
+tenant isolation enforced only in application code, a **flat container network** where one tenant's
+container reaches another's, and **tenant content served from the console's own origin**.
 
-`Organization` and `OrganizationMember` (`owner`/`member`) have been modeled since **Phase 0**.
-Projects belong to organizations, org-level quotas are real and enforced
-(`QuotaService.GetOrgLimitsAsync`), and authorization already joins through `OrganizationMembers` in
-the console, project and realtime endpoints. This is load-bearing code, not a vestigial table.
+Read as a multitenancy backlog, that's four architectural blockers. Read correctly, it is **four
+decisions that stay right for the self-hosted product forever** and are only problems for the managed
+one. `deploy/up.sh`'s one-question setup and a single compose file are a deliberate selling point;
+none of the hardening below should land in the self-hosted path if it costs that.
 
-What's missing is the lifecycle around it — the entity's own doc comment says it: *"creating,
-renaming and multi-org switching still do not exist."* Plus operator OAuth, which `CLAUDE.md`
-explicitly defers to "future multitenancy work."
+This is also what Appwrite does: the open-source product keeps the simple execution model, and the
+Cloud offering adds isolation that isn't in the OSS repo. Following that shape means the question is
+never "how do we fix these four things" but **"which of these does the managed deployment solve, and
+does it need code or just configuration?"**
 
-So multitenancy is **not** a data-model migration. That is the cheapest part of this, and it is not
-what should drive the schedule.
+## The fork that decides almost everything
 
-## Four structural blockers
+Before any of the four, one product/infrastructure decision determines whether they matter at all:
 
-None of these is a bug. Each is a design that is correct for one trusted operator and wrong for
-untrusted tenants — which is exactly the class the security review kept flagging, now collected.
+**A. One instance per tenant.** Each customer gets their own Praxy — own Postgres, own Docker daemon,
+own containers — with a thin control plane for provisioning and billing. Isolation is at the
+infrastructure layer, where it is strongest and least novel. **All four blockers evaporate**, because
+no two tenants ever share the thing being contended: the codebase needs essentially nothing, and the
+managed product is the self-hosted product plus automation. The cost is per-customer footprint —
+every tenant carries a Postgres and an idle API — which is real money at the free-tier end.
 
-### 1. The Docker socket — root-equivalent host access, per build
+**B. Many tenants per instance.** Tenants share Postgres, the Docker daemon, and networks. Far cheaper
+per customer and the only model that makes a free tier comfortable. **All four blockers must be solved
+in code**, and they are the hard kind: a tenant-aware executor, a non-superuser runtime with per-tenant
+database roles, per-tenant networks, and a separate content origin.
 
-`deploy/docker-compose.yml` mounts `/var/run/docker.sock` into the api container so Functions and
-Sites can build and run sibling containers. The compose file has documented this as root-equivalent
-host access since Phase 7, and all three security-review phases explicitly declined to re-litigate it.
+Appwrite Cloud is closer to B. That does not automatically make B right for Praxy — Appwrite had a
+team and a funding round when they built it, and A is the model most managed-database products start
+with precisely because it is boring and safe.
 
-Under untrusted tenancy it stops being a tradeoff and becomes fatal: a tenant's build has the same
-access as the daemon, so any tenant can take the host and therefore every other tenant. No permission
-work fixes this — it needs the execution mechanism replaced.
+**This fork is worth deciding before the other four, because it can make them moot.** Deciding it
+does not commit anyone to building anything.
 
-**This is the long pole, and the only one that constrains what should be built now** (see "What this
-constrains today").
+## What already exists, in Praxy's favour
 
-### 2. One Postgres identity, and it is a superuser
+Checked, not assumed — and each of these makes B cheaper than it looks:
 
-Verified live:
+- **The tenant seam is already there and load-bearing.** `Organization`/`OrganizationMember`
+  (`owner`/`member`) date from Phase 0, projects belong to orgs, org-level quotas are enforced
+  (`QuotaService.GetOrgLimitsAsync`), and authorization already joins through `OrganizationMembers`
+  in the console, project and realtime endpoints. Missing is only the lifecycle the entity's own
+  comment names — *"creating, renaming and multi-org switching still do not exist"* — plus operator
+  OAuth, which `CLAUDE.md` already defers to exactly this work. That is ordinary feature work and it
+  is needed for **either** fork, since both need orgs, invites and billing identity.
 
-```
-SELECT rolname, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname='praxy';
-praxy|t|t|t
-```
+- **The Docker client is confined to two files.** The whole codebase:
 
-The entire application connects as one role, and that role is a **superuser**. Tenant data is
-separated by schema (`px_<hex32>`, `PhysicalNaming.SchemaName`), not by database role — so isolation
-between tenants is enforced **entirely in application code**: the query compiler, the metadata
-lookups, and `CLAUDE.md`'s "SQL identifiers never come from request strings" rule.
+  ```
+  $ grep -rl "IDockerClient\|DockerClientBuilder\|Docker.DotNet" src/ --include='*.cs'
+  src/Praxy.Functions/DockerExecutor.cs
+  src/Praxy.Sites/SiteDockerExecutor.cs
+  ```
 
-For one operator that is proportionate. For untrusted tenants it means a single SQL-injection or
-query-compiler flaw is not a tenant-boundary break but a total one — and a Postgres superuser can
-`COPY ... FROM PROGRAM`, read server files, and load extensions, so it reaches past the database
-entirely. There is no second layer.
+  Fifteen other files consume container behaviour and all fifteen go through those two — the same
+  seam discipline `IFileStore` gets in Storage, arrived at without anyone naming it. The contract a
+  replacement must meet is narrow: build an image from a tar, start something reachable at a
+  `host:port`, stop it, fast enough that the warm pool and preview cold starts still make sense.
+  gVisor/Kata, Firecracker and a remote build service all satisfy that.
 
-### 3. Tenant containers share a flat network, and can reach each other
+- **The daemon endpoint and network are already configuration**, on both executors
+  (`Praxy:Functions:DockerEndpoint`/`DockerNetwork`, and the Sites equivalents). They are currently
+  *instance-wide*; the change B needs is to make them resolve **per tenant** — a lookup at a seam that
+  already exists, not a new mechanism.
 
-Verified live on `praxy-functions`: `ICC=` (unset, so Docker's default *enabled*) and
-`internal=false`. Every function container on the instance sits on one bridge network, as does every
-site container on `praxy-sites`.
+- **Superuser is needed for exactly one statement, at migration time.** The only `CREATE EXTENSION` in
+  the codebase is PostGIS, in `20260902022849_EnablePostGis`, whose own comment records that it works
+  because the compose file's `praxy` role happens to be the bootstrap superuser. Runtime DDL —
+  `CREATE SCHEMA px_<hex32>`, table and index creation — needs `CREATE` on the database, which is
+  grantable. **So "run the application as a non-superuser" is plausibly a configuration and migration
+  change rather than a redesign**, and it is the single largest defence-in-depth win available for a
+  shared-instance managed product, because today application code is the only thing between one
+  tenant's SQL and every other tenant's data.
 
-Security-review Phase 1 removed Postgres from the functions network — that was Finding A, and it was
-the right fix — but tenant-to-tenant reachability was never in question then, because every container
-belonged to the same operator. Under untrusted tenancy, one tenant's function can connect directly to
-another tenant's running function or site container, and both can reach `api`.
+## What each fork costs
 
-### 4. Tenant content is served from the console's own origin
+| | A — instance per tenant | B — shared instance |
+|---|---|---|
+| Docker socket | untouched; each tenant's daemon is their own | tenant-aware executor, or a replacement runtime |
+| Postgres superuser | untouched; one tenant per database | per-tenant roles + non-superuser runtime |
+| Flat network | untouched | per-tenant networks |
+| Content origin | untouched | separate origin for Storage |
+| Org lifecycle | **needed** | **needed** |
+| Per-customer cost | a Postgres + an API each | shared |
 
-`InlineTypes`' own remarks say it plainly: a file's MIME type is whatever the uploader sent, and *"the
-console is served from the API's own origin with a `SameSite=Lax` operator cookie."* That is why
-inline serving is two gates against a hard-coded safe list with `text/html` and `image/svg+xml`
-permanently excluded, and why a stored XSS was possible in the first place (Storage Phase 2).
+The row that matters: **the org lifecycle is required either way**, and it is the only line item both
+forks share. It is also the least risky thing on this page.
 
-The file goes on to name the real fix: *"serving user content from a separate origin, the way Sites
-already does — an owner decision recorded in docs/research/storage.md rather than something this
-phase assumes."* Under untrusted tenancy that stops being risk management and becomes structural: an
-allowlist is a bet that no entry on it is ever renderable-and-scriptable, made against attackers who
-are now strangers rather than the operator themselves.
+## Recommendation
 
-## Carried from the security review, still open
+**Build the org lifecycle when you want managed hosting; decide the fork before anything else.**
 
-Both are contained fixes that don't constrain anything else, and can land whenever
-(`docs/handoff/security-review-phase-3-report.md` §5):
+The lifecycle work — create/rename/switch, member invites, operator OAuth — is needed under both
+models, is ordinary feature work against a seam that already exists, and commits you to neither fork.
+It is the only part of this whole document that can be started without deciding anything first.
 
-- **`PRAXY_FUNCTION_API_KEY` never expires** and can hold any scope an operator grants (Finding M) —
-  acceptable when the only party who can grant it is the only party harmed by leaking it; not once
-  scopes can be granted by or on behalf of one tenant in a way that touches another.
-- **No installation-to-repository ownership** in the git integration (Finding E) — a hard prerequisite
-  specifically for letting untrusted developers connect their own repositories.
+**On the fork: start with A unless the free tier forces B.** A makes the managed product the
+self-hosted product plus provisioning, which means the two versions stay the same software — the
+thing that keeps self-host honest and keeps one team able to maintain both. B is cheaper per customer
+and is where Appwrite ended up, but it converts four "correct for self-host" designs into four
+must-solve engineering projects, and it is much easier to move A → B later than to un-share a shared
+instance.
 
-## What this constrains *today*
+**On the executor specifically: don't pick a replacement, and don't spike one.** The seam is already
+contained to two files; the whole near-term discipline is refusing any change that puts a Docker call
+or Docker-specific assumption outside them. That is a standing review rule, not a project, and it
+preserves every option.
 
-This is the actionable part, and the reason this document exists now rather than when the work starts.
-
-**Only blocker 1 constrains present work.** Blockers 2–4 are additive: a per-tenant database role, a
-segmented network, and a separate content origin can each be introduced later without unwinding
-anything built in the meantime. The Docker socket cannot — every Functions and Sites feature is built
-on "the api process can drive the daemon directly," and replacing that mechanism changes the shape of
-build, deploy, warm pooling, log streaming and container lifecycle at once.
-
-So: **new Functions/Sites work is fine; work that spreads Docker knowledge is rework waiting to
-happen.** That has a concrete test rather than a judgement call — see the next section: the Docker
-client is currently confined to two files, and the standing rule is to keep it there.
-
-Nothing else here should slow current feature work down, including geo Phases 4–5, which touch none
-of it.
-
-## The decision to make early
-
-Not now, but before Functions/Sites gain much more surface: **what replaces the Docker socket.** The
-realistic families, with what each costs:
-
-- **Sandboxed runtimes** (gVisor, Kata) — closest to a drop-in: containers stay containers, the
-  isolation boundary gets stronger. Cheapest to adopt, weakest of the three, and gVisor's syscall
-  surface has its own escape history.
-- **MicroVMs** (Firecracker, Cloud Hypervisor) — a real hardware boundary per tenant, the model every
-  serious multi-tenant FaaS converged on. Materially more operational work: image pipeline, network
-  plumbing, and cold starts stop being a Docker concern.
-- **A remote build/run service** — keeps the api process away from any daemon entirely and moves the
-  problem behind an API. Best separation of concerns, most infrastructure, and it changes self-hosting
-  from "one compose file" into something with a second moving part — which is a product decision, not
-  just an architectural one, given `deploy/up.sh`'s one-question setup is a deliberate selling point.
-
-**Recommendation: this decision can wait, and that is a verified answer rather than a hopeful one.**
-The obvious worry is that daemon assumptions have leaked across both subsystems, making the eventual
-swap a rewrite. They haven't. Every reference to the Docker client in the entire codebase:
-
-```
-$ grep -rl "IDockerClient\|DockerClientBuilder\|Docker.DotNet" src/ --include='*.cs'
-src/Praxy.Functions/DockerExecutor.cs
-src/Praxy.Sites/SiteDockerExecutor.cs
-```
-
-Two files. Fifteen other files consume Functions/Sites container behaviour, and all fifteen go through
-those two classes — the same seam discipline `IFileStore` gets in Storage, arrived at without anyone
-naming it that.
-
-What a replacement has to satisfy is therefore not "everything Docker does" but the narrow contract
-those two expose: build an image from a tar, start something reachable at a `host:port`, stop it, and
-do the start/stop fast enough that a warm pool and on-demand preview cold starts still make sense
-(`RunningContainer`/`RunningSiteContainer` are the whole shape). **Firecracker and a remote build
-service can both satisfy that contract** — microVMs get their own addresses, and a remote builder
-returns one — so none of the three families is architecturally excluded by anything already built.
-
-The practical consequence: **don't pick now, and don't spike now.** Instead keep the seam honest —
-any change that would put a Docker client call, or a Docker-specific assumption, outside those two
-files is the thing to refuse in review. That is a cheap standing rule rather than a project, and it
-preserves every option until the work is actually scheduled.
+**Nothing here should slow current feature work**, geo Phases 4–5 included — they touch none of it.
 
 ## What this document does not decide
 
-- **When** any of this happens. The owner said eventually; nothing here argues otherwise.
-- **The org lifecycle** (create/rename/switch, invites, operator OAuth) — ordinary feature work
-  against a seam that already exists, and deliberately not scoped here so it isn't mistaken for the
-  hard part.
-- **Pricing, plans, or quota policy.** `QuotaService` already enforces org-level limits; what those
-  limits should *be* for paying strangers is a business question.
-- **Whether Praxy should host untrusted tenants at all**, versus shipping self-host and letting others
-  run their own. That is the owner's call and it is worth making explicitly, because "self-host only"
-  makes every blocker above permanently acceptable rather than deferred.
+- **When.** Nothing here is scheduled.
+- **A or B.** That is the owner's call and it is a business decision (free-tier economics) at least as
+  much as a technical one.
+- **Pricing and quota policy.** `QuotaService` already enforces org-level limits; what they should be
+  for paying strangers is a business question.
+- **Whether the managed product is worth building at all.** Self-host-only remains a coherent answer,
+  and it makes all four designs permanently correct rather than deferred.

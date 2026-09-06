@@ -537,31 +537,37 @@ reason this exists; and no new features. Design: `docs/research/security-review.
 
 ---
 
-## Untrusted multitenancy (assessment only — not scheduled)
+## Self-hosted and managed (assessment only — not scheduled)
 
-**Decided 2026-09-06**: Praxy will *eventually* host **untrusted** tenants — a hosted product where
-strangers deploy code onto one instance — not merely multiple trusted teams. That is a direction, not
-a schedule, and nothing is scoped or scheduled from it yet. `docs/research/multitenancy.md` records
-what it actually requires, checked against the running system rather than assumed.
+**Decided 2026-09-06**: follow Appwrite's shape — ship the self-hosted product *and* run a managed
+version of it. Two products from one codebase, with different security requirements: a self-hosted
+instance is run by someone who trusts everyone on it; a managed one hosts strangers.
+`docs/research/multitenancy.md` works out what that costs, checked against the running system.
+Nothing is scheduled, and there is deliberately no phase prompt.
 
-The tenant seam already exists and is load-bearing: `Organization`/`OrganizationMember` have been
-modeled since Phase 0, projects belong to orgs, org quotas are enforced, and authorization joins
-through membership today. What's missing is the lifecycle (create/rename/switch, invites) plus
-operator OAuth — ordinary feature work, and **not** the hard part.
+**The reframe that matters**: four designs look like multitenancy debt — the Docker socket, a single
+Postgres superuser with isolation enforced only in application code, a flat container network, and
+tenant content on the console's own origin. They are better read as **four decisions that stay right
+for self-host forever**, and are only problems for the managed product. `deploy/up.sh`'s one-question
+setup is a selling point; none of this hardening should land in the self-hosted path if it costs that.
+Appwrite does the same — the OSS product keeps the simple execution model and Cloud adds isolation
+that isn't in the repo.
 
-The hard part is four designs that are correct for one trusted operator and wrong for strangers: the
-**Docker socket** (root-equivalent host access per build), a **single Postgres superuser** with
-tenant isolation enforced only in application code, a **flat container network** where one tenant's
-container can reach another's, and **tenant content served from the console's own origin**. Only the
-first constrains present work — the other three are additive later.
+**One fork decides whether those four matter at all**: *one instance per tenant* (isolation at the
+infrastructure layer, all four evaporate, the codebase needs almost nothing, higher cost per customer)
+versus *many tenants per instance* (far cheaper, and all four become real engineering). Worth deciding
+first, since it can make the rest moot — and it commits nobody to building anything.
 
-**What this changes right now: almost nothing, deliberately.** Feature work continues, geo included.
-The one standing rule that falls out of it: the Docker client is currently confined to exactly two
-files (`DockerExecutor`, `SiteDockerExecutor`) with fifteen consumers going through them — verified,
-not hoped — so any replacement (gVisor/Kata, Firecracker, a remote builder) stays contained. Keeping
-it that way is the whole of the near-term discipline; the choice itself can wait.
+**What's already in Praxy's favour**, verified: the tenant seam exists and is load-bearing
+(`Organization`/`OrganizationMember` since Phase 0, org quotas enforced, authorization already joins
+through membership); the Docker client is confined to exactly two files with fifteen consumers going
+through them; the daemon endpoint and network are already configuration, just instance-wide rather
+than per-tenant; and superuser is needed for exactly one statement at migration time (PostGIS), so a
+non-superuser runtime looks like configuration rather than redesign.
 
-No phase prompt exists for this on purpose, so nobody starts building it by accident.
+**The one thing needed under either fork** is the org lifecycle — create/rename/switch, invites,
+operator OAuth (which `CLAUDE.md` already defers to exactly this). Ordinary feature work, commits you
+to neither fork, and the only part that can start before the fork is decided.
 
 ---
 
