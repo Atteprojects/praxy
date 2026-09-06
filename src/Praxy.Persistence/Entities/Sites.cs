@@ -144,6 +144,17 @@ public class SiteDomain
 /// </summary>
 public class SiteRequestLog
 {
+    /// <summary>
+    /// The column widths a proxied request's own <c>Method</c>/<c>Path</c> must be clamped to before
+    /// this row is ever constructed (<c>Praxy.Sites.SiteRequestLogWorker</c>) — both are fully
+    /// attacker-controlled (an arbitrary HTTP method token, an arbitrary request path), and Postgres
+    /// rejecting an overlong value aborts the whole transaction <c>SaveChangesAsync</c> issues for the
+    /// worker's current batch, silently losing every other request logged in the same flush. Shared
+    /// with the <c>HasMaxLength</c> calls in <c>PraxyDb</c> so the two can never drift apart.
+    /// </summary>
+    public const int MethodMaxLength = 16;
+    public const int PathMaxLength = 2048;
+
     public required Guid Id { get; set; }
     public required Guid SiteId { get; set; }
     public required string ProjectId { get; set; }

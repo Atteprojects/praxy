@@ -427,8 +427,8 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
         b.Entity<SiteRequestLog>(e =>
         {
             e.ToTable("site_requests");
-            e.Property(x => x.Method).HasMaxLength(16);
-            e.Property(x => x.Path).HasMaxLength(2048);
+            e.Property(x => x.Method).HasMaxLength(SiteRequestLog.MethodMaxLength);
+            e.Property(x => x.Path).HasMaxLength(SiteRequestLog.PathMaxLength);
             e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Cascade);
             // The console's one real query: a site's requests newest-first (SitesService.ListRequestsAsync).
             e.HasIndex(x => new { x.SiteId, x.CreatedAt });

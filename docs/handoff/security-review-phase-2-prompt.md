@@ -1,5 +1,7 @@
 # Session task — Security review, Phase 2: the HTTP edge
 
+> **Status: shipped.** See `docs/handoff/security-review-phase-2-report.md`.
+
 ## Why this exists
 
 Phase 1 (`docs/handoff/security-review-phase-1-report.md`) closed the container-execution boundary:
