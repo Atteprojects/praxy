@@ -181,7 +181,25 @@ public class FunctionContainerIsolationTests(PostgresContainerFixture pg) : Auth
         var reclaimed = await executor.RemoveOrphanedContainersAsync(CancellationToken.None);
 
         Assert.True(reclaimed >= 1, $"Expected at least one container reclaimed, got {reclaimed}.");
-        Assert.False(await ContainerExistsAsync(docker, created.ID), "Orphan container survived the sweep.");
+
+        // Docker acknowledges a removal before the container necessarily leaves the list, so poll
+        // rather than asserting on the instant after. The original version asserted immediately and
+        // was flaky whenever other labelled containers were present for the sweep to work through
+        // first — it failed twice in a full-suite run, then passed alone, which is the signature.
+        Assert.True(
+            await EventuallyGoneAsync(docker, created.ID, TimeSpan.FromSeconds(15)),
+            "Orphan container survived the sweep.");
+    }
+
+    private static async Task<bool> EventuallyGoneAsync(IDockerClient docker, string containerId, TimeSpan within)
+    {
+        var deadline = DateTime.UtcNow + within;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!await ContainerExistsAsync(docker, containerId)) return true;
+            await Task.Delay(250);
+        }
+        return false;
     }
 
     private static async Task<bool> ContainerExistsAsync(IDockerClient docker, string containerId)

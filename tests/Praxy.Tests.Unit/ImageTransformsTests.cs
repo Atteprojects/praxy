@@ -45,6 +45,72 @@ public class ImageTransformsTests
         Assert.False(key.Crop);
     }
 
+    /// <summary>
+    /// security-review-phase-2 finding: the derived axis was never bounded by
+    /// <see cref="DimensionLadder.TopRung"/>, only the caller-requested one — so a real, honestly
+    /// encoded 4x100,000 screenshot (400,000 total source pixels, comfortably inside
+    /// <c>MaxSourceImagePixels</c>) requesting <c>?width=64</c> derived a height of 1,600,000.
+    /// Confirmed live against a real deployed instance: SkiaSharp's <c>Resize</c> allocated that
+    /// target bitmap without complaint, and only libpng's own encoder limit caught it — by returning
+    /// null from <c>SKBitmap.Encode</c>, which <see cref="ImageTransformer"/> didn't check, crashing
+    /// with a <see cref="NullReferenceException"/> (500) instead of the clean 400 every other
+    /// rejected transform gets. This must be a clean rejection at the same layer as every other
+    /// dimension check, not a crash several layers downstream in the SkiaSharp encoder.
+    /// </summary>
+    [Fact]
+    public void An_extreme_aspect_ratio_that_would_blow_up_the_derived_axis_is_rejected()
+    {
+        var ex = Assert.Throws<PraxyException>(() =>
+            ImageTransforms.Resolve(new TransformRequest(64, null, null, null), Png, sourceWidth: 4, sourceHeight: 100_000));
+        Assert.Equal(ErrorTypes.FileTransformInvalid, ex.Type);
+
+        var ex2 = Assert.Throws<PraxyException>(() =>
+            ImageTransforms.Resolve(new TransformRequest(null, 64, null, null), Png, sourceWidth: 100_000, sourceHeight: 4));
+        Assert.Equal(ErrorTypes.FileTransformInvalid, ex2.Type);
+    }
+
+    /// <summary>
+    /// The regression guard for that bound's *shape*. Bounding the derived axis at
+    /// <see cref="DimensionLadder.TopRung"/> looks symmetric with the requested axis and passes a
+    /// 1:1 boundary test, but only a perfectly square source can have both axes land under 2048 —
+    /// so it rejects every ordinary photo at the top rung. These are all reasonable derivatives
+    /// (2048x2731 is ~22 MB) and must not 400; the bound is on total pixels, which is what the
+    /// allocation actually costs, not on either axis alone.
+    /// </summary>
+    [Theory]
+    [InlineData(3000, 4000, 2048, 2731)]  // 3:4 phone photo
+    [InlineData(1080, 1920, 2048, 3641)]  // 9:16 phone photo
+    [InlineData(2000, 3000, 2048, 3072)]  // 2:3 camera portrait
+    [InlineData(2480, 3508, 2048, 2897)]  // A4 document scan
+    [InlineData(2048, 2048, 2048, 2048)]  // square — the case a per-axis bound would have allowed
+    public void An_ordinary_photo_ratio_still_transforms_at_the_top_rung(
+        int sourceWidth, int sourceHeight, int expectedWidth, int expectedHeight)
+    {
+        var key = ImageTransforms.Resolve(
+            new TransformRequest(2048, null, null, null), Png, sourceWidth, sourceHeight);
+        Assert.Equal(expectedWidth, key.Width);
+        Assert.Equal(expectedHeight, key.Height);
+    }
+
+    /// <summary>The area bound itself: exactly at the limit passes, one rung's worth over does not.</summary>
+    [Fact]
+    public void The_output_pixel_bound_is_the_boundary_not_the_axis()
+    {
+        // 1:2 source at the top rung derives exactly 2048x4096 — MaxOutputPixels on the nose.
+        var key = ImageTransforms.Resolve(new TransformRequest(2048, null, null, null), Png, 1000, 2000);
+        Assert.Equal(2048, key.Width);
+        Assert.Equal(4096, key.Height);
+        Assert.Equal(DimensionLadder.MaxOutputPixels, key.Width * key.Height);
+
+        // 1:3 at the same rung is over it — but still works at a lower rung, since the bound is on
+        // the product rather than either axis.
+        Assert.Throws<PraxyException>(() =>
+            ImageTransforms.Resolve(new TransformRequest(2048, null, null, null), Png, 1000, 3000));
+        var smaller = ImageTransforms.Resolve(new TransformRequest(1024, null, null, null), Png, 1000, 3000);
+        Assert.Equal(1024, smaller.Width);
+        Assert.Equal(3072, smaller.Height);
+    }
+
     [Fact]
     public void Neither_dimension_given_keeps_the_sources_own_size()
     {

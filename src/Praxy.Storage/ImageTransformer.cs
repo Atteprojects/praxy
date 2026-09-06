@@ -67,7 +67,13 @@ public sealed class ImageTransformer(StorageOptions options)
                 // Quality's sentinel (0, for lossless png) has no meaning to the encoder itself; Skia's
                 // own quality parameter is only consulted for lossy formats, so 100 there is inert, not
                 // a request for "highest lossy quality" on a format that has none.
-                using var encoded = toEncode.Encode(format, key.Quality == 0 ? 100 : key.Quality);
+                //
+                // Defense in depth alongside ImageTransforms.DerivedDimensionOrThrow: Encode returns
+                // null on failure rather than throwing (confirmed live — libpng's own row-count limit
+                // rejected a pre-fix derived dimension this way), and an unchecked null here reached
+                // the caller as an unhandled NullReferenceException/500 instead of the same clean 400
+                // every other rejected transform gets.
+                using var encoded = toEncode.Encode(format, key.Quality == 0 ? 100 : key.Quality) ?? throw Unencodable();
                 return encoded.ToArray();
             }
             finally
@@ -198,4 +204,7 @@ public sealed class ImageTransformer(StorageOptions options)
 
     private static PraxyException Undecodable() =>
         new(400, ErrorTypes.FileTransformInvalid, "This file could not be decoded as an image.");
+
+    private static PraxyException Unencodable() =>
+        new(400, ErrorTypes.FileTransformInvalid, "This transform could not be encoded to the requested format.");
 }

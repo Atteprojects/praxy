@@ -1,3 +1,4 @@
+using System.Net;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Praxy.Auth;
@@ -390,8 +391,33 @@ public sealed class DockerExecutor : IDisposable
         var removed = 0;
         foreach (var orphan in orphans)
         {
-            await StopAndRemoveAsync(orphan.ID, ct);
-            removed++;
+            try
+            {
+                // Force-remove rather than StopAndRemoveAsync: that helper spends
+                // WaitBeforeKillSeconds on a graceful stop first, which is right for a container
+                // still serving a request and pointless for one that has already been abandoned by
+                // a dead process — it only turns a crash recovery into a 5-seconds-per-orphan
+                // startup delay. It also swallows its own failures, which is right for a
+                // best-effort cleanup on the request path but wrong here: the count below is
+                // logged as "reclaimed", so it has to mean containers that are actually gone.
+                await _client.Containers.RemoveContainerAsync(
+                    orphan.ID, new ContainerRemoveParameters { Force = true }, ct);
+                removed++;
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                // Already gone — someone else's sweep, or Docker's own cleanup. Not an error, and
+                // not something this process reclaimed either.
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+            {
+                // "removal of container X is already in progress". A graceful shutdown's own
+                // StopAndRemoveAsync calls can still be settling when the next process starts and
+                // sweeps, so this is expected on a fast restart rather than exceptional. It must not
+                // abort the loop: one contended container would otherwise leave every orphan after
+                // it in the list unreclaimed, which is the opposite of what this exists to do.
+                // (Observed as a real test failure once the count stopped swallowing failures.)
+            }
         }
         return removed;
     }
