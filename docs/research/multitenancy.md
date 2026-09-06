@@ -112,6 +112,12 @@ forks share. It is also the least risky thing on this page.
 
 ## Recommendation
 
+> **Working direction, taken 2026-09-06: fork A (one instance per tenant), and start the org
+> lifecycle now.** Recorded so future sessions build against a consistent assumption, not because
+> anything is committed — nothing is scheduled, no infrastructure exists, and the free-tier economics
+> that would argue for B haven't been modelled yet. Revisit when they are. The lifecycle work below
+> is deliberately fork-neutral, so this direction can change without wasting it.
+
 **Build the org lifecycle when you want managed hosting; decide the fork before anything else.**
 
 The lifecycle work — create/rename/switch, member invites, operator OAuth — is needed under both

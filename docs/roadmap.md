@@ -565,6 +565,11 @@ through them; the daemon endpoint and network are already configuration, just in
 than per-tenant; and superuser is needed for exactly one statement at migration time (PostGIS), so a
 non-superuser runtime looks like configuration rather than redesign.
 
+**Working direction, taken 2026-09-06**: fork A (one instance per tenant), on the grounds that it
+keeps both products as the same software and A→B is far easier than un-sharing a shared instance.
+Recorded for consistency, not committed — free-tier economics haven't been modelled, and that is the
+thing that would argue for B.
+
 **The one thing needed under either fork** is the org lifecycle — create/rename/switch, invites,
 operator OAuth (which `CLAUDE.md` already defers to exactly this). Ordinary feature work, commits you
 to neither fork, and the only part that can start before the fork is decided.
