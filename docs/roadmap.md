@@ -537,6 +537,95 @@ reason this exists; and no new features. Design: `docs/research/security-review.
 
 ---
 
+## Self-hosted and managed (assessment only — not scheduled)
+
+**Decided 2026-09-06**: follow Appwrite's shape — ship the self-hosted product *and* run a managed
+version of it. Two products from one codebase, with different security requirements: a self-hosted
+instance is run by someone who trusts everyone on it; a managed one hosts strangers.
+`docs/research/multitenancy.md` works out what that costs, checked against the running system.
+Nothing is scheduled, and there is deliberately no phase prompt.
+
+**The reframe that matters**: four designs look like multitenancy debt — the Docker socket, a single
+Postgres superuser with isolation enforced only in application code, a flat container network, and
+tenant content on the console's own origin. They are better read as **four decisions that stay right
+for self-host forever**, and are only problems for the managed product. `deploy/up.sh`'s one-question
+setup is a selling point; none of this hardening should land in the self-hosted path if it costs that.
+Appwrite does the same — the OSS product keeps the simple execution model and Cloud adds isolation
+that isn't in the repo.
+
+**The infrastructure model decides whether those four matter at all**, and it is a spectrum rather
+than a binary: *one instance per tenant* (isolation at the infrastructure layer, all four evaporate,
+the codebase needs almost nothing), *cells* of 50-200 tenants per instance (the middle most SaaS
+converges on), or *one shared instance* (cheapest, and all four become real engineering). Worth
+deciding first since it can make the rest moot, and it commits nobody to building anything.
+
+**The cost of one-instance-per-tenant is not the obvious one.** Money per customer is visible; the
+one that bites a small team is **fleet upgrades**, which scale with customers. Praxy helps here —
+migrations run themselves at startup under a `pg_advisory_lock`, so an update is "new image, restart"
+with no separate migration step to orchestrate — but a failed migration is then a *failed startup* on
+one tenant, found from monitoring; version skew becomes permanent; and backward compatibility stops
+being optional, since a fleet mid-rollout cannot be coordinated the way one instance can. Tens of
+tenants is a cron job; the low hundreds is a real job; past that you want cells — and cells need the
+same isolation work as a shared instance. **So instance-per-tenant defers that work rather than
+escaping it**, which is worth choosing deliberately rather than by accident.
+
+**What's already in Praxy's favour**, verified: the tenant seam exists and is load-bearing
+(`Organization`/`OrganizationMember` since Phase 0, org quotas enforced, authorization already joins
+through membership); the Docker client is confined to exactly two files with fifteen consumers going
+through them; the daemon endpoint and network are already configuration, just instance-wide rather
+than per-tenant; and superuser is needed for exactly one statement at migration time (PostGIS), so a
+non-superuser runtime looks like configuration rather than redesign.
+
+**Working direction, taken 2026-09-06**: one instance per tenant, on the grounds that it keeps both
+products as the same software and needs none of the four solved. Recorded for consistency, not
+committed, and taken knowing it is a *first* answer — revisit at the low hundreds of tenants, or
+sooner if free-tier economics demand it.
+
+**The one thing needed under either fork** is the org lifecycle — create/rename/switch, invites,
+operator OAuth (which `CLAUDE.md` already defers to exactly this). Ordinary feature work, commits you
+to neither fork, and the only part that can start before the fork is decided.
+
+---
+
+## Organization lifecycle (post-v0.1.0 initiative)
+
+The one piece of managed-hosting groundwork required under **either** infrastructure fork
+(`docs/research/multitenancy.md`), buildable now and committing to neither. Also worth having on its
+own: an operator today gets exactly one organization, created at signup and named "Personal", with no
+way to make another, rename it, or let a colleague in.
+
+The model has been there since Phase 0 and is load-bearing — `Organization`/`OrganizationMember`,
+projects belong to orgs, org quotas enforced, authorization already joins through membership. Three
+things are missing, and one of them is a trap: **`OrganizationMember.Role` is written once at signup
+and never read**, so every member is effectively an owner; enforcing it is a behaviour change, not a
+new feature. The console's `HomeRedirect` also states its assumption outright — *"list orgs, take the
+first — there is exactly one"* — which is the single line multi-org switching invalidates.
+
+**Organizations are not Teams.** Both have `owner`/`member`; they are different layers.
+Organizations hold console *operators* and own projects; Teams hold *app users* and live inside one
+project. A future session will conflate them if it doesn't read the design doc's comparison table
+first — and security-review Phase 3's Finding D was a membership information leak in Teams, so the
+resemblance is a trap with precedent.
+
+- **Phase 1 — the org itself**: create, rename, delete (empty only — no cascade, no `force`, matching
+  how the engine treats every other destructive action), and multi-org switching in the console. Goes
+  first because it makes "exactly one org" false, which is what everything else assumes. No membership
+  changes.
+- **Phase 2 — members and roles**: invite by email (mirroring Teams' proven
+  `SecretHash`/`InvitedAt`/`Confirmed` shape, as a pattern rather than shared code), accept, remove,
+  change role, and enforce `owner` vs `member` for the first time. The phase that most needs the
+  security review's habits, since it adds a whole new authorization surface — and Phase 3's Finding D
+  is the specific thing to re-read before shipping it.
+- **Phase 3 — operator OAuth**: what `CLAUDE.md` means by deferring operator OAuth to "future
+  multitenancy work". Separable and last — an invited colleague can already accept with
+  email+password — and it needs its own design pass, since operator OAuth is not app-user OAuth and
+  the existing Google provider code is written for the latter.
+
+**Explicitly out of scope for the whole sequence**: per-project operator roles, organization billing
+or plans, and transferring a project between organizations. Design: `docs/research/organizations.md`.
+
+---
+
 ---
 
 ## Rules that hold across every phase
