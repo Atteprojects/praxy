@@ -1,5 +1,9 @@
 # Session task — Security review, Phase 3: authorization and project isolation
 
+> **Status: shipped.** 2026-09-06 — see `docs/handoff/security-review-phase-3-report.md`, which
+> closes the security-review initiative. One correction made during review before merge: Finding E
+> is fixed for *new* repository connections only; pairs that already exist are untouched.
+
 ## Why this exists
 
 Phase 1 (`docs/handoff/security-review-phase-1-report.md`) closed the container-execution boundary

@@ -1,5 +1,10 @@
 # Session task — Organizations, Phase 1: the organization itself
 
+> **Status: shipped.** 2026-09-06 — see `docs/handoff/organizations-phase-1-report.md`. One
+> addition made during review before merge: organizations were the only creatable resource in
+> Praxy without a quota, and the one every other quota is scoped *to* — see the report's
+> "Found in review before merge" section and `Praxy:Quotas:MaxOrganizationsPerOperator`.
+
 ## Why this exists
 
 An operator today gets exactly one organization, created for them at signup and named "Personal",
