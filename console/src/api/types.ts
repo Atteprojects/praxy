@@ -69,6 +69,13 @@ export interface Project {
   createdAt: string;
 }
 
+export interface CreateProjectInput {
+  name: string;
+  /** Required once an operator belongs to more than one organization — the server only guesses when it's unambiguous. */
+  organizationId: string;
+  projectId?: string;
+}
+
 export interface ProjectList {
   total: number;
   projects: Project[];

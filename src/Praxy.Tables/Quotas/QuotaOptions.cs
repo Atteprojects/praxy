@@ -8,6 +8,12 @@ namespace Praxy.Tables.Quotas;
 /// enforced before Phase 9, so an operator who never configures either stays on identical behavior.
 /// </summary>
 public sealed record QuotaOptions(
+    // The one limit scoped to an *operator* rather than an organization, because organizations are
+    // what every other limit is scoped to: without it, an operator who exhausts MaxProjects just
+    // creates another organization and gets a fresh allowance, and every per-org quota below becomes
+    // advisory. Generous enough that a consultancy running an org per client never notices;
+    // configurable for anyone who needs more.
+    int MaxOrganizationsPerOperator = 10,
     int MaxProjects = 100,
     int MaxDatabasesPerProject = 20,
     int MaxTablesPerDatabase = 200,

@@ -560,6 +560,43 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "ConsoleOrganizationEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/console/organizations/{organizationId}": {
@@ -587,6 +624,83 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "ConsoleOrganizationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "ConsoleOrganizationEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
           },
           "default": {
             "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
@@ -14407,6 +14521,17 @@
           }
         }
       },
+      "CreateOrganizationRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "CreatePlatformRequest": {
         "required": [
           "type",
@@ -14432,7 +14557,8 @@
       "CreateProjectRequest": {
         "required": [
           "name",
-          "projectId"
+          "projectId",
+          "organizationId"
         ],
         "type": "object",
         "properties": {
@@ -14440,6 +14566,12 @@
             "type": "string"
           },
           "projectId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "organizationId": {
             "type": [
               "null",
               "string"
@@ -17642,6 +17774,17 @@
         }
       },
       "UpdateNameRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateOrganizationRequest": {
         "required": [
           "name"
         ],

@@ -1,15 +1,55 @@
-import { Link, Navigate, useParams } from "@tanstack/react-router";
-import { useState } from "react";
-import { useOrganization, useOrganizations, useProjects } from "../api/queries";
-import { Badge, FullPageSpinner, IdChip, PageHeader } from "../components/ui";
+import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import { useEffect, useState, type FormEvent } from "react";
+import { ApiError } from "../api/client";
+import {
+  useCreateOrganization,
+  useDeleteOrganization,
+  useOrganization,
+  useOrganizations,
+  useProjects,
+  useUpdateOrganization,
+} from "../api/queries";
+import type { Organization } from "../api/types";
+import { useToast } from "../components/toast";
+import {
+  Badge,
+  ErrorNote,
+  Field,
+  FullPageSpinner,
+  IdChip,
+  InlineEditableTitle,
+  Modal,
+  PageHeader,
+  Spinner,
+} from "../components/ui";
 import { STR } from "../strings";
 import { CreateProjectCard } from "./CreateProjectCard";
 
+/** The org id is not on the session, so switching is remembered client-side, per browser. */
+const LAST_ORGANIZATION_KEY = "praxy.lastOrganizationId";
+
+function rememberOrganization(organizationId: string) {
+  try {
+    localStorage.setItem(LAST_ORGANIZATION_KEY, organizationId);
+  } catch {
+    // Private browsing / storage disabled: switching still works, it just won't be remembered.
+  }
+}
+
+function lastRememberedOrganization(): string | null {
+  try {
+    return localStorage.getItem(LAST_ORGANIZATION_KEY);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The post-login landing route. The org id is not on the session, so the console has to resolve it
- * (list orgs, take the first — there is exactly one) before it can build the URL. That resolution
- * is a spinner, never a glimpse of the project list at a bare "/": rendering here and then jumping
- * would flash a screen the user never asked for.
+ * The post-login landing route. The org id is not on the session, so the console has to resolve
+ * one before it can build the URL: the remembered last-used org if it's still one of the
+ * operator's own, else the operator's only org, else — now that there can be more than one with
+ * nothing remembered — a picker. That resolution is a spinner, never a glimpse of a project list
+ * at a bare "/": rendering here and then jumping would flash a screen the user never asked for.
  *
  * "/" stays the canonical entry point — the login redirects, the logo and every "back to projects"
  * link still point at it, and bookmarks keep working — it just forwards to the resolved org.
@@ -20,12 +60,36 @@ export function HomeRedirect() {
   if (organizations.isPending) return <FullPageSpinner />;
   if (organizations.isError) throw organizations.error;
 
-  const organization = organizations.data.organizations[0];
-  if (!organization)
+  const list = organizations.data.organizations;
+  if (list.length === 0)
     throw new Error(`This account belongs to no ${STR.organization}. The instance claim did not complete.`);
 
+  const remembered = lastRememberedOrganization();
+  const target = list.find((o) => o.id === remembered) ?? (list.length === 1 ? list[0] : undefined);
+
+  if (target) return <Navigate to="/organization/$organizationId" params={{ organizationId: target.id }} replace />;
+
+  return <OrganizationPicker organizations={list} />;
+}
+
+function OrganizationPicker({ organizations }: { organizations: Organization[] }) {
   return (
-    <Navigate to="/organization/$organizationId" params={{ organizationId: organization.id }} replace />
+    <div className="mx-auto w-full max-w-md px-6 py-16">
+      <h1 className="mb-6 text-center text-lg font-semibold">Choose an organization</h1>
+      <div className="space-y-2">
+        {organizations.map((organization) => (
+          <Link
+            key={organization.id}
+            to="/organization/$organizationId"
+            params={{ organizationId: organization.id }}
+            className="surface flex items-center justify-between gap-3 p-4 transition-colors hover:border-iris-500/60"
+          >
+            <span className="truncate font-medium">{organization.name}</span>
+            <IdChip id={organization.id} />
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -33,66 +97,226 @@ export function HomeRedirect() {
 export function OrganizationPage() {
   const { organizationId } = useParams({ strict: false }) as { organizationId: string };
   const organization = useOrganization(organizationId);
+  const organizations = useOrganizations();
   const projects = useProjects();
-  const [creating, setCreating] = useState(false);
+  const update = useUpdateOrganization(organizationId);
+  const navigate = useNavigate();
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [creatingOrg, setCreatingOrg] = useState(false);
 
-  if (organization.isPending || projects.isPending) return <FullPageSpinner />;
+  // Every route into an org page — the picker, the switcher, a direct link — passes through here,
+  // so remembering it in one place covers all of them.
+  useEffect(() => {
+    rememberOrganization(organizationId);
+  }, [organizationId]);
+
+  if (organization.isPending || organizations.isPending || projects.isPending) return <FullPageSpinner />;
   if (organization.isError) throw organization.error;
+  if (organizations.isError) throw organizations.error;
   if (projects.isError) throw projects.error;
 
-  // Single-org today, but the page claims these projects belong to *this* org, so it filters
-  // rather than trusting the list to be org-wide.
   const owned = projects.data.projects.filter((project) => project.organizationId === organizationId);
 
-  // Empty instance: no chrome, just the create card — the Appwrite onboarding pattern, minus the
-  // org ceremony. A first-run screen is the wrong place to introduce a heading nobody asked about.
-  if (owned.length === 0) return <CreateProjectCard standalone />;
+  // Genuinely fresh instance — one org, zero projects anywhere: no chrome, just the create card,
+  // the Appwrite onboarding pattern minus the org ceremony. Once a second org exists, or any
+  // project exists anywhere, an empty *this* org is a deliberate state (about to be renamed,
+  // switched away from, or deleted), not a first run, so it keeps its full chrome below instead.
+  if (organizations.data.total === 1 && projects.data.total === 0)
+    return <CreateProjectCard standalone organizationId={organizationId} />;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
       <PageHeader
-        title={organization.data.name}
+        title={<InlineEditableTitle value={organization.data.name} onSave={(name) => update.mutateAsync({ name })} />}
         chips={<IdChip id={organization.data.id} />}
         description={`${STR.projects} in this ${STR.organization}.`}
         actions={
-          <button type="button" onClick={() => setCreating(true)} className="btn-primary">
-            + Create project
-          </button>
+          <>
+            {organizations.data.total > 1 ? (
+              <select
+                aria-label="Switch organization"
+                className="input-base"
+                value={organizationId}
+                onChange={(e) =>
+                  void navigate({
+                    to: "/organization/$organizationId",
+                    params: { organizationId: e.target.value },
+                  })
+                }
+              >
+                {organizations.data.organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <button
+              type="button"
+              className="btn-ghost border border-ink-700"
+              onClick={() => setCreatingOrg(true)}
+            >
+              + New organization
+            </button>
+            <button type="button" onClick={() => setCreatingProject(true)} className="btn-primary">
+              + Create project
+            </button>
+          </>
         }
       />
 
-      {creating ? (
+      {creatingOrg ? <CreateOrganizationModal onClose={() => setCreatingOrg(false)} /> : null}
+
+      {creatingProject ? (
         <div
           className="fixed inset-0 z-40 grid place-items-center bg-ink-950/70 p-4 backdrop-blur-sm"
-          onClick={(e) => e.target === e.currentTarget && setCreating(false)}
+          onClick={(e) => e.target === e.currentTarget && setCreatingProject(false)}
         >
-          <CreateProjectCard />
+          <CreateProjectCard organizationId={organizationId} />
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {owned.map((project) => (
-          <Link
-            key={project.id}
-            to="/project/$projectId"
-            params={{ projectId: project.id }}
-            className="surface group flex flex-col p-6 transition-colors hover:border-iris-500/60"
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <span className="truncate text-lg font-semibold group-hover:text-white">{project.name}</span>
-              <Badge tone={project.lastPingAt ? "mint" : "ink"}>
-                {project.lastPingAt ? "Connected" : "Waiting"}
-              </Badge>
-            </div>
-            <div onClick={(e) => e.preventDefault()}>
-              <IdChip id={project.id} />
-            </div>
-            <p className="mt-auto pt-6 text-xs text-ink-500">
-              Created {new Date(project.createdAt).toLocaleDateString()}
-            </p>
-          </Link>
-        ))}
-      </div>
+      {owned.length === 0 ? (
+        <p className="surface p-6 text-sm text-ink-400">No projects in this organization yet.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {owned.map((project) => (
+            <Link
+              key={project.id}
+              to="/project/$projectId"
+              params={{ projectId: project.id }}
+              className="surface group flex flex-col p-6 transition-colors hover:border-iris-500/60"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <span className="truncate text-lg font-semibold group-hover:text-white">{project.name}</span>
+                <Badge tone={project.lastPingAt ? "mint" : "ink"}>
+                  {project.lastPingAt ? "Connected" : "Waiting"}
+                </Badge>
+              </div>
+              <div onClick={(e) => e.preventDefault()}>
+                <IdChip id={project.id} />
+              </div>
+              <p className="mt-auto pt-6 text-xs text-ink-500">
+                Created {new Date(project.createdAt).toLocaleDateString()}
+              </p>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <OrganizationDangerZone
+        organizationId={organizationId}
+        organizationName={organization.data.name}
+        hasProjects={owned.length > 0}
+        isOnlyOrganization={organizations.data.total <= 1}
+      />
+    </div>
+  );
+}
+
+function CreateOrganizationModal({ onClose }: { onClose: () => void }) {
+  const create = useCreateOrganization();
+  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const error = create.error instanceof ApiError ? create.error : null;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const organization = await create.mutateAsync({ name });
+    onClose();
+    await navigate({ to: "/organization/$organizationId", params: { organizationId: organization.id } });
+  }
+
+  return (
+    <Modal title="New organization" onClose={onClose}>
+      <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+        {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
+        <Field label="Name" error={error?.fieldErrors("name")[0]}>
+          <input
+            className="input-base"
+            required
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Acme Inc."
+          />
+        </Field>
+        <button type="submit" className="btn-primary w-full" disabled={create.isPending}>
+          {create.isPending ? <Spinner /> : "Create organization"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Same typed-name-confirmation shape as `ProjectOverviewPage`'s danger zone, but with two states
+ * that never reach a confirm form at all: the server refuses both outright (no `force`, no
+ * override), so the UI explains why up front rather than letting the operator type a name into a
+ * button that's always going to 409.
+ */
+function OrganizationDangerZone({
+  organizationId,
+  organizationName,
+  hasProjects,
+  isOnlyOrganization,
+}: {
+  organizationId: string;
+  organizationName: string;
+  hasProjects: boolean;
+  isOnlyOrganization: boolean;
+}) {
+  const navigate = useNavigate();
+  const remove = useDeleteOrganization();
+  const toast = useToast();
+  const [confirmName, setConfirmName] = useState("");
+  const error = remove.error instanceof ApiError ? remove.error : null;
+
+  async function onDelete() {
+    await remove.mutateAsync(organizationId);
+    await navigate({ to: "/" });
+    toast.success(`Deleted "${organizationName}".`);
+  }
+
+  return (
+    <div className="mt-8 max-w-3xl surface border-coral-400/20 p-5">
+      <h2 className="mb-3 text-sm font-medium text-coral-400">Danger zone</h2>
+      {isOnlyOrganization ? (
+        <p className="text-xs text-ink-500">
+          This is your only organization — create another before this one can be deleted.
+        </p>
+      ) : hasProjects ? (
+        <p className="text-xs text-ink-500">
+          Delete every project in <span className="font-mono text-ink-300">{organizationName}</span> before this
+          organization can be deleted.
+        </p>
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-ink-500">
+            Deleting <span className="font-mono text-ink-300">{organizationName}</span> cannot be undone.
+          </p>
+          {error ? <div className="mb-3"><ErrorNote message={error.message} /></div> : null}
+          <p className="mb-2 text-xs text-ink-500">
+            Type <span className="font-mono text-ink-300">{organizationName}</span> to confirm.
+          </p>
+          <div className="flex gap-2">
+            <input
+              className="input-base flex-1"
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder={organizationName}
+            />
+            <button
+              type="button"
+              className="btn-ghost shrink-0 border border-coral-400/60 text-coral-400 disabled:opacity-40"
+              disabled={confirmName !== organizationName || remove.isPending}
+              onClick={() => void onDelete()}
+            >
+              {remove.isPending ? <Spinner /> : "Delete organization"}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -29,6 +29,30 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
     private Task<Guid?> OrgIdForProjectAsync(string projectId, CancellationToken ct) =>
         db.Projects.Where(p => p.Id == projectId).Select(p => p.OrganizationId).FirstOrDefaultAsync(ct);
 
+    /// <summary>
+    /// Caps how many organizations one operator can hold. Unlike every other dimension here this is
+    /// scoped to the *operator*, so there is no per-org override to consult — an organization can't
+    /// meaningfully raise the limit on how many organizations may exist alongside it.
+    ///
+    /// <para>Without this, organizations were the only creatable resource in Praxy with no cap, and
+    /// the one that every other quota is scoped *to* — so an operator at their <c>MaxProjects</c>
+    /// ceiling could simply create another organization and carry on, making each per-org limit
+    /// advisory. Harmless while the only operator owns the instance; not once an organization is the
+    /// boundary a paying customer is metered by, which is what
+    /// <c>docs/research/multitenancy.md</c> has it becoming.</para>
+    ///
+    /// <para>Counts memberships, which in Phase 1 is the same as "organizations this operator owns"
+    /// because every member is its creator. **Phase 2 must revisit this**: once an operator can be
+    /// invited into someone else's organization, being a member of it should not consume their own
+    /// creation allowance.</para>
+    /// </summary>
+    public async Task EnsureOrganizationQuotaAsync(Guid operatorId, CancellationToken ct)
+    {
+        var used = await db.OrganizationMembers.CountAsync(m => m.UserId == operatorId, ct);
+        if (used >= defaults.MaxOrganizationsPerOperator)
+            throw Exceeded("operator", "organizations", defaults.MaxOrganizationsPerOperator);
+    }
+
     public async Task EnsureProjectQuotaAsync(Guid organizationId, CancellationToken ct)
     {
         var limits = await GetOrgLimitsAsync(organizationId, ct);

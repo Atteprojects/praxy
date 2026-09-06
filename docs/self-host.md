@@ -140,6 +140,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:RateLimits:DataPlane:PermitLimit` / `:WindowSeconds` | 600 / 60 | Row CRUD (`/v1/databases/.../rows`). A ceiling against runaway clients, not a per-app throttle — raise it if a legitimate client needs more. |
 | `Praxy:RateLimits:Functions:PermitLimit` / `:WindowSeconds` | 60 / 60 | Function invocation (`POST /v1/functions/{id}/executions`). Deliberately tighter than the rest of the data plane: each permitted request can start a container. |
 | `Praxy:RateLimits:Realtime:PermitLimit` / `:WindowSeconds` | 60 / 60 | Realtime ticket minting. Complements `Praxy:Realtime:MaxConnectionsPerProject`, which bounds live sockets rather than the rate they're requested at. |
+| `Praxy:Quotas:MaxOrganizationsPerOperator` | 10 | Organizations one console operator may hold. The only quota scoped to an *operator* rather than an organization — an organization can't raise the limit on how many may exist beside it, so it has no per-org override. Without it, every row below is advisory: the boundary they are scoped to would be free to duplicate. |
 | `Praxy:Quotas:MaxProjects` | 100 | Projects per organization (org-overridable, see below). |
 | `Praxy:Quotas:MaxDatabasesPerProject` | 20 | Databases per project (org-overridable). |
 | `Praxy:Quotas:MaxTablesPerDatabase` | 200 | Tables per database (org-overridable). |
@@ -182,8 +183,9 @@ limitation in [api-reference.md](api-reference.md).
 
 **Org-level quotas** (`Praxy:Quotas:*` above) are the instance-wide defaults. An individual
 organization's `organizations.limits` jsonb column can override any of them per-dimension
-(`{"maxDatabasesPerProject": 5}`) — there's no console UI for this yet (organizations are hidden in
-the console until multi-org ships), so it's a direct SQL edit today:
+(`{"maxDatabasesPerProject": 5}`) — there's no console UI for editing this override yet (organization
+lifecycle — create/rename/delete/switch — has a console screen as of organizations-phase-1; per-org
+quota overrides don't), so it's a direct SQL edit today:
 
 ```sql
 UPDATE praxy.organizations SET limits = '{"maxDatabasesPerProject": 5}'::jsonb WHERE id = '<org-id>';

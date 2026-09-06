@@ -14,8 +14,10 @@ every session, this document is not.
 Revisions from the original pre-build draft, kept for history:
 
 - Console interleaved per phase, not a single M5 block; each phase ends with an owner console test.
-- Organizations modeled fully from Phase 0 (owner/member only). Read-only and still single-org — no
-  switcher, create, rename or member management.
+- Organizations modeled fully from Phase 0 (owner/member only). Organizations-phase-1 (2026-09-05)
+  gave the lifecycle a console surface — create, rename, delete (empty-only, no cascade), and
+  multi-org switching (remembered last org, else a picker). Every org still has exactly one member,
+  its creator; invites, role changes and enforcing `owner`/`member` are Organizations-phase-2.
 - Console users and app users are separate namespaces; **the console is a reserved project with a hard
   data-plane guard**.
 - Instance claim: first account wins; setup token required when `PRAXY_PUBLIC_URL` is set.
