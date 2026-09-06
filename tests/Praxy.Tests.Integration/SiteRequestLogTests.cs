@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Praxy.Persistence;
 using Praxy.Persistence.Entities;
+using Praxy.Sites;
 using Praxy.Tests.Integration.Infrastructure;
 
 namespace Praxy.Tests.Integration;
@@ -71,6 +72,72 @@ public class SiteRequestLogTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         Assert.Contains(rows, r => r.GetProperty("path").GetString() == "/" && r.GetProperty("statusCode").GetInt32() == 200);
         Assert.Contains(rows, r => r.GetProperty("path").GetString() == "/missing" && r.GetProperty("statusCode").GetInt32() == 404);
         Assert.All(rows, r => Assert.True(r.GetProperty("durationMs").GetInt32() >= 0));
+    }
+
+    /// <summary>
+    /// security-review-phase-2 finding: <c>Method</c>/<c>Path</c> are fully attacker-controlled (an
+    /// arbitrary HTTP method token, an arbitrary request path) and were written straight through to
+    /// <see cref="SiteRequestLog"/> with no clamp to the column's own <c>HasMaxLength</c>. Confirmed
+    /// live against a real Postgres: one oversized value makes <c>SaveChangesAsync</c>'s implicit
+    /// transaction abort entirely, which — because <see cref="SiteRequestLogWorker"/> batches whatever
+    /// the channel has accumulated into one <c>SaveChangesAsync</c> call — silently drops every other,
+    /// perfectly valid entry flushed in the same batch alongside it. Enqueues straight through
+    /// <see cref="SiteRequestLogWriter"/> (the real producer/consumer pair, not a direct DB write) so
+    /// this exercises <see cref="SiteRequestLogWorker"/>'s own batching, and packs the oversized entry
+    /// in the middle of otherwise-normal ones so an unfixed worker would lose the whole group.
+    /// </summary>
+    [Fact]
+    public async Task An_oversized_method_or_path_does_not_poison_other_entries_in_the_same_flush()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "poison-test");
+        var writer = Factory.Services.GetRequiredService<SiteRequestLogWriter>();
+
+        writer.TryEnqueue(new SiteRequestLogEntry(
+            Guid.Parse(siteId), projectId, null, "GET", "/before-bad-entry", 200, 1, DateTimeOffset.UtcNow));
+        writer.TryEnqueue(new SiteRequestLogEntry(
+            Guid.Parse(siteId), projectId, null, new string('X', 500), "/" + new string('y', 5000), 200, 1,
+            DateTimeOffset.UtcNow));
+        writer.TryEnqueue(new SiteRequestLogEntry(
+            Guid.Parse(siteId), projectId, null, "GET", "/after-bad-entry", 200, 1, DateTimeOffset.UtcNow));
+
+        var rows = await WaitForRequestLogRowsAsync(operatorToken, projectId, siteId, 3);
+
+        Assert.Contains(rows, r => r.GetProperty("path").GetString() == "/before-bad-entry");
+        Assert.Contains(rows, r => r.GetProperty("path").GetString() == "/after-bad-entry");
+        var truncated = Assert.Single(rows, r => r.GetProperty("path").GetString()!.StartsWith("/yyy"));
+        Assert.True(truncated.GetProperty("method").GetString()!.Length <= SiteRequestLog.MethodMaxLength);
+        Assert.True(truncated.GetProperty("path").GetString()!.Length <= SiteRequestLog.PathMaxLength);
+    }
+
+    /// <summary>
+    /// Postgres's <c>character varying(n)</c> counts Unicode codepoints; .NET's <c>string.Length</c>
+    /// counts UTF-16 code units — a naive <c>value[..maxLength]</c> can land exactly inside a
+    /// surrogate pair (an emoji or other astral character right at the cut point), leaving a
+    /// dangling unpaired surrogate that Npgsql rejects as an encoding error. Places a 4-byte-UTF-16
+    /// emoji straddling <see cref="SiteRequestLog.PathMaxLength"/> exactly so an unfixed truncation
+    /// would cut through it.
+    /// </summary>
+    [Fact]
+    public async Task A_truncation_that_would_split_a_surrogate_pair_backs_off_instead()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "surrogate-test");
+        var writer = Factory.Services.GetRequiredService<SiteRequestLogWriter>();
+
+        // "/" + 2046 filler chars + a 2-char (surrogate pair) emoji = length 2049, one over the
+        // 2048 limit, with the emoji's high surrogate sitting exactly at index maxLength-1.
+        var path = "/" + new string('a', SiteRequestLog.PathMaxLength - 2) + "\U0001F600";
+        Assert.Equal(SiteRequestLog.PathMaxLength + 1, path.Length);
+
+        writer.TryEnqueue(new SiteRequestLogEntry(
+            Guid.Parse(siteId), projectId, null, "GET", path, 200, 1, DateTimeOffset.UtcNow));
+
+        var rows = await WaitForRequestLogRowsAsync(operatorToken, projectId, siteId, 1);
+        var stored = Assert.Single(rows).GetProperty("path").GetString()!;
+
+        Assert.True(stored.Length <= SiteRequestLog.PathMaxLength);
+        Assert.False(char.IsSurrogate(stored[^1]), "must not end on an unpaired surrogate");
     }
 
     [Fact]

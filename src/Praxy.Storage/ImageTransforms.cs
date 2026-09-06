@@ -169,17 +169,44 @@ public static class ImageTransforms
         if (width is { } widthOnly)
         {
             var snapped = SnapUpOrThrow(widthOnly, "width");
-            return (snapped, DerivedDimension(snapped, sourceWidth, sourceHeight), false);
+            return (snapped, DerivedDimensionOrThrow(snapped, sourceWidth, sourceHeight, "height"), false);
         }
 
         var heightOnly = height!.Value;
         var snappedHeight2 = SnapUpOrThrow(heightOnly, "height");
-        return (DerivedDimension(snappedHeight2, sourceHeight, sourceWidth), snappedHeight2, false);
+        return (DerivedDimensionOrThrow(snappedHeight2, sourceHeight, sourceWidth, "width"), snappedHeight2, false);
     }
 
-    /// <summary>The other axis, scaled to preserve the source's aspect ratio — never independently snapped, since it isn't what the caller asked for.</summary>
-    private static int DerivedDimension(int snappedRequested, int sourceRequestedAxis, int sourceOtherAxis) =>
-        Math.Max(1, (int)Math.Round(sourceOtherAxis * (snappedRequested / (double)sourceRequestedAxis)));
+    /// <summary>
+    /// The other axis, scaled to preserve the source's aspect ratio — never independently snapped to
+    /// a rung, since it isn't what the caller asked for, but still bounded by <see cref="DimensionLadder.TopRung"/>:
+    /// an extreme source aspect ratio (a real, honestly-encoded 4×100,000 screenshot is enough — no
+    /// crafted file needed) otherwise derives an unbounded output dimension from a single small
+    /// requested axis, defeating the ladder's entire "bounded key space" property for the axis the
+    /// caller didn't name. Confirmed live: a 4x100,000 PNG's derived height for <c>?width=64</c> came
+    /// out to 1,600,000 — SkiaSharp's <c>Resize</c> allocated that target bitmap without complaint,
+    /// and only libpng's own row-count sanity check on <em>encode</em> caught it, returning
+    /// <c>null</c> from <see cref="SkiaSharp.SKBitmap.Encode"/> and crashing
+    /// <see cref="ImageTransformer.Transform"/> with a <see cref="NullReferenceException"/> — a
+    /// request-format that avoids libpng's limit (<c>webp</c>/<c>jpeg</c>, or a less extreme ratio)
+    /// would not have crashed, just silently produced a multi-hundred-megabyte allocation and
+    /// derivative. Rejecting here closes both: every derivative's both dimensions are now within the
+    /// same six-rung bound, whether requested or derived.
+    /// </summary>
+    private static int DerivedDimensionOrThrow(int snappedRequested, int sourceRequestedAxis, int sourceOtherAxis, string derivedAxis)
+    {
+        var derived = Math.Max(1, (int)Math.Round(sourceOtherAxis * (snappedRequested / (double)sourceRequestedAxis)));
+        // long: a pathological ratio derives values large enough that the product overflows int.
+        if ((long)derived * snappedRequested > DimensionLadder.MaxOutputPixels)
+        {
+            throw Invalid(
+                $"This image's aspect ratio would derive a {derivedAxis} of {derived}px, for a " +
+                $"{(long)derived * snappedRequested}-pixel derivative that exceeds the " +
+                $"{DimensionLadder.MaxOutputPixels}-pixel maximum. Request a smaller {(derivedAxis == "height" ? "width" : "height")}, " +
+                "or name both dimensions explicitly to crop instead.");
+        }
+        return derived;
+    }
 
     private static int SnapUpOrThrow(int requested, string axis)
     {

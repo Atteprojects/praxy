@@ -511,12 +511,19 @@ twice with drift between them:
   network has no database on it, so the asymmetry is accidental, not designed), and neither executor
   sets `PidsLimit`, `CapDrop`, `SecurityOpt`, `ReadonlyRootfs` or `User` — zero repo-wide matches for
   any of them.
-- **Phase 2 — the HTTP edge** (Storage + the Sites proxy) — the derivative/transform path (the newest
-  storage code, post-dating the XSS fix), `ByteRanges` arithmetic, `SiteProxyMiddleware`'s header and
-  host handling, `SiteHostPattern` and the `_ask-tls` endpoint sharing it, preview-URL enumeration, and
-  whether `site_requests` logging can be poisoned. Storage's download edge is already well defended —
-  `ContentDisposition`, `InlineTypes`' two gates, unconditional `nosniff` — so the job there is
-  verification, not discovery.
+- **Phase 2 — the HTTP edge — shipped 2026-09-05** (kickoff:
+  `docs/handoff/security-review-phase-2-prompt.md`; report:
+  `docs/handoff/security-review-phase-2-report.md`) (Storage + the Sites proxy) — the derivative/transform
+  path, `ByteRanges` arithmetic, `SiteProxyMiddleware`'s header and host handling, `SiteHostPattern` and
+  the `_ask-tls` endpoint sharing it, preview-URL enumeration, and whether `site_requests` logging can
+  be poisoned. Storage's download edge was already well defended (`ContentDisposition`, `InlineTypes`'
+  two gates, unconditional `nosniff`, verified still sound) — the real find was newer: a single-axis
+  transform request (`?width=` alone) derived its other dimension from the source's own aspect ratio
+  with no bound at all, so a real, honestly-encoded extreme-aspect-ratio image (no crafted file needed)
+  crashed the request or silently produced a huge allocation; the fix bounds a derivative's total pixel
+  area (not either axis alone, which would reject every ordinary non-square photo). Also fixed:
+  one oversized HTTP method/path on a proxied site request aborted the whole batch transaction
+  `SiteRequestLogWorker` writes, silently dropping every other request's log row alongside it.
 - **Phase 3 — authorization and project isolation** (all three) — the permission model itself: Storage's
   additive bucket/per-file grants, the scope and lifetime of a function's minted credentials, and
   whether project isolation holds at *every* entry point, including the ones that bypass the normal API

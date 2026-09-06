@@ -36,8 +36,14 @@ public sealed class SiteRequestLogWorker(
                     SiteId = entry.SiteId,
                     ProjectId = entry.ProjectId,
                     DeploymentId = entry.DeploymentId,
-                    Method = entry.Method,
-                    Path = entry.Path,
+                    // Method/Path are the request's own, fully attacker-controlled — an oversized
+                    // value must never reach SaveChangesAsync: Postgres rejecting one row aborts the
+                    // whole transaction, silently dropping every other entry batched alongside it
+                    // (confirmed live: one overlong Method poisoned an otherwise-valid batch entirely).
+                    // Clamping here, not validating, because there is nothing to reject a proxied
+                    // request over — this is best-effort observability of traffic that already happened.
+                    Method = Truncate(entry.Method, SiteRequestLog.MethodMaxLength),
+                    Path = Truncate(entry.Path, SiteRequestLog.PathMaxLength),
                     StatusCode = entry.StatusCode,
                     DurationMs = entry.DurationMs,
                     CreatedAt = entry.CreatedAt,
@@ -62,5 +68,21 @@ public sealed class SiteRequestLogWorker(
                 logger.LogError(ex, "Failed to flush {Count} site request log(s)", batch.Count);
             }
         }
+    }
+
+    /// <summary>
+    /// Postgres's <c>character varying(n)</c> counts Unicode codepoints; .NET's <see cref="string.Length"/>
+    /// counts UTF-16 code units, so a cut that lands exactly inside a surrogate pair (an astral
+    /// character — an emoji in a path, say) leaves a dangling unpaired surrogate. Npgsql would reject
+    /// that as an encoding error, defeating the whole point of clamping here instead of validating.
+    /// Backing off one further in that one case keeps every cut on a real character boundary.
+    /// </summary>
+    private static string Truncate(string value, int maxLength)
+    {
+        if (value.Length <= maxLength) return value;
+        var cut = maxLength;
+        if (cut > 0 && char.IsHighSurrogate(value[cut - 1]))
+            cut--;
+        return value[..cut];
     }
 }

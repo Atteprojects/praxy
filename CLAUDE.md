@@ -188,6 +188,20 @@ Filled in as phases land — keep this section current.
   allowed** but is now a documented one-line `internal: true` switch in the compose file; and every
   build log records the **resolved base-image digest**, since tag drift was invisible rather than
   wrong (digest-pinning the default would freeze security patches on a product with no auto-update).
+- Security review Phase 2 (2026-09-05, `docs/handoff/security-review-phase-2-report.md`): the HTTP
+  edge. Storage's image transforms now bound a derivative's *total pixel area*
+  (`DimensionLadder.MaxOutputPixels`, `TopRung²×2`) — not either axis independently, which was tried
+  first and rejects every non-square photo at the top rung — so a `?width=`/`?height=`-only request's
+  *derived* axis (computed from the source's own aspect ratio, previously unbounded) can no longer
+  blow up. A real, honestly-encoded extreme-aspect-ratio image (no crafted file needed) could
+  otherwise derive an unbounded output dimension, crashing the request (an unchecked `null` from
+  SkiaSharp's encoder) or silently producing a multi-hundred-megabyte allocation and derivative for
+  formats that don't crash. Also fixed: one oversized HTTP method or path on a proxied site request silently dropped every other
+  request's log row batched in the same flush (`site_requests`' column widths rejected the row,
+  aborting the whole implicit transaction) — `SiteRequestLogWorker` now truncates before persisting,
+  never rejects. No new configuration from either fix. `ByteRanges`, `SiteProxyMiddleware`'s
+  `X-Forwarded-*` handling, and `SiteHostPattern`/`_ask-tls` were all independently re-verified sound
+  against a running instance, not just read.
 
 ## Session end — handoff protocol
 
