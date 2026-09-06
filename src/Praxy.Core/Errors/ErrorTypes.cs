@@ -119,6 +119,7 @@ public static class ErrorTypes
     public const string VcsGithubInstallationNotFound = "vcs_github_installation_not_found";
     public const string VcsGithubRepositoryInaccessible = "vcs_github_repository_inaccessible";
     public const string VcsWebhookInvalidSignature = "vcs_webhook_invalid_signature";
+    public const string VcsRepositoryAlreadyConnected = "vcs_repository_already_connected";
 
     public const string MessagingProviderNotFound = "messaging_provider_not_found";
     public const string MessagingProviderInvalid = "messaging_provider_invalid";
@@ -230,6 +231,7 @@ public static class ErrorTypes
         VcsGithubInstallationNotFound,
         VcsGithubRepositoryInaccessible,
         VcsWebhookInvalidSignature,
+        VcsRepositoryAlreadyConnected,
         MessagingProviderNotFound,
         MessagingProviderInvalid,
         MessagingTopicNotFound,

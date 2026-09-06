@@ -50,9 +50,8 @@ public class SitesAskTlsTests(PostgresContainerFixture pg) : AuthTestBase(pg)
         // that only ever previews a deployment (never activates it) would otherwise leak its
         // container past this cleanup.
         var registry = Factory.Services.GetRequiredService<Praxy.Sites.SiteContainerRegistry>();
-        foreach (var deploymentId in registry.TrackedDeploymentIds())
-            if (registry.TryGet(deploymentId, out var container))
-                containerIds.Add(container.ContainerId);
+        foreach (var container in registry.AllContainers())
+            containerIds.Add(container.ContainerId);
 
         if (containerIds.Count == 0)
             return;

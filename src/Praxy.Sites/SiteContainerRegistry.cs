@@ -26,24 +26,41 @@ public sealed record RunningSiteContainer(string ContainerId, string Host, int P
 /// </summary>
 public sealed class SiteContainerRegistry
 {
-    private sealed record Entry(RunningSiteContainer Container, DateTimeOffset LastUsedAt);
+    private sealed record Entry(Guid SiteId, RunningSiteContainer Container, DateTimeOffset LastUsedAt);
 
     private readonly Dictionary<Guid, Entry> _byDeployment = [];
     private readonly Dictionary<Guid, SemaphoreSlim> _startGates = [];
     private readonly Dictionary<string, SemaphoreSlim> _projectGates = [];
     private readonly object _lock = new();
 
-    public void Set(Guid deploymentId, RunningSiteContainer container)
+    /// <summary>
+    /// <paramref name="siteId"/> is recorded alongside the container so a later <see cref="TryGet"/>
+    /// can prove ownership without a DB round trip — see that method's remarks for why this matters.
+    /// </summary>
+    public void Set(Guid deploymentId, Guid siteId, RunningSiteContainer container)
     {
         lock (_lock)
-            _byDeployment[deploymentId] = new Entry(container, DateTimeOffset.UtcNow);
+            _byDeployment[deploymentId] = new Entry(siteId, container, DateTimeOffset.UtcNow);
     }
 
-    public bool TryGet(Guid deploymentId, out RunningSiteContainer container)
+    /// <summary>
+    /// Returns the running container for <paramref name="deploymentId"/> only if it was registered
+    /// under <paramref name="expectedSiteId"/>. This id is mandatory, not defense-in-depth: the whole
+    /// map is a single global, unpartitioned dictionary holding every project's production and warm
+    /// preview containers at once, and <see cref="SiteProxyMiddleware"/>'s preview path resolves
+    /// <paramref name="deploymentId"/> straight out of an attacker-suppliable hostname label. Without
+    /// this check, a hit for a deployment id that happens to belong to a *different* site (guessed,
+    /// leaked, or observed anywhere — the id itself needs no protecting) forwards that other site's
+    /// live traffic to the caller regardless of which project's hostname they used to ask, since the
+    /// cold-start branch's own <c>SiteId</c> check only runs on a registry miss. A caller can only
+    /// ever reach a container they already know both a valid deployment id for <em>and</em> the
+    /// correct owning site for.
+    /// </summary>
+    public bool TryGet(Guid deploymentId, Guid expectedSiteId, out RunningSiteContainer container)
     {
         lock (_lock)
         {
-            if (_byDeployment.TryGetValue(deploymentId, out var entry))
+            if (_byDeployment.TryGetValue(deploymentId, out var entry) && entry.SiteId == expectedSiteId)
             {
                 _byDeployment[deploymentId] = entry with { LastUsedAt = DateTimeOffset.UtcNow };
                 container = entry.Container;
@@ -104,6 +121,18 @@ public sealed class SiteContainerRegistry
     }
 
     /// <summary>
+    /// Every tracked container regardless of owning site — cleanup/ops tooling only (a test fixture
+    /// tearing down every container it started, an eventual admin endpoint), never anything on the
+    /// request path. <see cref="TryGet"/> is the one to reach for there; its <c>expectedSiteId</c>
+    /// check is exactly what this method deliberately skips.
+    /// </summary>
+    public List<RunningSiteContainer> AllContainers()
+    {
+        lock (_lock)
+            return [.. _byDeployment.Values.Select(e => e.Container)];
+    }
+
+    /// <summary>
     /// Serializes <em>preview cold starts within one project</em>, so the per-project preview quota
     /// check and the registration that is supposed to satisfy it cannot interleave.
     ///
@@ -157,7 +186,8 @@ public sealed class SiteContainerRegistry
     /// <paramref name="ct"/> (expected to already carry a <c>StartupTimeoutSeconds</c> deadline).
     /// </summary>
     public async Task<RunningSiteContainer> StartOrJoinAsync(
-        Guid deploymentId, Func<CancellationToken, Task<RunningSiteContainer>> start, CancellationToken ct)
+        Guid deploymentId, Guid siteId, Func<CancellationToken, Task<RunningSiteContainer>> start,
+        CancellationToken ct)
     {
         SemaphoreSlim gate;
         lock (_lock)
@@ -174,11 +204,11 @@ public sealed class SiteContainerRegistry
         {
             // Another request may have already cold-started this deployment while we waited for
             // the gate — join its result instead of starting a second container.
-            if (TryGet(deploymentId, out var already))
+            if (TryGet(deploymentId, siteId, out var already))
                 return already;
 
             var container = await start(ct);
-            Set(deploymentId, container);
+            Set(deploymentId, siteId, container);
             return container;
         }
         finally

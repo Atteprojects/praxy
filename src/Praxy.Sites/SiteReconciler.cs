@@ -56,7 +56,7 @@ public sealed class SiteReconciler(
             ct.ThrowIfCancellationRequested();
             var activeId = site.ActiveDeploymentId!.Value;
 
-            if (registry.TryGet(activeId, out var tracked))
+            if (registry.TryGet(activeId, site.Id, out var tracked))
             {
                 if (await docker.IsRunningAsync(tracked.ContainerId, ct))
                     continue;
@@ -75,7 +75,7 @@ public sealed class SiteReconciler(
             {
                 try
                 {
-                    registry.Set(activeId, await docker.InspectAddressAsync(containerId, ct));
+                    registry.Set(activeId, site.Id, await docker.InspectAddressAsync(containerId, ct));
                     continue;
                 }
                 catch (Exception ex)

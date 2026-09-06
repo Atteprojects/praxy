@@ -398,6 +398,17 @@ public sealed partial class FunctionsService(
             throw new PraxyException(400, ErrorTypes.FunctionGitRepositoryInvalid,
                 "Invalid repository or branch.");
 
+        // security-review-phase-3: mirrors SitesService.ConnectRepositoryAsync's own check — see its
+        // remarks for why a cross-project match on the same repository string is a real fan-out risk
+        // (HandleGitPushAsync has no per-connection installation binding to disambiguate on) while a
+        // same-project site+function sharing one repository stays the documented, intended case.
+        var connectedElsewhere =
+            await db.Functions.AnyAsync(f => f.RepositoryFullName == repositoryFullName && f.ProjectId != fn.ProjectId, ct)
+            || await db.Sites.AnyAsync(s => s.RepositoryFullName == repositoryFullName && s.ProjectId != fn.ProjectId, ct);
+        if (connectedElsewhere)
+            throw new PraxyException(409, ErrorTypes.VcsRepositoryAlreadyConnected,
+                $"'{repositoryFullName}' is already connected to a site or function in a different project.");
+
         await github.EnsureRepositoryAccessibleAsync(repositoryFullName, ct);
         var branches = await github.ListBranchesForRepositoryAsync(repositoryFullName, ct);
         if (!branches.Contains(productionBranch))

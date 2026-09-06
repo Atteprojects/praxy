@@ -75,7 +75,10 @@ public static class RealtimeEndpoints
         var data = AppPrincipalFilter.Current(http) switch
         {
             RequestPrincipal.AppUser(var user, var session) => new RealtimeTicketData(project.Id, user.Id, session.Id, null),
-            RequestPrincipal.Key(var key) => new RealtimeTicketData(project.Id, null, null, key.Id),
+            // security-review-phase-3: the socket-connect and ticket-redeem paths both gate on this
+            // same scope — minting one for a key that could never redeem it was the one inconsistent
+            // step in between.
+            RequestPrincipal.Key(var key) => RequireRealtimeScopeThen(key, new RealtimeTicketData(project.Id, null, null, key.Id)),
             _ => throw PraxyException.Unauthorized("Realtime tickets require a session or API key."),
         };
         var (value, expiresAt) = tickets.Mint(data);
@@ -115,6 +118,7 @@ public static class RealtimeEndpoints
             SessionId = caller.SessionId,
             Bypass = caller.Bypass,
             Roles = caller.Roles,
+            AllowedBypassResources = caller.AllowedBypassResources,
         };
 
         if (!registry.TryRegister(connection, options.MaxConnectionsPerProject))
@@ -292,7 +296,24 @@ public static class RealtimeEndpoints
 
     private sealed record ConnCtx(Connection Connection, RequestPrincipal? Principal, IRoleResolver RoleResolver, ConnectionRegistry Registry, PraxyDb Db);
 
-    private sealed record ResolvedCaller(RequestPrincipal? Principal, string[] Roles, bool Bypass, Guid? UserId, Guid? SessionId, JsonNode? UserNode);
+    private sealed record ResolvedCaller(
+        RequestPrincipal? Principal, string[] Roles, bool Bypass, Guid? UserId, Guid? SessionId, JsonNode? UserNode,
+        HashSet<string>? AllowedBypassResources = null);
+
+    /// <summary>
+    /// security-review-phase-3: the firehose resource words each <c>ApiKeyScopes</c> read scope
+    /// unlocks for a <c>BypassRowPermissions</c> key — see <see cref="Connection.AllowedBypassResources"/>.
+    /// </summary>
+    private static readonly Dictionary<string, string> BypassFirehoseScopes = new()
+    {
+        ["databases"] = ApiKeyScopes.DatabasesRead,
+        ["buckets"] = ApiKeyScopes.StorageRead,
+        ["users"] = ApiKeyScopes.UsersRead,
+        ["teams"] = ApiKeyScopes.TeamsRead,
+    };
+
+    private static HashSet<string> AllowedBypassResourcesFor(ApiKey apiKey) =>
+        [.. BypassFirehoseScopes.Where(kv => apiKey.Scopes.Contains(kv.Value)).Select(kv => kv.Key)];
 
     private static async Task<ResolvedCaller> ResolveCallerAsync(
         HttpContext http, Project project, PraxyDb db, AppAuthService appAuth, ApiKeyService apiKeys,
@@ -304,7 +325,9 @@ public static class RealtimeEndpoints
             var apiKey = await apiKeys.ResolveAsync(project.Id, keyToken, ct)
                 ?? throw PraxyException.Unauthorized("Invalid API key.");
             RequireRealtimeScope(apiKey);
-            return await BuildAsync(new RequestPrincipal.Key(apiKey), apiKey.BypassRowPermissions, null, null, null);
+            if (apiKey.BypassRowPermissions)
+                return new ResolvedCaller(new RequestPrincipal.Key(apiKey), [], true, null, null, null, AllowedBypassResourcesFor(apiKey));
+            return await BuildAsync(new RequestPrincipal.Key(apiKey), null, null, null);
         }
 
         var ticket = http.Request.Query["ticket"].FirstOrDefault();
@@ -317,7 +340,7 @@ public static class RealtimeEndpoints
         {
             var resolved = await appAuth.ResolveSessionAsync(project.Id, sessionToken, ct);
             if (resolved is not null)
-                return await BuildAsync(new RequestPrincipal.AppUser(resolved.User, resolved.Session), false,
+                return await BuildAsync(new RequestPrincipal.AppUser(resolved.User, resolved.Session),
                     resolved.User.Id, resolved.Session.Id, UserNode(resolved.User));
         }
 
@@ -340,12 +363,15 @@ public static class RealtimeEndpoints
             }
         }
 
-        return await BuildAsync(new RequestPrincipal.Guest(), false, null, null, null);
+        return await BuildAsync(new RequestPrincipal.Guest(), null, null, null);
 
-        async Task<ResolvedCaller> BuildAsync(RequestPrincipal principal, bool bypass, Guid? userId, Guid? sessionId, JsonNode? userNode)
+        // security-review-phase-3: the bypass branch this used to have (a bare `bypass` bool in,
+        // ResolvedCaller-with-Bypass-true out) was fully absorbed by the two now-explicit bypass call
+        // sites above (API key, operator) once each needed its own distinct AllowedBypassResources —
+        // every remaining caller here is always non-bypass, so keeping a dead branch and a parameter
+        // that's now always false would just be a second place to forget to update.
+        async Task<ResolvedCaller> BuildAsync(RequestPrincipal principal, Guid? userId, Guid? sessionId, JsonNode? userNode)
         {
-            if (bypass)
-                return new ResolvedCaller(null, [], true, userId, sessionId, userNode);
             var roles = await roleResolver.ResolveAsync(principal, ct);
             return new ResolvedCaller(principal, roles, false, userId, sessionId, userNode);
         }
@@ -364,7 +390,8 @@ public static class RealtimeEndpoints
             {
                 RequireRealtimeScope(apiKey);
                 var roles = await roleResolver.ResolveAsync(new RequestPrincipal.Key(apiKey), ct);
-                return new ResolvedCaller(new RequestPrincipal.Key(apiKey), roles, apiKey.BypassRowPermissions, null, null, null);
+                var allowedBypassResources = apiKey.BypassRowPermissions ? AllowedBypassResourcesFor(apiKey) : null;
+                return new ResolvedCaller(new RequestPrincipal.Key(apiKey), roles, apiKey.BypassRowPermissions, null, null, null, allowedBypassResources);
             }
         }
         else if (data.SessionId is { } sessionId)
@@ -392,6 +419,12 @@ public static class RealtimeEndpoints
         if (!apiKey.Scopes.Contains(ApiKeyScopes.DatabasesRead))
             throw new PraxyException(401, ErrorTypes.GeneralUnauthorizedScope,
                 $"The API key is missing the '{ApiKeyScopes.DatabasesRead}' scope.");
+    }
+
+    private static RealtimeTicketData RequireRealtimeScopeThen(ApiKey apiKey, RealtimeTicketData data)
+    {
+        RequireRealtimeScope(apiKey);
+        return data;
     }
 
     private static JsonNode UserNode(User user) =>
