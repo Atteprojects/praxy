@@ -3,6 +3,7 @@ import { api, ApiError } from "./client";
 import type {
   Account,
   Capabilities,
+  CreateProjectInput,
   Organization,
   OrganizationList,
   Project,
@@ -36,8 +37,9 @@ export function useAccount() {
 }
 
 /**
- * The organizations the operator belongs to — exactly one today. The console home resolves it to
- * build the org-scoped URL, so this is on the critical path of the first screen after login.
+ * The organizations the operator belongs to. The console home resolves this to build the
+ * org-scoped URL (remembered last org, else a picker once there's more than one), so this is on
+ * the critical path of the first screen after login.
  */
 export function useOrganizations() {
   return useQuery({
@@ -52,6 +54,37 @@ export function useOrganization(organizationId: string) {
     queryKey: ["organizations", organizationId],
     queryFn: () => api<Organization>(`/console/organizations/${organizationId}`),
     staleTime: 60_000,
+  });
+}
+
+export function useCreateOrganization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string }) =>
+      api<Organization>("/console/organizations", { method: "POST", body: input }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["organizations"] }),
+  });
+}
+
+export function useUpdateOrganization(organizationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string }) =>
+      api<Organization>(`/console/organizations/${organizationId}`, { method: "PATCH", body: input }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["organizations", organizationId], data);
+      void queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
+}
+
+/** No `force` — the server refuses a non-empty or last-remaining organization outright, no override. */
+export function useDeleteOrganization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (organizationId: string) =>
+      api<void>(`/console/organizations/${organizationId}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["organizations"] }),
   });
 }
 
@@ -138,7 +171,7 @@ export function useLogout() {
 export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; projectId?: string }) =>
+    mutationFn: (input: CreateProjectInput) =>
       api<Project>("/console/projects", { method: "POST", body: input }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });

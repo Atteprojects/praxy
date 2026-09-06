@@ -10,7 +10,7 @@ using Praxy.Tables.Quotas;
 
 namespace Praxy.Api.Endpoints;
 
-public sealed record CreateProjectRequest(string Name, string? ProjectId);
+public sealed record CreateProjectRequest(string Name, string? ProjectId, string? OrganizationId);
 
 public sealed record UpdateProjectRequest(string Name);
 
@@ -83,13 +83,7 @@ public static class ProjectEndpoints
             id = Ids.NewResourceId();
         }
 
-        // Single-org world for now: every project lands in the operator's silently created org.
-        var orgId = await db.OrganizationMembers
-            .Where(m => m.UserId == op.Account.Id)
-            .OrderBy(m => m.CreatedAt)
-            .Select(m => (Guid?)m.OrganizationId)
-            .FirstOrDefaultAsync(ct)
-            ?? throw new PraxyException(500, ErrorTypes.GeneralServerError, "Operator has no organization.");
+        var orgId = await ResolveOrganizationIdAsync(db, op.Account.Id, req.OrganizationId, ct);
 
         await quotas.EnsureProjectQuotaAsync(orgId, ct);
 
@@ -200,6 +194,46 @@ public static class ProjectEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var snapshot = await quotas.GetSnapshotAsync(project.Id, ct);
         return Results.Ok(snapshot);
+    }
+
+    /// <summary>
+    /// The org a new project lands in. Organizations-phase-1: an operator can belong to more than
+    /// one, so this resolves an explicit <paramref name="requestedOrganizationId"/> (validated
+    /// against the operator's own memberships, same unguessable-by-id rule
+    /// <see cref="ConsoleOrganizationEndpoints"/> uses) or, when omitted, falls back to a lookup
+    /// only while it stays unambiguous — exactly one membership. Two or more with nothing
+    /// specified fails loudly instead of silently picking the oldest, which is the bug this
+    /// replaces (organizations-phase-1-prompt.md's landmine: "a POST /projects that keeps guessing
+    /// will quietly put projects in the wrong place rather than fail").
+    /// </summary>
+    private static async Task<Guid> ResolveOrganizationIdAsync(
+        PraxyDb db, Guid operatorId, string? requestedOrganizationId, CancellationToken ct)
+    {
+        var memberships = await db.OrganizationMembers
+            .Where(m => m.UserId == operatorId)
+            .OrderBy(m => m.CreatedAt)
+            .Select(m => m.OrganizationId)
+            .ToListAsync(ct);
+
+        if (memberships.Count == 0)
+            throw new PraxyException(500, ErrorTypes.GeneralServerError, "Operator has no organization.");
+
+        if (!string.IsNullOrEmpty(requestedOrganizationId))
+        {
+            if (!Ids.TryParseWire(requestedOrganizationId, out var requested) || !memberships.Contains(requested))
+                throw PraxyException.NotFound(
+                    ErrorTypes.OrganizationNotFound, $"Organization '{requestedOrganizationId}' not found.");
+            return requested;
+        }
+
+        if (memberships.Count > 1)
+            throw PraxyException.ArgumentInvalid("Invalid project payload.",
+                new Dictionary<string, string[]>
+                {
+                    ["organizationId"] = ["Required: you belong to more than one organization."],
+                });
+
+        return memberships[0];
     }
 
     /// <summary>

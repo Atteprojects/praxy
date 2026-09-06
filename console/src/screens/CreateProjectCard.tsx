@@ -6,10 +6,18 @@ import { ErrorNote, Field, Footer, Logo } from "../components/ui";
 
 /**
  * The chrome-less centered create-project card — the whole screen for a fresh instance's happy
- * path, where the owning org is deliberately left off (there is nothing for it to own yet).
- * Also opened from the organization's projects page.
+ * path. Also opened from the organization's projects page. Either way it renders inside a
+ * specific organization's page, so the owning org is always known and always sent explicitly —
+ * the server only infers it when the operator belongs to just one, and fails rather than guess
+ * once there's more than one to choose from.
  */
-export function CreateProjectCard({ standalone = false }: { standalone?: boolean }) {
+export function CreateProjectCard({
+  organizationId,
+  standalone = false,
+}: {
+  organizationId: string;
+  standalone?: boolean;
+}) {
   const create = useCreateProject();
   const navigate = useNavigate();
   const [error, setError] = useState<ApiError | null>(null);
@@ -24,6 +32,7 @@ export function CreateProjectCard({ standalone = false }: { standalone?: boolean
       const project = await create.mutateAsync({
         name: data.get("name") as string,
         projectId: projectId ? projectId : undefined,
+        organizationId,
       });
       await navigate({ to: "/project/$projectId", params: { projectId: project.id } });
     } catch (err) {

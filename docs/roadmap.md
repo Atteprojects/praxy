@@ -607,10 +607,15 @@ project. A future session will conflate them if it doesn't read the design doc's
 first — and security-review Phase 3's Finding D was a membership information leak in Teams, so the
 resemblance is a trap with precedent.
 
-- **Phase 1 — the org itself**: create, rename, delete (empty only — no cascade, no `force`, matching
-  how the engine treats every other destructive action), and multi-org switching in the console. Goes
-  first because it makes "exactly one org" false, which is what everything else assumes. No membership
-  changes.
+- **Phase 1 — the org itself** — **shipped 2026-09-05** (kickoff:
+  `docs/handoff/organizations-phase-1-prompt.md`, report:
+  `docs/handoff/organizations-phase-1-report.md`) — create, rename, delete (empty only — no cascade,
+  no `force`, matching how the engine treats every other destructive action), and multi-org switching
+  in the console (remembered last org, else a picker). Went first because it made "exactly one org"
+  false, which is what everything else assumed — including a second, previously-silent assumption
+  found in the same pass: project creation picked the operator's *oldest* org rather than asking,
+  now an explicit `organizationId` that fails loudly instead of guessing once it's ambiguous. No
+  membership changes — every org still has exactly one member, its creator.
 - **Phase 2 — members and roles**: invite by email (mirroring Teams' proven
   `SecretHash`/`InvitedAt`/`Confirmed` shape, as a pattern rather than shared code), accept, remove,
   change role, and enforce `owner` vs `member` for the first time. The phase that most needs the
