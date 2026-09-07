@@ -71,6 +71,12 @@ body {
     disabled:pointer-events-none transition-colors cursor-pointer;
 }
 
+@utility btn-secondary {
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-ink-700
+    bg-ink-900 px-4 py-2 text-sm font-medium text-ink-100 hover:bg-ink-850 hover:border-ink-500
+    disabled:opacity-50 disabled:pointer-events-none transition-colors cursor-pointer;
+}
+
 @utility btn-ghost {
   @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm
     font-medium text-ink-300 hover:bg-ink-800 hover:text-ink-100 transition-colors cursor-pointer;

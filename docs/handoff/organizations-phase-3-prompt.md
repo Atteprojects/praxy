@@ -1,5 +1,8 @@
 # Session task — Organizations, Phase 3: operator OAuth
 
+> **Status: shipped.** 2026-09-06 — see `docs/handoff/organizations-phase-3-report.md`. Last phase
+> in the Organizations sequence; no `organizations-phase-4-prompt.md` follows.
+
 ## Why this exists
 
 Phases 1 and 2 (`docs/handoff/organizations-phase-1-report.md`,

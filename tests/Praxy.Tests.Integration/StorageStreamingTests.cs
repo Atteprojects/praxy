@@ -30,14 +30,21 @@ public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(p
     /// chunk plus transport buffers either way.
     ///
     /// <para>Was 48 MB — half the difference — when <see cref="HeapPeakSampler"/> measured total
-    /// heap and therefore had to leave room for however much garbage happened to be pending. Now
-    /// that it samples live bytes (see its own remarks, and the CI flake that prompted it), the
-    /// measurement is not noisy in that way: the same round trip measured under 1 MB of extra
-    /// growth on three consecutive runs. 8 MB keeps eight times that headroom while being twelve
-    /// times tighter than the old budget — enough to catch a path that buffers only *part* of a
-    /// file, which 48 MB would have let through.</para>
+    /// heap and therefore had to leave room for however much garbage happened to be pending. It now
+    /// samples live bytes (see its own remarks), which cut the observed figure from 54 MB to 9 MB in
+    /// a full-suite run.</para>
+    ///
+    /// <para><b>Set from full-suite numbers, not isolated ones.</b> An intermediate attempt at 8 MB
+    /// was chosen from three runs of this test *alone*, all under 1 MB, and then failed the very
+    /// next full run at 9 MB — the same isolation-versus-suite trap the paragraph above this class's
+    /// own history already warned about. Forcing a collection removes garbage from the measurement
+    /// but not everything: after 364 other tests the heap is more fragmented, the finalizer queue is
+    /// busier, and a Gen2 collection leaves more behind than it does on an idle process. 24 MB is
+    /// roughly 2.7x the worst figure actually observed under the conditions this test is gated in,
+    /// still twice as tight as the old budget, and still far below the ~96 MB a genuinely buffering
+    /// path would spend.</para>
     /// </summary>
-    private const long AcceptableExtraGrowthBytes = 8L * 1024 * 1024;
+    private const long AcceptableExtraGrowthBytes = 24L * 1024 * 1024;
 
     protected override IDictionary<string, string?>? ExtraSettings =>
         new Dictionary<string, string?>(base.ExtraSettings!)
