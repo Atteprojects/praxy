@@ -192,7 +192,7 @@ public static class ConsoleOrganizationEndpoints
     /// <summary>Owner only. Emails an acceptance link built from the caller's own <c>url</c> (the console's origin).</summary>
     private static async Task<IResult> InviteMember(
         string organizationId, InviteOrganizationMemberRequest req, HttpContext http, PraxyDb db,
-        OrganizationsService orgs, CancellationToken ct)
+        OrganizationsService orgs, QuotaService quotas, CancellationToken ct)
     {
         var op = RequireOperatorFilter.Current(http);
         var accessible = await RequireAccessibleAsync(db, op.Account.Id, organizationId, ct);
@@ -205,6 +205,12 @@ public static class ConsoleOrganizationEndpoints
             fields["url"] = ["Required — the console's own origin, so the emailed link points back at it."];
         if (fields.Count > 0)
             throw PraxyException.ArgumentInvalid("Invalid invite payload.", fields);
+
+        // After validation, before InviteAsync does anything: that call creates a console User row
+        // for an unknown address and sends mail, so the seat check has to precede it rather than
+        // clean up after. The auth-email rate limit on this route bounds mail per window; this
+        // bounds the total.
+        await quotas.EnsureOrganizationMemberQuotaAsync(accessible.Organization.Id, ct);
 
         var member = await orgs.InviteAsync(accessible.Organization, req.Email, req.Role, req.Url, ct);
         Audit(db, http, op, "organizations.members.invite", accessible.Organization.Id);

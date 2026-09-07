@@ -215,6 +215,40 @@ while running the owner-test checklist below, then fixed: `HomeRedirect` renders
 overlay chrome) instead of throwing, so the account has an immediate way out rather than a permanent
 error screen. Recorded here in enough detail that Phase 3 doesn't have to re-derive it.
 
+## Found in review before merge: membership had no ceiling
+
+Membership became creatable this phase, and nothing capped it. Every other creatable resource in
+`QuotaOptions` has one — and Phase 1's own review added exactly this for organizations, for exactly
+this reason, so the lesson existed and simply wasn't carried one level down.
+
+**What is genuinely bounded already, and worth stating because it narrows the finding:** the invite
+route carries `.RequireRateLimiting("auth-email")` (5 per 10 minutes, per caller) and accept carries
+`"auth"`. That was a good call — `InviteAsync` creates a console `User` row for an unknown address
+*and* sends mail through the instance's own credentials, so an unlimited invite endpoint would be an
+email-amplification vector. It isn't one. The first draft of this finding claimed the route had no
+rate limit at all; that was wrong, and checking it changed the severity rather than the conclusion.
+
+**What was not bounded:** the total. A rate limit caps invites per window, not per organization, so
+membership could accumulate indefinitely — and under managed hosting seats are the dimension a plan
+is actually sold by, which makes an uncapped one a billing hole rather than only a growth one.
+
+**The fix.** `QuotaOptions.MaxMembersPerOrganization` (25) plus a per-org override in
+`OrganizationLimits` — org-overridable like every other dimension precisely because it is the
+sellable one — and `QuotaService.EnsureOrganizationMemberQuotaAsync`, called from `InviteMember`
+*before* `InviteAsync` runs, since that call is what creates the account and sends the mail. Reuses
+`Exceeded`, so it trips as `400 general_resource_limit_exceeded` like every other dimension.
+
+**It counts pending invites alongside confirmed members**, deliberately: an unaccepted invite has
+already spent the account row and the email, so treating it as free would leave the same hole open to
+anyone who simply never accepts.
+
+**Test.** `OrganizationSeatQuotaTests.An_organization_cannot_invite_past_its_seat_quota` — in its own
+class rather than a case in `OrganizationMembershipApiTests`, because proving the cap means setting
+it low, and a class-wide seat limit would silently constrain any future test added to that file.
+Reaches the cap with unaccepted invites only (proving a pending one consumes a seat), asserts the
+refusal, then asserts no membership row was added *and* that the refused address never received mail
+— so the check demonstrably runs before any of the work it is meant to prevent.
+
 ## Tests
 
 `tests/Praxy.Tests.Integration/OrganizationMembershipApiTests.cs` — seven new `[Fact]`s extending

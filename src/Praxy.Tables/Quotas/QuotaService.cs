@@ -56,6 +56,26 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
             throw Exceeded("operator", "organizations", defaults.MaxOrganizationsPerOperator);
     }
 
+    /// <summary>
+    /// Seats in one organization. Counts **pending invites alongside confirmed members** — an
+    /// unaccepted invite has already created a console <c>User</c> row and sent an email, so it has
+    /// spent the resource this bounds whether or not anyone ever clicks the link.
+    ///
+    /// <para>Organizations-phase-2 review: the invite endpoint is rate-limited (<c>auth-email</c>,
+    /// 5 per 10 minutes per caller), which bounds outbound mail per window but places no ceiling on
+    /// the total — an organization could accumulate members indefinitely, and every other creatable
+    /// resource in this file has one. Under managed hosting this is also the dimension a plan is
+    /// sold by, which is why it is per-org overridable rather than an instance constant.</para>
+    /// </summary>
+    public async Task EnsureOrganizationMemberQuotaAsync(Guid organizationId, CancellationToken ct)
+    {
+        var limits = await GetOrgLimitsAsync(organizationId, ct);
+        var max = limits.MaxMembersPerOrganization ?? defaults.MaxMembersPerOrganization;
+        var used = await db.OrganizationMembers.CountAsync(m => m.OrganizationId == organizationId, ct);
+        if (used >= max)
+            throw Exceeded("organization", "members", max);
+    }
+
     public async Task EnsureProjectQuotaAsync(Guid organizationId, CancellationToken ct)
     {
         var limits = await GetOrgLimitsAsync(organizationId, ct);

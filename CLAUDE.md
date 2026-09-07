@@ -249,6 +249,20 @@ Filled in as phases land — keep this section current.
   but it means an operator can reach zero organizations for the first time; the console's
   `HomeRedirect` now offers a create-organization form in that state instead of an unrecoverable error
   screen. Design and the last phase (operator OAuth): `docs/research/organizations.md`.
+- Organizations Phase 2 (2026-09-06, `docs/handoff/organizations-phase-2-report.md`): members and
+  roles. `OrganizationMember.Role` is **finally read** — `owner` manages the org (rename, delete,
+  invite, change roles, remove others), `member` uses its projects — through the single
+  `OrganizationsService.RequireOwnerAsync`; a future owner-only action calls that or it hasn't
+  adopted the check. Invites are a pending row on the same table (`Confirmed`/`SecretHash`/
+  `InvitedAt`), **so every access-control query now also filters `Confirmed`** — six of them; an
+  unconfirmed invite must never grant what a membership grants, and `Confirmed` is orthogonal to
+  `Role`, not a tightening of it. The migration backfills `confirmed = true`, which is the only
+  correct value for a row predating invites. New knob from the phase's review:
+  `Praxy:Quotas:MaxMembersPerOrganization` (25, per-org overridable) — seats, counting pending
+  invites, since an unaccepted one has already created a console account and sent mail; the invite
+  route's `auth-email` rate limit bounds outbound mail per window, this bounds the total. Also note
+  **leaving your only organization is now reachable** (deliberate — self-removal is blocked only by
+  the last-owner rule), so zero-organization is a real state the console handles rather than an error.
 
 ## Session end — handoff protocol
 
