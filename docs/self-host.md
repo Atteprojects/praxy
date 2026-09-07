@@ -141,6 +141,7 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:RateLimits:Functions:PermitLimit` / `:WindowSeconds` | 60 / 60 | Function invocation (`POST /v1/functions/{id}/executions`). Deliberately tighter than the rest of the data plane: each permitted request can start a container. |
 | `Praxy:RateLimits:Realtime:PermitLimit` / `:WindowSeconds` | 60 / 60 | Realtime ticket minting. Complements `Praxy:Realtime:MaxConnectionsPerProject`, which bounds live sockets rather than the rate they're requested at. |
 | `Praxy:Quotas:MaxOrganizationsPerOperator` | 10 | Organizations one console operator may hold. The only quota scoped to an *operator* rather than an organization — an organization can't raise the limit on how many may exist beside it, so it has no per-org override. Without it, every row below is advisory: the boundary they are scoped to would be free to duplicate. |
+| `Praxy:Quotas:MaxMembersPerOrganization` | 25 | Seats in one organization, counting pending invites (org-overridable). An unaccepted invite has already created a console account and sent an email, so it consumes a seat. The invite route is separately rate-limited (`auth-email`), which bounds outbound mail per window; this bounds the total. |
 | `Praxy:Quotas:MaxProjects` | 100 | Projects per organization (org-overridable, see below). |
 | `Praxy:Quotas:MaxDatabasesPerProject` | 20 | Databases per project (org-overridable). |
 | `Praxy:Quotas:MaxTablesPerDatabase` | 200 | Tables per database (org-overridable). |

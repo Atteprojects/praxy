@@ -65,6 +65,7 @@ try
     builder.Services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
     builder.Services.AddSingleton<SetupTokenService>();
     builder.Services.AddScoped<ConsoleAuthService>();
+    builder.Services.AddScoped<OrganizationsService>();
 
     // ---- Phase 1: app-user auth ----
     builder.Services.AddSingleton(new InstanceKey(
@@ -94,6 +95,7 @@ try
     // ---- Phase 9: org-level quotas (read by the schema engine below, so bind first) ----
     builder.Services.AddSingleton(new QuotaOptions(
         MaxOrganizationsPerOperator: builder.Configuration.GetValue("Praxy:Quotas:MaxOrganizationsPerOperator", 10),
+        MaxMembersPerOrganization: builder.Configuration.GetValue("Praxy:Quotas:MaxMembersPerOrganization", 25),
         MaxProjects: builder.Configuration.GetValue("Praxy:Quotas:MaxProjects", 100),
         MaxDatabasesPerProject: builder.Configuration.GetValue("Praxy:Quotas:MaxDatabasesPerProject", 20),
         MaxTablesPerDatabase: builder.Configuration.GetValue("Praxy:Quotas:MaxTablesPerDatabase", 200),

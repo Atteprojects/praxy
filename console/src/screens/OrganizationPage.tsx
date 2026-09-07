@@ -61,8 +61,11 @@ export function HomeRedirect() {
   if (organizations.isError) throw organizations.error;
 
   const list = organizations.data.organizations;
-  if (list.length === 0)
-    throw new Error(`This account belongs to no ${STR.organization}. The instance claim did not complete.`);
+  // Unreachable in Phase 1 (every operator starts with exactly one, and none could be deleted
+  // down to zero) — Phase 2's own "leave an organization" is deliberately allowed even when it's
+  // an operator's last one (docs/handoff/organizations-phase-2-prompt.md's owner-test walks
+  // through exactly that), so this is now a real state to land in, not just a broken claim.
+  if (list.length === 0) return <NoOrganizationsCard />;
 
   const remembered = lastRememberedOrganization();
   const target = list.find((o) => o.id === remembered) ?? (list.length === 1 ? list[0] : undefined);
@@ -70,6 +73,50 @@ export function HomeRedirect() {
   if (target) return <Navigate to="/organization/$organizationId" params={{ organizationId: target.id }} replace />;
 
   return <OrganizationPicker organizations={list} />;
+}
+
+/**
+ * Reachable only by leaving your last organization (Phase 2) — every other path into "zero
+ * organizations" was already impossible before this phase. The account itself is fine; it just
+ * needs somewhere to land, so this is the same create form as `CreateOrganizationModal`, without
+ * the overlay chrome there's nothing behind to dim.
+ */
+function NoOrganizationsCard() {
+  const create = useCreateOrganization();
+  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const error = create.error instanceof ApiError ? create.error : null;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const organization = await create.mutateAsync({ name });
+    await navigate({ to: "/organization/$organizationId", params: { organizationId: organization.id } });
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-sm px-6 py-16">
+      <h1 className="mb-2 text-center text-lg font-semibold">Create an organization</h1>
+      <p className="mb-6 text-center text-sm text-ink-400">
+        You don't belong to one right now — create one to continue.
+      </p>
+      <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+        {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
+        <Field label="Name" error={error?.fieldErrors("name")[0]}>
+          <input
+            className="input-base"
+            required
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Acme Inc."
+          />
+        </Field>
+        <button type="submit" className="btn-primary w-full" disabled={create.isPending}>
+          {create.isPending ? <Spinner /> : "Create organization"}
+        </button>
+      </form>
+    </div>
+  );
 }
 
 function OrganizationPicker({ organizations }: { organizations: Organization[] }) {
@@ -116,6 +163,10 @@ export function OrganizationPage() {
   if (projects.isError) throw projects.error;
 
   const owned = projects.data.projects.filter((project) => project.organizationId === organizationId);
+  // Cosmetic only — the 409s (last org, has projects) and the 403 an owner-only mutation returns
+  // are the actual gate either way, matching the danger zone's own convention of explaining rather
+  // than just disabling.
+  const isOwner = organization.data.role === "owner";
 
   // Genuinely fresh instance — one org, zero projects anywhere: no chrome, just the create card,
   // the Appwrite onboarding pattern minus the org ceremony. Once a second org exists, or any
@@ -127,7 +178,13 @@ export function OrganizationPage() {
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
       <PageHeader
-        title={<InlineEditableTitle value={organization.data.name} onSave={(name) => update.mutateAsync({ name })} />}
+        title={
+          isOwner ? (
+            <InlineEditableTitle value={organization.data.name} onSave={(name) => update.mutateAsync({ name })} />
+          ) : (
+            <h1 className="text-2xl font-semibold tracking-tight">{organization.data.name}</h1>
+          )
+        }
         chips={<IdChip id={organization.data.id} />}
         description={`${STR.projects} in this ${STR.organization}.`}
         actions={
@@ -151,6 +208,13 @@ export function OrganizationPage() {
                 ))}
               </select>
             ) : null}
+            <Link
+              to="/organization/$organizationId/members"
+              params={{ organizationId }}
+              className="btn-ghost border border-ink-700"
+            >
+              Members
+            </Link>
             <button
               type="button"
               className="btn-ghost border border-ink-700"
@@ -204,12 +268,14 @@ export function OrganizationPage() {
         </div>
       )}
 
-      <OrganizationDangerZone
-        organizationId={organizationId}
-        organizationName={organization.data.name}
-        hasProjects={owned.length > 0}
-        isOnlyOrganization={organizations.data.total <= 1}
-      />
+      {isOwner ? (
+        <OrganizationDangerZone
+          organizationId={organizationId}
+          organizationName={organization.data.name}
+          hasProjects={owned.length > 0}
+          isOnlyOrganization={organizations.data.total <= 1}
+        />
+      ) : null}
     </div>
   );
 }

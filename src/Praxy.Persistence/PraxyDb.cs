@@ -76,6 +76,7 @@ public class PraxyDb(DbContextOptions<PraxyDb> options) : DbContext(options)
         {
             e.HasKey(x => new { x.OrganizationId, x.UserId });
             e.Property(x => x.Role).HasMaxLength(32);
+            e.Property(x => x.SecretHash).HasMaxLength(64);
             e.HasOne<Organization>().WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });

@@ -41,16 +41,39 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
     /// boundary a paying customer is metered by, which is what
     /// <c>docs/research/multitenancy.md</c> has it becoming.</para>
     ///
-    /// <para>Counts memberships, which in Phase 1 is the same as "organizations this operator owns"
-    /// because every member is its creator. **Phase 2 must revisit this**: once an operator can be
-    /// invited into someone else's organization, being a member of it should not consume their own
-    /// creation allowance.</para>
+    /// <para>Organizations-phase-2: now owner-scoped, as Phase 1 flagged it would need to be. Counts
+    /// only confirmed rows where the operator holds <c>owner</c> — being invited into (or merely
+    /// pending an invite into) someone else's organization no longer consumes this allowance, only
+    /// actually owning one does. In Phase 1 this was equivalent to counting every membership,
+    /// because every member was its own creator; that stopped being true the moment an operator
+    /// could be invited into someone else's organization.</para>
     /// </summary>
     public async Task EnsureOrganizationQuotaAsync(Guid operatorId, CancellationToken ct)
     {
-        var used = await db.OrganizationMembers.CountAsync(m => m.UserId == operatorId, ct);
+        var used = await db.OrganizationMembers
+            .CountAsync(m => m.UserId == operatorId && m.Role == "owner" && m.Confirmed, ct);
         if (used >= defaults.MaxOrganizationsPerOperator)
             throw Exceeded("operator", "organizations", defaults.MaxOrganizationsPerOperator);
+    }
+
+    /// <summary>
+    /// Seats in one organization. Counts **pending invites alongside confirmed members** — an
+    /// unaccepted invite has already created a console <c>User</c> row and sent an email, so it has
+    /// spent the resource this bounds whether or not anyone ever clicks the link.
+    ///
+    /// <para>Organizations-phase-2 review: the invite endpoint is rate-limited (<c>auth-email</c>,
+    /// 5 per 10 minutes per caller), which bounds outbound mail per window but places no ceiling on
+    /// the total — an organization could accumulate members indefinitely, and every other creatable
+    /// resource in this file has one. Under managed hosting this is also the dimension a plan is
+    /// sold by, which is why it is per-org overridable rather than an instance constant.</para>
+    /// </summary>
+    public async Task EnsureOrganizationMemberQuotaAsync(Guid organizationId, CancellationToken ct)
+    {
+        var limits = await GetOrgLimitsAsync(organizationId, ct);
+        var max = limits.MaxMembersPerOrganization ?? defaults.MaxMembersPerOrganization;
+        var used = await db.OrganizationMembers.CountAsync(m => m.OrganizationId == organizationId, ct);
+        if (used >= max)
+            throw Exceeded("organization", "members", max);
     }
 
     public async Task EnsureProjectQuotaAsync(Guid organizationId, CancellationToken ct)

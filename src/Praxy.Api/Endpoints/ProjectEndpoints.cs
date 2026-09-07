@@ -210,7 +210,9 @@ public static class ProjectEndpoints
         PraxyDb db, Guid operatorId, string? requestedOrganizationId, CancellationToken ct)
     {
         var memberships = await db.OrganizationMembers
-            .Where(m => m.UserId == operatorId)
+            // Confirmed only: a pending invite is not yet a real membership, so it must not let an
+            // operator create a project in an organization they haven't actually joined.
+            .Where(m => m.UserId == operatorId && m.Confirmed)
             .OrderBy(m => m.CreatedAt)
             .Select(m => m.OrganizationId)
             .ToListAsync(ct);
@@ -238,12 +240,13 @@ public static class ProjectEndpoints
 
     /// <summary>
     /// Projects in organizations the operator belongs to. The console project has no
-    /// organization, so it can never appear here.
+    /// organization, so it can never appear here. Confirmed only — a pending invite grants no
+    /// project access until accepted.
     /// </summary>
     private static IQueryable<Project> AccessibleProjects(PraxyDb db, Guid operatorId) =>
         from p in db.Projects
         join m in db.OrganizationMembers on p.OrganizationId equals m.OrganizationId
-        where m.UserId == operatorId
+        where m.UserId == operatorId && m.Confirmed
         select p;
 
     private static async Task AuditAsync(

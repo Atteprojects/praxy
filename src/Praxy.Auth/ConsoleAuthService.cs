@@ -61,6 +61,7 @@ public sealed class ConsoleAuthService(PraxyDb db, IPasswordHasher hasher)
             OrganizationId = org.Id,
             UserId = user.Id,
             Role = "owner",
+            Confirmed = true,
         });
 
         var session = NewSession(user.Id, ip, userAgent, out var token);
@@ -114,6 +115,16 @@ public sealed class ConsoleAuthService(PraxyDb db, IPasswordHasher hasher)
     public async Task DeleteSessionAsync(Guid sessionId, CancellationToken ct = default) =>
         await db.Sessions.Where(s => s.Id == sessionId).ExecuteDeleteAsync(ct);
 
+    /// <summary>Mints a session for an operator already resolved by the caller — an accepted organization invite, same as a fresh login.</summary>
+    public async Task<ConsoleSession> CreateOperatorSessionAsync(
+        User user, string? ip, string? userAgent, CancellationToken ct = default)
+    {
+        var session = NewSession(user.Id, ip, userAgent, out var token);
+        db.Sessions.Add(session);
+        await db.SaveChangesAsync(ct);
+        return new ConsoleSession(token, session.ExpiresAt, ToAccount(user));
+    }
+
     private static Session NewSession(Guid userId, string? ip, string? userAgent, out string token)
     {
         var id = Ids.NewUuid();
@@ -141,7 +152,7 @@ public sealed class ConsoleAuthService(PraxyDb db, IPasswordHasher hasher)
             throw PraxyException.ArgumentInvalid("Invalid credentials payload.", fields);
     }
 
-    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+    internal static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
     private static ConsoleAccount ToAccount(User u) => new(u.Id, u.Email, u.Name, u.CreatedAt);
 

@@ -229,6 +229,40 @@ Filled in as phases land — keep this section current.
   infers one only while unambiguous, failing loudly rather than silently picking the oldest membership
   once several exist. Design and the remaining phases (members/roles, then operator OAuth):
   `docs/research/organizations.md`.
+- Organizations Phase 2 (2026-09-06, `docs/handoff/organizations-phase-2-report.md`): members and
+  roles — `OrganizationMember.Role` is now enforced, not just stored. Invite by email (an unconfirmed
+  row on `OrganizationMember` itself, `SecretHash`/`InvitedAt`/`Confirmed` mirroring Teams' invite
+  shape as a pattern, not shared code — Teams' own `Membership*`/`TeamInvalidSecret` error types stay
+  Teams-only), accept (public, no session — a wrong secret and a nonexistent invite return the same
+  `organization_invite_invalid`), remove, and change role. `owner` manages the org itself
+  (rename/delete/invite/remove/change-roles) and `member` uses the projects inside it — one check,
+  `OrganizationsService.RequireOwnerAsync`, gates every owner-only action; reading membership stays
+  additive on top of Phase 1's membership-only joins, never a role check. The last owner of an org can
+  never be removed or demoted (`organization_last_owner`, distinct from Phase 1's
+  `organization_last_one`, which is an *operator's* last organization, not an *org's* last owner).
+  `EnsureOrganizationQuotaAsync` (Phase 1's knob) is now owner-scoped, per that phase's own note: being
+  invited into someone else's organization no longer spends this operator's own creation allowance.
+  No new configuration — an invite email goes through the existing instance-wide `IEmailSender`
+  singleton, not the per-project template system, since organization membership isn't scoped to any
+  developer project. **Leaving your own last organization is allowed and, unlike deleting your last
+  organization, has no guard against it** — deliberate, matching the phase's own owner-test script,
+  but it means an operator can reach zero organizations for the first time; the console's
+  `HomeRedirect` now offers a create-organization form in that state instead of an unrecoverable error
+  screen. Design and the last phase (operator OAuth): `docs/research/organizations.md`.
+- Organizations Phase 2 (2026-09-06, `docs/handoff/organizations-phase-2-report.md`): members and
+  roles. `OrganizationMember.Role` is **finally read** — `owner` manages the org (rename, delete,
+  invite, change roles, remove others), `member` uses its projects — through the single
+  `OrganizationsService.RequireOwnerAsync`; a future owner-only action calls that or it hasn't
+  adopted the check. Invites are a pending row on the same table (`Confirmed`/`SecretHash`/
+  `InvitedAt`), **so every access-control query now also filters `Confirmed`** — six of them; an
+  unconfirmed invite must never grant what a membership grants, and `Confirmed` is orthogonal to
+  `Role`, not a tightening of it. The migration backfills `confirmed = true`, which is the only
+  correct value for a row predating invites. New knob from the phase's review:
+  `Praxy:Quotas:MaxMembersPerOrganization` (25, per-org overridable) — seats, counting pending
+  invites, since an unaccepted one has already created a console account and sent mail; the invite
+  route's `auth-email` rate limit bounds outbound mail per window, this bounds the total. Also note
+  **leaving your only organization is now reachable** (deliberate — self-removal is blocked only by
+  the last-owner rule), so zero-organization is a real state the console handles rather than an error.
 
 ## Session end — handoff protocol
 

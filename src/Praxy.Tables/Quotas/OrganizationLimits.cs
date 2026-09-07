@@ -14,6 +14,7 @@ namespace Praxy.Tables.Quotas;
 /// </summary>
 public sealed record OrganizationLimits(
     [property: JsonPropertyName("maxProjects")] int? MaxProjects = null,
+    [property: JsonPropertyName("maxMembersPerOrganization")] int? MaxMembersPerOrganization = null,
     [property: JsonPropertyName("maxDatabasesPerProject")] int? MaxDatabasesPerProject = null,
     [property: JsonPropertyName("maxTablesPerDatabase")] int? MaxTablesPerDatabase = null,
     [property: JsonPropertyName("maxColumnsPerTable")] int? MaxColumnsPerTable = null,

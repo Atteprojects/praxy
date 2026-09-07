@@ -14,6 +14,12 @@ public sealed record QuotaOptions(
     // advisory. Generous enough that a consultancy running an org per client never notices;
     // configurable for anyone who needs more.
     int MaxOrganizationsPerOperator = 10,
+    // Seats. Organizations-phase-2 made membership creatable (invite) and unbounded — the invite
+    // endpoint is rate-limited (auth-email, 5 per 10 min), which bounds email amplification per
+    // window but not the total: an org could accumulate members indefinitely. Every other creatable
+    // resource here has a ceiling, and under managed hosting this is the dimension a plan is
+    // actually sold by, so it is per-org overridable like the rest.
+    int MaxMembersPerOrganization = 25,
     int MaxProjects = 100,
     int MaxDatabasesPerProject = 20,
     int MaxTablesPerDatabase = 200,
