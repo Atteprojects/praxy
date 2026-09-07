@@ -263,6 +263,28 @@ Filled in as phases land — keep this section current.
   route's `auth-email` rate limit bounds outbound mail per window, this bounds the total. Also note
   **leaving your only organization is now reachable** (deliberate — self-removal is blocked only by
   the last-owner rule), so zero-organization is a real state the console handles rather than an error.
+- Organizations Phase 3 (2026-09-06, `docs/handoff/organizations-phase-3-report.md`, completing the
+  Organizations sequence): operator Google sign-in. **Not `OAuthService`** (that class is app-user-
+  and project-scoped by construction) — a new `ConsoleOAuthService` reuses only `IOAuthProvider`/
+  `GoogleOAuthProvider`. New instance-wide knob `Praxy:ConsoleAuth:Google:ClientId`/`ClientSecret`
+  (unset = feature off), unrelated to a developer project's own per-project Google credentials. An
+  operator's Google identity resolves in the existing `Identities` table scoped to
+  `ProjectId == Ids.ConsoleProjectId`, not a new table. **A claimed instance never auto-creates an
+  operator from a Google profile** — the biggest divergence from the app-user flow — Google sign-in
+  only ever resolves an operator created by claim or by an organization invite
+  (`console_oauth_account_not_found` otherwise); the very first Google sign-in on an *unclaimed*
+  instance claims it instead (through `ConsoleAuthService.ClaimResolvedUserAsync`, the atomic core
+  both claim doors now share), gated by the setup token exactly like the password door. Accepting an
+  organization invite via Google links the identity instead of asking for a password, gated by the
+  same secret-validation `OrganizationsService.ValidateInviteSecretAsync` the password door uses,
+  plus an extra check the OAuth door alone needs: the linked Google account's own verified email
+  must match the invited address. No caller-supplied success/failure redirect URL anywhere in this
+  flow (unlike the app-user OAuth flow) — the console is always same-origin with these endpoints, so
+  the callback always redirects to a fixed relative path (`/` on success; `/login` or
+  `/accept-invite?...` with `?oauthError=<type>` on failure) and sets the session cookie itself
+  rather than handing back a secret for the client to exchange. Sequence complete — see
+  `docs/research/organizations.md`'s own phasing; a security-review-style pass over this new OAuth
+  surface is a candidate next initiative, not yet scheduled.
 
 ## Session end — handoff protocol
 

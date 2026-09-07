@@ -92,6 +92,14 @@ try
     builder.Services.AddTransient<IOAuthProvider>(sp => sp.GetRequiredService<GoogleOAuthProvider>());
     builder.Services.AddScoped<IOAuthProviderRegistry, OAuthProviderRegistry>();
 
+    // ---- organizations-phase-3: operator OAuth. Instance-wide credentials — operators have no
+    // project to hang ProjectAuthSettings-style ones off of. Unset (either half empty) means the
+    // feature is off; ConsoleOAuthOptions.GoogleConfigured is the single place that's decided. ----
+    builder.Services.AddSingleton(new ConsoleOAuthOptions(
+        builder.Configuration["Praxy:ConsoleAuth:Google:ClientId"] ?? "",
+        builder.Configuration["Praxy:ConsoleAuth:Google:ClientSecret"] ?? ""));
+    builder.Services.AddScoped<ConsoleOAuthService>();
+
     // ---- Phase 9: org-level quotas (read by the schema engine below, so bind first) ----
     builder.Services.AddSingleton(new QuotaOptions(
         MaxOrganizationsPerOperator: builder.Configuration.GetValue("Praxy:Quotas:MaxOrganizationsPerOperator", 10),
@@ -492,6 +500,7 @@ try
 
     CapabilitiesEndpoints.Map(app);
     ConsoleAuthEndpoints.Map(app);
+    ConsoleOAuthEndpoints.Map(app);
     ConsoleOrganizationEndpoints.Map(app);
     ProjectEndpoints.Map(app);
     DataPlaneEndpoints.Map(app);

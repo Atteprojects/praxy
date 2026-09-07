@@ -44,6 +44,15 @@ public static class ErrorTypes
     public const string OrganizationInviteAlreadyAccepted = "organization_invite_already_accepted";
     public const string OrganizationLastOwner = "organization_last_owner";
 
+    // organizations-phase-3: operator OAuth. Distinct from UserOauth2ProviderError (kept for
+    // provider-level failures shared with the app-user flow — bad code, no usable email, an
+    // unverified email that already belongs to an account) because these four are rules with no
+    // app-user equivalent: operator accounts are never auto-created by a Google login.
+    public const string ConsoleOAuthNotConfigured = "console_oauth_not_configured";
+    public const string ConsoleOAuthAccountNotFound = "console_oauth_account_not_found";
+    public const string ConsoleOAuthEmailMismatch = "console_oauth_email_mismatch";
+    public const string ConsoleOAuthIdentityAlreadyLinked = "console_oauth_identity_already_linked";
+
     public const string ApiKeyNotFound = "api_key_not_found";
     public const string PlatformNotFound = "platform_not_found";
 
@@ -175,6 +184,10 @@ public static class ErrorTypes
         OrganizationInviteInvalid,
         OrganizationInviteAlreadyAccepted,
         OrganizationLastOwner,
+        ConsoleOAuthNotConfigured,
+        ConsoleOAuthAccountNotFound,
+        ConsoleOAuthEmailMismatch,
+        ConsoleOAuthIdentityAlreadyLinked,
         ApiKeyNotFound,
         PlatformNotFound,
         ProjectNotFound,

@@ -628,10 +628,17 @@ resemblance is a trap with precedent.
   staleness) are written up in the report for Phase 3 to inherit, along with a third: leaving your
   only organization is deliberately allowed and is now a reachable state, so `HomeRedirect` offers a
   create-organization form instead of an error screen.
-- **Phase 3 — operator OAuth**: what `CLAUDE.md` means by deferring operator OAuth to "future
-  multitenancy work". Separable and last — an invited colleague can already accept with
-  email+password — and it needs its own design pass, since operator OAuth is not app-user OAuth and
-  the existing Google provider code is written for the latter.
+- **Phase 3 — operator OAuth** — **shipped 2026-09-06, sequence complete** (kickoff:
+  `docs/handoff/organizations-phase-3-prompt.md`, report:
+  `docs/handoff/organizations-phase-3-report.md`) — what `CLAUDE.md` meant by deferring operator
+  OAuth to "future multitenancy work". A new `ConsoleOAuthService` (not `OAuthService`, which is
+  app-user- and project-scoped by construction) reuses only the `IOAuthProvider`/`GoogleOAuthProvider`
+  abstraction, behind a new instance-wide `Praxy:ConsoleAuth:Google:ClientId`/`ClientSecret` (unset =
+  off). Console operators get "Continue with Google" everywhere the password option already exists —
+  login, the very first claim, and accepting an organization invite — never in place of it. The one
+  property with no app-user equivalent: a **claimed** instance never auto-creates an operator from a
+  Google sign-in — Google only ever resolves an operator who already exists (via claim or an
+  organization invite), the same closed-membership model the console already has.
 
 **Explicitly out of scope for the whole sequence**: per-project operator roles, organization billing
 or plans, and transferring a project between organizations. Design: `docs/research/organizations.md`.

@@ -31,6 +31,7 @@ export interface Capabilities {
   version: string;
   claimed: boolean;
   setupTokenRequired: boolean;
+  googleOAuthEnabled: boolean;
   features: {
     auth: boolean;
     databases: boolean;

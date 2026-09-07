@@ -139,23 +139,7 @@ public sealed class OrganizationsService(PraxyDb db, ConsoleAuthService auth, IP
         Guid organizationId, Guid userId, string secret, string? password,
         string? ip, string? userAgent, CancellationToken ct)
     {
-        var member = await db.OrganizationMembers.FirstOrDefaultAsync(
-            m => m.OrganizationId == organizationId && m.UserId == userId, ct);
-
-        if (member is not null && member.Confirmed)
-            throw new PraxyException(409, ErrorTypes.OrganizationInviteAlreadyAccepted,
-                "This invitation has already been accepted.");
-
-        var candidateHash = Secrets.Hash(secret);
-        if (member is null || !Secrets.HashEquals(member.SecretHash, candidateHash))
-        {
-            Secrets.HashEquals(DummyHash.Value, candidateHash);
-            throw new PraxyException(401, ErrorTypes.OrganizationInviteInvalid, "Invalid or expired invitation.");
-        }
-
-        var user = await db.Users.FirstAsync(u => u.Id == userId && u.ProjectId == Ids.ConsoleProjectId, ct);
-        if (!user.Status)
-            throw new PraxyException(401, ErrorTypes.UserBlocked, "This account has been blocked.");
+        var (member, user) = await ValidateInviteSecretAsync(organizationId, userId, secret, ct);
 
         // Only an account the invite itself created (still passwordless) needs one set here — an
         // existing operator invited into a second organization already has one and keeps it.
@@ -177,6 +161,39 @@ public sealed class OrganizationsService(PraxyDb db, ConsoleAuthService auth, IP
 
         var session = await auth.CreateOperatorSessionAsync(user, ip, userAgent, ct);
         return (new(member, ToAccount(user)), session);
+    }
+
+    /// <summary>
+    /// The secret-validation core <see cref="AcceptInviteAsync"/> (password) and
+    /// organizations-phase-3's Google-accept door (<c>ConsoleOAuthService</c>) both go through —
+    /// same property either way: <c>Confirmed</c> checked before the secret, and a wrong secret
+    /// gets the exact same error and timing as a nonexistent invite (the dummy-hash burn below),
+    /// never a distinguishable 404 (security-review-phase-3's Finding D). Internal rather than
+    /// private so the OAuth door — same assembly, a different service — reuses this instead of
+    /// reimplementing it.
+    /// </summary>
+    internal async Task<(OrganizationMember Member, User User)> ValidateInviteSecretAsync(
+        Guid organizationId, Guid userId, string secret, CancellationToken ct)
+    {
+        var member = await db.OrganizationMembers.FirstOrDefaultAsync(
+            m => m.OrganizationId == organizationId && m.UserId == userId, ct);
+
+        if (member is not null && member.Confirmed)
+            throw new PraxyException(409, ErrorTypes.OrganizationInviteAlreadyAccepted,
+                "This invitation has already been accepted.");
+
+        var candidateHash = Secrets.Hash(secret);
+        if (member is null || !Secrets.HashEquals(member.SecretHash, candidateHash))
+        {
+            Secrets.HashEquals(DummyHash.Value, candidateHash);
+            throw new PraxyException(401, ErrorTypes.OrganizationInviteInvalid, "Invalid or expired invitation.");
+        }
+
+        var user = await db.Users.FirstAsync(u => u.Id == userId && u.ProjectId == Ids.ConsoleProjectId, ct);
+        if (!user.Status)
+            throw new PraxyException(401, ErrorTypes.UserBlocked, "This account has been blocked.");
+
+        return (member, user);
     }
 
     public async Task<OrganizationMemberWithAccount> ChangeRoleAsync(

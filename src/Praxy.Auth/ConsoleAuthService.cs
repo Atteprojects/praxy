@@ -33,6 +33,31 @@ public sealed class ConsoleAuthService(PraxyDb db, IPasswordHasher hasher)
     {
         ValidateCredentials(email, password);
 
+        var user = new User
+        {
+            Id = Ids.NewUuid(),
+            ProjectId = Ids.ConsoleProjectId,
+            Email = NormalizeEmail(email),
+            PasswordHash = hasher.Hash(password),
+            Name = name.Trim(),
+            EmailVerified = true,
+        };
+        return await ClaimResolvedUserAsync(user, null, ip, userAgent, ct);
+    }
+
+    /// <summary>
+    /// The atomic core every claim door shares — this is the one place "claim the instance"
+    /// happens. <see cref="ClaimAsync"/> (password) builds its own <see cref="User"/> and calls
+    /// this directly; organizations-phase-3's Google claim (<c>ConsoleOAuthService</c>, a
+    /// different project — see its own remarks on why it can't inject
+    /// <c>Praxy.Api.Infrastructure.SetupTokenService</c> to do this lock itself) builds a
+    /// passwordless one plus the new <c>Identity</c> row to save alongside it in
+    /// <paramref name="extraEntities"/>, so a claim can never succeed without its linked identity
+    /// or vice versa. <paramref name="user"/> must be unsaved (its Id already assigned).
+    /// </summary>
+    public async Task<ConsoleSession> ClaimResolvedUserAsync(
+        User user, IEnumerable<object>? extraEntities, string? ip, string? userAgent, CancellationToken ct = default)
+    {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         // Two racing claims both pass the AnyAsync check without this lock; it is
@@ -43,16 +68,9 @@ public sealed class ConsoleAuthService(PraxyDb db, IPasswordHasher hasher)
             throw new PraxyException(409, ErrorTypes.InstanceAlreadyClaimed,
                 "This instance has already been claimed. Sign in instead.");
 
-        var user = new User
-        {
-            Id = Ids.NewUuid(),
-            ProjectId = Ids.ConsoleProjectId,
-            Email = NormalizeEmail(email),
-            PasswordHash = hasher.Hash(password),
-            Name = name.Trim(),
-            EmailVerified = true,
-        };
         db.Users.Add(user);
+        if (extraEntities is not null)
+            db.AddRange(extraEntities);
 
         var org = new Organization { Id = Ids.NewUuid(), Name = "Personal" };
         db.Organizations.Add(org);
