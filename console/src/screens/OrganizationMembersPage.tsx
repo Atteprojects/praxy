@@ -149,7 +149,9 @@ function MemberRow({
         )}
       </td>
       <td className="px-4 py-3">
-        {member.confirmed ? <Badge tone="mint">member</Badge> : <Badge tone="amber">invited</Badge>}
+        {/* "active", not "member": this column is confirmed-state, and "member" is also one of the
+            two role names, so an owner's row read "owner ... member" — as if their role were wrong. */}
+        {member.confirmed ? <Badge tone="mint">active</Badge> : <Badge tone="amber">invited</Badge>}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-ink-400">{timeAgo(member.invitedAt ?? member.createdAt)}</td>
       <td className="px-4 py-3 text-right">
