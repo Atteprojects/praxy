@@ -645,6 +645,38 @@ or plans, and transferring a project between organizations. Design: `docs/resear
 
 ---
 
+## Console/API contract (post-v0.1.0 initiative)
+
+The contract is already written down twice: `console/src/api/types.ts` is **897 hand-written lines**
+of wire shapes, and `docs/openapi/v1.json` is a committed, regenerated, **CI-verified** description of
+the same shapes (`OpenApiDocumentTests` fails when it drifts). Nothing reconciles them.
+
+That gap has shipped two production-facing bugs, **neither of which TypeScript could see**: PR #55's
+"Cannot read properties of undefined" on the Storage screens (optional-vs-null modelled wrong — the
+reason `types.ts`'s header now carries a long comment about it), and Organizations Phase 2's
+`Ids.Wire`-vs-dashed-`Guid` mismatch, where the console compared two `string`s to answer "is this me?"
+and silently never matched. **51 ids in that file are typed as bare `string`**, so the second bug is
+invisible by construction rather than careless.
+
+It matters more than it would elsewhere because the console has **zero automated tests** — no runner,
+no test script — so its only gate is `tsc -b && vite build` over hand-written types plus the owner's
+click-test. Three console defects surfaced during the Organizations initiative alone, every one found
+by clicking.
+
+**One phase**: generate the console's types from the committed snapshot (not a running server, so the
+console still builds with no database and no network), commit the output, and brand wire ids so an
+encoding mismatch is a compiler error rather than a silent false comparison.
+
+**The landmine to read before choosing a generator**: `Program.cs` sets
+`DefaultIgnoreCondition = WhenWritingNull`, so a null-valued property is *absent*, never `null`. If
+the OpenAPI document calls those properties nullable and a generator faithfully emits `| null`, the
+generated types would reintroduce exactly the bug PR #55 fixed — and look machine-verified doing it.
+
+**Explicitly not in scope**: a console test suite (worth its own discussion), changing any wire shape,
+and generating the SDKs' models. Design: `docs/research/console-api-contract.md`.
+
+---
+
 ---
 
 ## Rules that hold across every phase
