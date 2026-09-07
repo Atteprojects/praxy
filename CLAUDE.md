@@ -229,6 +229,26 @@ Filled in as phases land — keep this section current.
   infers one only while unambiguous, failing loudly rather than silently picking the oldest membership
   once several exist. Design and the remaining phases (members/roles, then operator OAuth):
   `docs/research/organizations.md`.
+- Organizations Phase 2 (2026-09-06, `docs/handoff/organizations-phase-2-report.md`): members and
+  roles — `OrganizationMember.Role` is now enforced, not just stored. Invite by email (an unconfirmed
+  row on `OrganizationMember` itself, `SecretHash`/`InvitedAt`/`Confirmed` mirroring Teams' invite
+  shape as a pattern, not shared code — Teams' own `Membership*`/`TeamInvalidSecret` error types stay
+  Teams-only), accept (public, no session — a wrong secret and a nonexistent invite return the same
+  `organization_invite_invalid`), remove, and change role. `owner` manages the org itself
+  (rename/delete/invite/remove/change-roles) and `member` uses the projects inside it — one check,
+  `OrganizationsService.RequireOwnerAsync`, gates every owner-only action; reading membership stays
+  additive on top of Phase 1's membership-only joins, never a role check. The last owner of an org can
+  never be removed or demoted (`organization_last_owner`, distinct from Phase 1's
+  `organization_last_one`, which is an *operator's* last organization, not an *org's* last owner).
+  `EnsureOrganizationQuotaAsync` (Phase 1's knob) is now owner-scoped, per that phase's own note: being
+  invited into someone else's organization no longer spends this operator's own creation allowance.
+  No new configuration — an invite email goes through the existing instance-wide `IEmailSender`
+  singleton, not the per-project template system, since organization membership isn't scoped to any
+  developer project. **Leaving your own last organization is allowed and, unlike deleting your last
+  organization, has no guard against it** — deliberate, matching the phase's own owner-test script,
+  but it means an operator can reach zero organizations for the first time; the console's
+  `HomeRedirect` now offers a create-organization form in that state instead of an unrecoverable error
+  screen. Design and the last phase (operator OAuth): `docs/research/organizations.md`.
 
 ## Session end — handoff protocol
 

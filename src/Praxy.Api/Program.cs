@@ -65,6 +65,7 @@ try
     builder.Services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
     builder.Services.AddSingleton<SetupTokenService>();
     builder.Services.AddScoped<ConsoleAuthService>();
+    builder.Services.AddScoped<OrganizationsService>();
 
     // ---- Phase 1: app-user auth ----
     builder.Services.AddSingleton(new InstanceKey(

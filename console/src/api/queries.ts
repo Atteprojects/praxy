@@ -6,6 +6,8 @@ import type {
   CreateProjectInput,
   Organization,
   OrganizationList,
+  OrganizationMember,
+  OrganizationMemberList,
   Project,
   ProjectList,
   QuotaSnapshot,
@@ -88,6 +90,61 @@ export function useDeleteOrganization() {
   });
 }
 
+export function useOrganizationMembers(organizationId: string) {
+  return useQuery({
+    queryKey: ["organizations", organizationId, "members"],
+    queryFn: () => api<OrganizationMemberList>(`/console/organizations/${organizationId}/members`),
+  });
+}
+
+/** Owner only — the server is the actual gate; a member calling this gets a 403. */
+export function useInviteOrganizationMember(organizationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { email: string; role: string; url: string }) =>
+      api<OrganizationMember>(`/console/organizations/${organizationId}/members`, {
+        method: "POST",
+        body: input,
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["organizations", organizationId, "members"] }),
+  });
+}
+
+export function useUpdateOrganizationMemberRole(organizationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      api<OrganizationMember>(`/console/organizations/${organizationId}/members/${userId}`, {
+        method: "PATCH",
+        body: { role },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["organizations", organizationId, "members"] }),
+  });
+}
+
+/** Removing yourself (leaving) is allowed; the server still enforces the last-owner rule either way. */
+export function useRemoveOrganizationMember(organizationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api<void>(`/console/organizations/${organizationId}/members/${userId}`, { method: "DELETE" }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["organizations", organizationId, "members"] }),
+  });
+}
+
+/** No session required — the invite's own secret is the credential. Signs the invitee in on success. */
+export function useAcceptOrganizationInvite() {
+  return useSessionMutation<{ organizationId: string; userId: string; secret: string; password?: string }>(
+    ({ organizationId, userId, secret, password }) => ({
+      url: `/console/organizations/${organizationId}/members/${userId}/accept`,
+      body: { secret, password },
+    }),
+  );
+}
+
 export function useProjects(enabled = true) {
   return useQuery({
     queryKey: ["projects"],
@@ -140,6 +197,10 @@ function useSessionMutation<TInput>(path: (input: TInput) => { url: string; body
       queryClient.setQueryData(["account"], data.account);
       void queryClient.invalidateQueries({ queryKey: ["capabilities"] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // Organizations-phase-2: an org's `role` is per-caller, so a login swap (or an invite
+      // acceptance, which mints a session the same way) without a full page reload must not
+      // leave a previous account's cached role sitting under the same query key.
+      void queryClient.invalidateQueries({ queryKey: ["organizations"] });
     },
   });
 }
@@ -164,6 +225,7 @@ export function useLogout() {
     onSuccess: () => {
       queryClient.setQueryData(["account"], null);
       void queryClient.invalidateQueries({ queryKey: ["projects"], refetchType: "none" });
+      void queryClient.invalidateQueries({ queryKey: ["organizations"], refetchType: "none" });
     },
   });
 }

@@ -27,7 +27,7 @@ public sealed class ConsoleProjectFilter(PraxyDb db) : IEndpointFilter
         var project = await (
                 from p in db.Projects
                 join m in db.OrganizationMembers on p.OrganizationId equals m.OrganizationId
-                where m.UserId == op.Account.Id && p.Id == projectId
+                where m.UserId == op.Account.Id && m.Confirmed && p.Id == projectId
                 select p)
             .FirstOrDefaultAsync(http.RequestAborted)
             ?? throw PraxyException.NotFound(ErrorTypes.ProjectNotFound, $"Project '{projectId}' not found.");

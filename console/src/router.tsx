@@ -25,6 +25,8 @@ import { MessagesPage } from "./screens/MessagesPage";
 import { MessagingProvidersPage } from "./screens/MessagingProvidersPage";
 import { MessagingTemplatesPage } from "./screens/MessagingTemplatesPage";
 import { MessagingTopicsPage } from "./screens/MessagingTopicsPage";
+import { AcceptOrganizationInvitePage } from "./screens/AcceptOrganizationInvitePage";
+import { OrganizationMembersPage } from "./screens/OrganizationMembersPage";
 import { HomeRedirect, OrganizationPage } from "./screens/OrganizationPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
@@ -64,6 +66,14 @@ const loginRoute = createRoute({
   component: LoginPage,
 });
 
+// Public, same as /login — an invitee has no operator session yet. The link's own secret is the
+// credential (organizationId/userId/secret arrive as a query string, read directly off `window`).
+const acceptInviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/accept-invite",
+  component: AcceptOrganizationInvitePage,
+});
+
 const shellRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "shell",
@@ -83,6 +93,12 @@ const organizationRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/organization/$organizationId",
   component: OrganizationPage,
+});
+
+const organizationMembersRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "/organization/$organizationId/members",
+  component: OrganizationMembersPage,
 });
 
 // Everything project-scoped renders inside the sidebar layout; entries appear as the
@@ -311,9 +327,11 @@ const auditRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  acceptInviteRoute,
   shellRoute.addChildren([
     homeRoute,
     organizationRoute,
+    organizationMembersRoute,
     projectRoute.addChildren([
       projectOverviewRoute,
       usersRoute,

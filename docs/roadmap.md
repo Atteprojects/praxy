@@ -616,11 +616,18 @@ resemblance is a trap with precedent.
   found in the same pass: project creation picked the operator's *oldest* org rather than asking,
   now an explicit `organizationId` that fails loudly instead of guessing once it's ambiguous. No
   membership changes — every org still has exactly one member, its creator.
-- **Phase 2 — members and roles**: invite by email (mirroring Teams' proven
-  `SecretHash`/`InvitedAt`/`Confirmed` shape, as a pattern rather than shared code), accept, remove,
-  change role, and enforce `owner` vs `member` for the first time. The phase that most needs the
-  security review's habits, since it adds a whole new authorization surface — and Phase 3's Finding D
-  is the specific thing to re-read before shipping it.
+- **Phase 2 — members and roles** — **shipped 2026-09-06** (kickoff:
+  `docs/handoff/organizations-phase-2-prompt.md`, report:
+  `docs/handoff/organizations-phase-2-report.md`) — invite by email (mirroring Teams' proven
+  `SecretHash`/`InvitedAt`/`Confirmed` shape, as a pattern rather than shared code, on
+  `OrganizationMember` itself rather than a separate invite table), accept, remove, change role, and
+  `owner` vs `member` enforced for the first time (one choke point,
+  `OrganizationsService.RequireOwnerAsync`). `EnsureOrganizationQuotaAsync` became owner-scoped as
+  Phase 1's report said it would need to. Two bugs found only by clicking through the console (an
+  id-format mismatch breaking a client-side self-comparison, and a same-tab identity-swap cache
+  staleness) are written up in the report for Phase 3 to inherit, along with a third: leaving your
+  only organization is deliberately allowed and is now a reachable state, so `HomeRedirect` offers a
+  create-organization form instead of an error screen.
 - **Phase 3 — operator OAuth**: what `CLAUDE.md` means by deferring operator OAuth to "future
   multitenancy work". Separable and last — an invited colleague can already accept with
   email+password — and it needs its own design pass, since operator OAuth is not app-user OAuth and

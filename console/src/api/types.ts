@@ -53,12 +53,29 @@ export interface Account {
 export interface Organization {
   id: string;
   name: string;
+  /** The caller's own role in this organization — not a property of the organization itself. */
+  role: "owner" | "member";
   createdAt: string;
 }
 
 export interface OrganizationList {
   total: number;
   organizations: Organization[];
+}
+
+export interface OrganizationMember {
+  userId: string;
+  email: string;
+  name: string;
+  role: "owner" | "member";
+  confirmed: boolean;
+  invitedAt?: string;
+  createdAt: string;
+}
+
+export interface OrganizationMemberList {
+  total: number;
+  members: OrganizationMember[];
 }
 
 export interface Project {

@@ -34,6 +34,15 @@ public static class ErrorTypes
     public const string OrganizationNotFound = "organization_not_found";
     public const string OrganizationHasProjects = "organization_has_projects";
     public const string OrganizationLastOne = "organization_last_one";
+    // organizations-phase-2: distinct from Membership*/TeamInvalidSecret, which are Teams'
+    // app-user membership types (a different resource) — never reused across the two, per
+    // security-review-phase-3's Finding D landing in the error registry.
+    public const string OrganizationOwnerRequired = "organization_owner_required";
+    public const string OrganizationMembershipNotFound = "organization_membership_not_found";
+    public const string OrganizationMembershipAlreadyExists = "organization_membership_already_exists";
+    public const string OrganizationInviteInvalid = "organization_invite_invalid";
+    public const string OrganizationInviteAlreadyAccepted = "organization_invite_already_accepted";
+    public const string OrganizationLastOwner = "organization_last_owner";
 
     public const string ApiKeyNotFound = "api_key_not_found";
     public const string PlatformNotFound = "platform_not_found";
@@ -160,6 +169,12 @@ public static class ErrorTypes
         OrganizationNotFound,
         OrganizationHasProjects,
         OrganizationLastOne,
+        OrganizationOwnerRequired,
+        OrganizationMembershipNotFound,
+        OrganizationMembershipAlreadyExists,
+        OrganizationInviteInvalid,
+        OrganizationInviteAlreadyAccepted,
+        OrganizationLastOwner,
         ApiKeyNotFound,
         PlatformNotFound,
         ProjectNotFound,

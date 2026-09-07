@@ -356,7 +356,7 @@ public static class RealtimeEndpoints
                 var hasAccess = await (
                     from p in db.Projects
                     join m in db.OrganizationMembers on p.OrganizationId equals m.OrganizationId
-                    where m.UserId == resolvedOperator.Account.Id && p.Id == project.Id
+                    where m.UserId == resolvedOperator.Account.Id && m.Confirmed && p.Id == project.Id
                     select 1).AnyAsync(ct);
                 if (hasAccess)
                     return new ResolvedCaller(null, [], true, null, null, null);

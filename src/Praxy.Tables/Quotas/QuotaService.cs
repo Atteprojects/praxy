@@ -41,14 +41,17 @@ public sealed class QuotaService(PraxyDb db, QuotaOptions defaults)
     /// boundary a paying customer is metered by, which is what
     /// <c>docs/research/multitenancy.md</c> has it becoming.</para>
     ///
-    /// <para>Counts memberships, which in Phase 1 is the same as "organizations this operator owns"
-    /// because every member is its creator. **Phase 2 must revisit this**: once an operator can be
-    /// invited into someone else's organization, being a member of it should not consume their own
-    /// creation allowance.</para>
+    /// <para>Organizations-phase-2: now owner-scoped, as Phase 1 flagged it would need to be. Counts
+    /// only confirmed rows where the operator holds <c>owner</c> — being invited into (or merely
+    /// pending an invite into) someone else's organization no longer consumes this allowance, only
+    /// actually owning one does. In Phase 1 this was equivalent to counting every membership,
+    /// because every member was its own creator; that stopped being true the moment an operator
+    /// could be invited into someone else's organization.</para>
     /// </summary>
     public async Task EnsureOrganizationQuotaAsync(Guid operatorId, CancellationToken ct)
     {
-        var used = await db.OrganizationMembers.CountAsync(m => m.UserId == operatorId, ct);
+        var used = await db.OrganizationMembers
+            .CountAsync(m => m.UserId == operatorId && m.Role == "owner" && m.Confirmed, ct);
         if (used >= defaults.MaxOrganizationsPerOperator)
             throw Exceeded("operator", "organizations", defaults.MaxOrganizationsPerOperator);
     }

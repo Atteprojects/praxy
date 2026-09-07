@@ -23,5 +23,13 @@ public class OrganizationMember
     /// <summary>owner | member</summary>
     public required string Role { get; set; }
 
+    /// <summary>False while an emailed invitation is pending; direct membership (org creation) starts true.</summary>
+    public bool Confirmed { get; set; }
+
+    /// <summary>SHA-256 of the invitation secret. Null for the creator's own row; cleared on acceptance.</summary>
+    public string? SecretHash { get; set; }
+
+    public DateTimeOffset? InvitedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
