@@ -24,13 +24,20 @@ public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(p
     private const long LargeBytes = 128L * 1024 * 1024;
 
     /// <summary>
-    /// How much extra peak heap the 96 MB of *additional* file is allowed to cost. A buffering
+    /// How much extra retained heap the 96 MB of *additional* file is allowed to cost. A buffering
     /// implementation holds the whole file, so it would spend the full extra 96 MB (more, with a
     /// doubling MemoryStream); a streaming one spends about nothing, because its working set is a
-    /// chunk plus transport buffers either way. Half the difference is generous room for GC noise
-    /// while still failing a buffered path decisively.
+    /// chunk plus transport buffers either way.
+    ///
+    /// <para>Was 48 MB — half the difference — when <see cref="HeapPeakSampler"/> measured total
+    /// heap and therefore had to leave room for however much garbage happened to be pending. Now
+    /// that it samples live bytes (see its own remarks, and the CI flake that prompted it), the
+    /// measurement is not noisy in that way: the same round trip measured under 1 MB of extra
+    /// growth on three consecutive runs. 8 MB keeps eight times that headroom while being twelve
+    /// times tighter than the old budget — enough to catch a path that buffers only *part* of a
+    /// file, which 48 MB would have let through.</para>
     /// </summary>
-    private const long AcceptableExtraGrowthBytes = 48L * 1024 * 1024;
+    private const long AcceptableExtraGrowthBytes = 8L * 1024 * 1024;
 
     protected override IDictionary<string, string?>? ExtraSettings =>
         new Dictionary<string, string?>(base.ExtraSettings!)
@@ -160,16 +167,36 @@ public class StorageStreamingTests(PostgresContainerFixture pg) : AuthTestBase(p
         private readonly Task _loop;
         private long _peak;
 
+        /// <summary>
+        /// Samples **live** bytes (<c>forceFullCollection: true</c>), not total heap, and every
+        /// 100ms rather than every 10ms. Both matter, and the first is why this test used to flake.
+        ///
+        /// <para><c>GC.GetTotalMemory(false)</c> counts uncollected garbage, while the baseline it
+        /// is subtracted from comes from <see cref="SettledHeapBytes"/>, which collects first — so
+        /// the reported "growth" silently included whatever garbage happened to be pending. That
+        /// amount scales with how long the operation ran and how the runtime is tuned, not with
+        /// what the code retains: the 128 MB round trip runs longer than the 32 MB one, gets
+        /// sampled more, and is likelier to catch a garbage high-water mark, biasing precisely the
+        /// difference this test asserts on. It failed in CI at 54 MB against a 48 MB budget while
+        /// passing locally on identical code, and had flaked once before that.</para>
+        ///
+        /// <para>Collecting before each sample makes both ends of the subtraction mean the same
+        /// thing — retained bytes — which is the property actually being claimed. The coarser
+        /// interval keeps the cost of those collections reasonable, and loses nothing: a buffering
+        /// implementation holds the whole file for the *entire* transfer, so it is caught by any
+        /// sampling rate. 10ms resolution was only ever needed to catch garbage spikes, which are
+        /// no longer what is being measured.</para>
+        /// </summary>
         public HeapPeakSampler()
         {
-            _peak = GC.GetTotalMemory(forceFullCollection: false);
+            _peak = GC.GetTotalMemory(forceFullCollection: true);
             _loop = Task.Run(async () =>
             {
                 while (!_cts.IsCancellationRequested)
                 {
-                    var now = GC.GetTotalMemory(forceFullCollection: false);
+                    var now = GC.GetTotalMemory(forceFullCollection: true);
                     if (now > _peak) _peak = now;
-                    try { await Task.Delay(10, _cts.Token); }
+                    try { await Task.Delay(100, _cts.Token); }
                     catch (OperationCanceledException) { return; }
                 }
             });
