@@ -130,6 +130,61 @@ public class OpenApiDocumentTests(PostgresContainerFixture pg) : AuthTestBase(pg
     }
 
     /// <summary>
+    /// <c>Program.cs</c> sets <c>DefaultIgnoreCondition = WhenWritingNull</c>: a null-valued property
+    /// is dropped from the JSON, so it reaches a client absent, never as <c>null</c>.
+    /// <see cref="Praxy.Api.Infrastructure.OpenApiWireNullability"/> makes the document say that.
+    /// Without this test the fix is silently removable — delete the transformer, regenerate the
+    /// snapshot, and every other gate here still passes while the console's generated types go back
+    /// to <c>foo: T | null</c>, which is precisely the bug PR #55 fixed.
+    ///
+    /// Asserted over the whole document rather than just the components the transformer walks, so a
+    /// future endpoint whose nullable property lands in an *inline* schema fails here too.
+    /// </summary>
+    [Fact]
+    public async Task No_schema_anywhere_documents_a_property_as_nullable()
+    {
+        var doc = await DocumentAsync();
+        var offenders = new List<string>();
+        CollectNullTypes(doc, "$", offenders);
+
+        Assert.True(offenders.Count == 0,
+            "These schemas say a value may be null, but WhenWritingNull means it is absent instead. "
+            + "OpenApiWireNullability should have rewritten them — if one is genuinely nullable on "
+            + "the wire, that is a wire-shape decision, not a documentation one:\n  "
+            + string.Join("\n  ", offenders));
+    }
+
+    private static void CollectNullTypes(JsonElement element, string path, List<string> offenders)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.NameEquals("type") && MentionsNull(property.Value))
+                        offenders.Add(path);
+                    CollectNullTypes(property.Value, $"{path}.{property.Name}", offenders);
+                }
+                break;
+            case JsonValueKind.Array:
+                var index = 0;
+                foreach (var item in element.EnumerateArray())
+                    CollectNullTypes(item, $"{path}[{index++}]", offenders);
+                break;
+        }
+    }
+
+    /// <summary>A type is either a string or an array of them; "null" in either spelling counts.</summary>
+    private static bool MentionsNull(JsonElement type) =>
+        type.ValueKind switch
+        {
+            JsonValueKind.String => type.GetString() == "null",
+            JsonValueKind.Array => type.EnumerateArray().Any(t => t.ValueKind == JsonValueKind.String
+                                                                  && t.GetString() == "null"),
+            _ => false,
+        };
+
+    /// <summary>
     /// The committed snapshot is what everyone not running a dev instance reads. If it drifts from
     /// what the code generates, the published reference is a lie — this catches "forgot to
     /// regenerate" at test time rather than at the next release.

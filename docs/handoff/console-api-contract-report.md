@@ -214,6 +214,15 @@ confirmed to fail, then restored:
   comparison against the real, fixed types (both `GuidId`, since the backend fix landed) compiles
   clean, because it's now a legitimate comparison. Both directions demonstrated, not assumed.
 
+**A ratchet added in review.** The nullability fix had no test of its own: delete
+`OpenApiWireNullability` from `Program.cs`, regenerate the snapshot, and every gate in the repo still
+passed while the generated console types silently went back to `foo: T | null`. `OpenApiDocumentTests.
+No_schema_anywhere_documents_a_property_as_nullable` now asserts the property directly — no schema
+anywhere in the document says a value may be null — walking the whole document rather than only the
+components the transformer visits, so a future endpoint whose nullable property lands in an *inline*
+schema fails there too. Verified the way the rest of this work was: unregistered the transformer,
+confirmed the test fails naming all eight offending properties, restored it, confirmed it passes.
+
 Browser-verified live against the local dev instance (`owner@test.local`, Postgres pre-seeded from
 earlier phases): the Columns grid (exercises `ColumnSchema.type`/`.status` narrowing and the now
 correctly-optional `default`), the Organization Members screen (exercises `GuidId` — the "(you)"
