@@ -698,6 +698,41 @@ changing any wire shape, and generating the SDKs' models. Design: `docs/research
 8. **Console tests are the acceptance gate.** A phase without its console screens is not done.
 9. Commit style: conventional commits, small and topical. Never commit `.env` or generated secrets.
 
+## Security review: the operator OAuth surface (post-v0.1.0 initiative)
+
+Organizations Phase 3 added operator Google sign-in — the **first non-password door into the
+console**, shipped 2026-09-06, off by default, and never run in anger. An operator session is the
+whole instance: every project, every API key, every hosted site and function, and the Docker socket
+the api container holds. The app-user OAuth flow it resembles is scoped to one developer project;
+this one is scoped to nothing. `CLAUDE.md` already names a pass over it as the candidate initiative.
+
+**One phase** — one service, two endpoints, two console screens. Smaller than the console/API
+contract initiative, which was scoped as one phase and stayed one.
+
+**What makes it unlike the last security review**: that one found things by *absence*, in subsystems
+that had grown organically. This code is 345 careful, densely-commented lines where nearly every
+decision is argued in place, and the comments make load-bearing assertions — "the callback never
+trusts its own query string", "a wrong secret gets the exact same error and timing as a nonexistent
+invite". Each either holds or doesn't, and the phase's deliverable is those properties **tested, not
+read**. The surface is off by default, so the phase has to turn it on and complete all three doors —
+claim, login, invite-accept — before attacking them; a review that never completed a flow is a code
+read and must be reported as one.
+
+**Ranked areas where a finding is plausible** (design doc has the reasoning): implicit account
+linking at login, which turns control of a Google account with a matching verified email into full
+operator access without a password; the invite secret's blast radius through the state cookie and
+the failure redirect; `CallbackUri` being built from `Request.Scheme`/`Host` with `AllowedHosts: *`;
+no rate limit on the callback; operator sign-in — the highest-privilege event in the product —
+leaving no audit entry through either door; and query-parameter handling on the two console screens.
+
+**Already verified sound, recorded so the phase doesn't re-spend the budget**: `CompactJwt` (HMAC
+checked with `FixedTimeEquals` before parsing, header `alg` ignored, `exp` enforced), PKCE `S256`,
+the fixed-time state comparison, no caller-supplied redirect anywhere, `user.Status` enforced at
+password login *and* at session resolution, and `up.sh` writing `PRAXY_TRUST_FORWARDED_HEADERS=true`
+whenever a domain is configured. Design: `docs/research/console-oauth-security-review.md`.
+
+---
+
 ## Handoff protocol (session-per-phase)
 
 The owner starts each phase in a **fresh session**. At the end of phase N, the implementing session must:
