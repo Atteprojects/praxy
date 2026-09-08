@@ -1,6 +1,7 @@
 import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
+import { wireId } from "../api/ids";
 import {
   useCreateOrganization,
   useDeleteOrganization,
@@ -142,7 +143,10 @@ function OrganizationPicker({ organizations }: { organizations: Organization[] }
 
 /** The projects list, rendered as its owning organization's page: name on top, id in the URL. */
 export function OrganizationPage() {
-  const { organizationId } = useParams({ strict: false }) as { organizationId: string };
+  // A route param, not a parsed API response — a real trust boundary, so it's branded explicitly.
+  const organizationId = wireId(
+    (useParams({ strict: false }) as { organizationId: string }).organizationId,
+  );
   const organization = useOrganization(organizationId);
   const organizations = useOrganizations();
   const projects = useProjects();

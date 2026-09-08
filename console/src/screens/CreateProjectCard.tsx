@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
+import { wireId, type WireId } from "../api/ids";
 import { useCreateProject } from "../api/queries";
 import { ErrorNote, Field, Footer, Logo } from "../components/ui";
 
@@ -15,7 +16,7 @@ export function CreateProjectCard({
   organizationId,
   standalone = false,
 }: {
-  organizationId: string;
+  organizationId: WireId;
   standalone?: boolean;
 }) {
   const create = useCreateProject();
@@ -31,7 +32,9 @@ export function CreateProjectCard({
     try {
       const project = await create.mutateAsync({
         name: data.get("name") as string,
-        projectId: projectId ? projectId : undefined,
+        // Typed by the operator, so it's a raw string until the server accepts it — branded here,
+        // at the boundary, exactly like a route param or a response header.
+        projectId: projectId ? wireId(projectId) : undefined,
         organizationId,
       });
       await navigate({ to: "/project/$projectId", params: { projectId: project.id } });

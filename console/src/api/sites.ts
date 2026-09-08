@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
+import { wireId } from "./ids";
 import type {
   ErrorEnvelope, PraxySite, SiteDeployment, SiteDeploymentList, SiteDomain, SiteDomainList, SiteEnvVar,
   SiteEnvVarList, SiteGitBranches, SiteList, SiteRequestLogList,
@@ -210,7 +211,7 @@ async function uploadDeploymentTar(url: string, file: File): Promise<SiteDeploym
         code: response.status,
         type: "general_server_error",
         version: "",
-        requestId: response.headers.get("X-Praxy-Request-Id") ?? "",
+        requestId: wireId(response.headers.get("X-Praxy-Request-Id") ?? ""),
       };
     }
     throw new ApiError(envelope);

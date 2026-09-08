@@ -1,4 +1,5 @@
 import type { ErrorEnvelope } from "./types";
+import { wireId } from "./ids";
 
 export class ApiError extends Error {
   constructor(public readonly envelope: ErrorEnvelope) {
@@ -41,7 +42,9 @@ export async function api<T>(
         code: response.status,
         type: "general_server_error",
         version: "",
-        requestId: response.headers.get("X-Praxy-Request-Id") ?? "",
+        // A header value, not a parsed response body — a genuine trust boundary, so it's branded
+        // explicitly rather than arriving already-typed the way a real envelope's requestId does.
+        requestId: wireId(response.headers.get("X-Praxy-Request-Id") ?? ""),
       };
     }
     throw new ApiError(envelope);

@@ -1,5 +1,12 @@
 # Session task — Generate the console's API types from the OpenAPI snapshot
 
+> **Status: shipped.** 2026-09-07 — see `docs/handoff/console-api-contract-report.md`. Two backend
+> fixes went beyond the prompt's original nullability landmine: the `oneOf`-null encoding (used for
+> nullable `JsonNode`/`JsonElement`-typed properties, not just inline primitives) needed a document
+> transformer rather than a schema transformer, and two webhook endpoints' `.Produces<>()`
+> annotations were found to document the wrong response shape entirely, fixed with two new named
+> DTOs. Sequence complete — scoped as one phase, stayed one.
+
 ## Why this exists
 
 `console/src/api/types.ts` is 897 hand-written lines describing the API's wire shapes.

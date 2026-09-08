@@ -8,7 +8,10 @@ namespace Praxy.Api.Endpoints;
 /// <summary>App-user wire shape. Ids are 32-hex-char uuids — the same form permission roles use.</summary>
 public sealed record AppUserResponse(
     string Id, string Email, string Name, bool EmailVerified, bool Status, string[] Labels,
-    JsonNode? Prefs, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
+    // Non-nullable: ParseOrEmpty below never returns null, so this is always present on the wire.
+    // Typing it JsonNode? (as every other JsonNode-valued property in this API is) would have the
+    // OpenAPI schema describe it as sometimes-absent-when-null, which isn't true here.
+    JsonNode Prefs, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)
 {
     public static AppUserResponse From(User u) => new(
         Ids.Wire(u.Id), u.Email, u.Name, u.EmailVerified, u.Status, u.Labels,
