@@ -327,7 +327,14 @@ Filled in as phases land — keep this section current.
   the outgoing deployment's `container_id` unconditionally but stopped the container only when the
   in-memory registry happened to hold it, so **the first redeploy after any restart abandoned one** —
   it now reads the recorded id before erasing it, and the startup reclaim is the second line of
-  defence for the crash case rather than the only one for the ordinary case. Also: catalog migrations no longer run under the data plane's
+  defence for the crash case rather than the only one for the ordinary case. **Known residual**: a
+  full `dotnet test` still leaves about one site container behind, roughly 15 minutes in. It does not
+  reproduce running `SiteTests` alone, all eight `Site*` classes together, or `FunctionGitDeploymentTests`
+  (the only other class that touches sites and the only one with no cleanup override), and the
+  `SiteReconciler`-restarts-what-teardown-stopped theory is wrong — those classes set
+  `ReconcileIntervalSeconds` to 3600 precisely to park it, and its only pass is at startup. The
+  startup reclaim takes it on the next run, so this is bounded and self-clearing rather than the
+  unbounded growth it replaced; don't chase it with a speculative fix. Also: catalog migrations no longer run under the data plane's
   `statement_timeout` (`CatalogMigrator` sets `statement_timeout = 0` for its own session, the way
   `SchemaJobRunner` already raises it for long index builds) — a migration is not request work, and
   being cancelled by a request-shaped budget means the instance fails to *start*, not that a request
