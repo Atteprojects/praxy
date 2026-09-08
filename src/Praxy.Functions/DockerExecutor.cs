@@ -327,29 +327,6 @@ public sealed class DockerExecutor : IDisposable
     }
 
     /// <summary>
-    /// Removes every container this executor has ever started that is still around at startup.
-    ///
-    /// <para>No function container is meant to outlive the api process: <see cref="WarmPool"/>
-    /// stops the pooled ones on graceful shutdown, and <c>FunctionExecutionService</c> stops each
-    /// non-poolable one in its own <c>finally</c>. So anything still labelled
-    /// <c>praxy.function=true</c> when we start is an orphan from a hard crash (SIGKILL, OOM, host
-    /// reboot) — holding its memory and CPU reservation forever, invisible to the pool that would
-    /// otherwise reclaim it. The label was already being written for exactly this kind of
-    /// bookkeeping; nothing read it until now.</para>
-    ///
-    /// <para><b>Deliberately not the same for Sites.</b> A site container is *designed* to outlive
-    /// the api process (<c>RestartPolicy: unless-stopped</c>, adopted again by
-    /// <c>SiteContainerRegistry</c>/<c>SiteReconciler</c>), so sweeping <c>praxy.site=true</c> the
-    /// same way would take every hosted site down on restart. The asymmetry is intentional.</para>
-    ///
-    /// <para><b>Assumes one api process per Docker daemon</b>, which is what
-    /// <c>deploy/docker-compose.yml</c> runs and what <see cref="WarmPool"/>'s in-memory tracking
-    /// already requires. A second replica sharing this daemon would sweep the first's live
-    /// containers — if Praxy ever supports multiple api instances, this needs an instance id in the
-    /// label, not removal.</para>
-    /// </summary>
-
-    /// <summary>
     /// The repo digest an image reference actually resolved to, or <c>null</c> if it can't be read.
     ///
     /// <para>security-review-phase-1 follow-up (finding E): base images are pinned by <em>tag</em>
@@ -377,6 +354,31 @@ public sealed class DockerExecutor : IDisposable
         }
     }
 
+    /// <summary>
+    /// Removes every container this executor has ever started that is still around at startup.
+    ///
+    /// <para>No function container is meant to outlive the api process: <see cref="WarmPool"/>
+    /// stops the pooled ones on graceful shutdown, and <c>FunctionExecutionService</c> stops each
+    /// non-poolable one in its own <c>finally</c>. So anything still labelled
+    /// <c>praxy.function=true</c> when we start is an orphan from a hard crash (SIGKILL, OOM, host
+    /// reboot) — holding its memory and CPU reservation forever, invisible to the pool that would
+    /// otherwise reclaim it. The label was already being written for exactly this kind of
+    /// bookkeeping; nothing read it until now.</para>
+    ///
+    /// <para><b>Deliberately not the same for Sites</b>, and still not: a site container is
+    /// *designed* to outlive the api process (<c>RestartPolicy: unless-stopped</c>, adopted again by
+    /// <c>SiteContainerRegistry</c>/<c>SiteReconciler</c>), so sweeping <c>praxy.site=true</c> the
+    /// same way would take every hosted site down on restart. What that reasoning ruled out was a
+    /// blanket sweep, not any sweep — Sites leaked containers for as long as nothing looked. See
+    /// <c>Praxy.Sites.SiteDockerExecutor.RemoveUnreferencedContainersAsync</c>, which reclaims only
+    /// containers no <c>site_deployments</c> row references and so cannot touch a live one.</para>
+    ///
+    /// <para><b>Assumes one api process per Docker daemon</b>, which is what
+    /// <c>deploy/docker-compose.yml</c> runs and what <see cref="WarmPool"/>'s in-memory tracking
+    /// already requires. A second replica sharing this daemon would sweep the first's live
+    /// containers — if Praxy ever supports multiple api instances, this needs an instance id in the
+    /// label, not removal.</para>
+    /// </summary>
     public async Task<int> RemoveOrphanedContainersAsync(CancellationToken ct)
     {
         var orphans = await _client.Containers.ListContainersAsync(new ContainersListParameters

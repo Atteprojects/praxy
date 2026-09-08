@@ -64,7 +64,7 @@ public class FunctionScheduledCredentialsTests(PostgresContainerFixture pg) : Au
         await UploadAndWaitReadyAsync(operatorToken, projectId, noneId);
 
         var noneExecution = await WaitForAnyExecutionAsync(operatorToken, projectId, noneId, "schedule");
-        Assert.Equal("completed", noneExecution.GetProperty("status").GetString());
+        AssertCompleted(noneExecution);
         var noneBody = JsonDocument.Parse(noneExecution.GetProperty("responseBody").GetString()!).RootElement;
         Assert.Equal(JsonValueKind.Null, noneBody.GetProperty("key").ValueKind);
 
@@ -78,7 +78,7 @@ public class FunctionScheduledCredentialsTests(PostgresContainerFixture pg) : Au
         await UploadAndWaitReadyAsync(operatorToken, projectId, grantedId);
 
         var grantedExecution = await WaitForAnyExecutionAsync(operatorToken, projectId, grantedId, "schedule");
-        Assert.Equal("completed", grantedExecution.GetProperty("status").GetString());
+        AssertCompleted(grantedExecution);
         var grantedBody = JsonDocument.Parse(grantedExecution.GetProperty("responseBody").GetString()!).RootElement;
         var injectedKey = grantedBody.GetProperty("key").GetString();
         Assert.False(string.IsNullOrEmpty(injectedKey));
@@ -112,7 +112,7 @@ public class FunctionScheduledCredentialsTests(PostgresContainerFixture pg) : Au
         await CreateRowAsync(projectId, setupKey, databaseId, tableId, "the trigger");
 
         var execution = await WaitForAnyExecutionAsync(operatorToken, projectId, functionId, "event");
-        Assert.Equal("completed", execution.GetProperty("status").GetString());
+        AssertCompleted(execution);
         var body = JsonDocument.Parse(execution.GetProperty("responseBody").GetString()!).RootElement;
         var injectedKey = body.GetProperty("key").GetString();
         Assert.False(string.IsNullOrEmpty(injectedKey));
@@ -123,6 +123,28 @@ public class FunctionScheduledCredentialsTests(PostgresContainerFixture pg) : Au
     }
 
     // ---- helpers ------------------------------------------------------------------------------
+
+    /// <summary>
+    /// A failed execution records why it failed; a bare status comparison threw that away, so an
+    /// intermittent failure in a 25-minute suite left "Expected: completed / Actual: failed" as the
+    /// entire record and cost a re-run to learn nothing (the re-run passed). These executions run
+    /// real containers on a real Docker daemon, so the interesting failures are environmental and
+    /// will not reproduce on demand — the one report they generate has to carry the reason with it.
+    /// </summary>
+    private static void AssertCompleted(JsonElement execution)
+    {
+        var status = execution.GetProperty("status").GetString();
+        if (status == "completed")
+            return;
+
+        // WhenWritingNull: both are absent rather than null when the execution carried neither.
+        var errors = execution.TryGetProperty("errors", out var e) ? e.GetString() : null;
+        var body = execution.TryGetProperty("responseBody", out var b) ? b.GetString() : null;
+        Assert.Fail(
+            $"Execution status was '{status}', not 'completed'.\n"
+            + $"  errors:       {errors ?? "(none recorded)"}\n"
+            + $"  responseBody: {body ?? "(none recorded)"}");
+    }
 
     private async Task<string> CreateFunctionAsync(
         string operatorToken, string projectId, string key, string[]? events = null, string? schedule = null)

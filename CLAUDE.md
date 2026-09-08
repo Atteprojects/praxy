@@ -311,6 +311,25 @@ Filled in as phases land — keep this section current.
   the strings already on the wire): several DTOs model an enum-like field as bare `string`, so
   `docs/openapi/v1.json` can't express the closed set of values, and `types.ts` still hand-narrows
   those few fields (`ColumnType`, every `*Status`, etc.), documented inline everywhere it happens.
+- Site container reclamation (2026-09-08): site containers used to leak, one per abandoned
+  redeploy or killed test run, with nothing ever reclaiming them — found as 17 running on a dev
+  machine and 2 on the production droplet, the oldest up two weeks. `SitePreviewSweeper` now does a
+  **startup reclaim** (mirroring `FunctionPoolSweeper`'s): remove any `praxy.site=true` container
+  that **no `site_deployments` row references** and that predates this process. Deliberately not the
+  blanket `praxy.site=true` sweep `Praxy.Functions.DockerExecutor.RemoveOrphanedContainersAsync`'s
+  doc rejected — that would take every hosted site down on restart; keying on the DB reference keeps
+  every live container (the proxy and `SiteReconciler` both resolve containers only through that
+  column) and the age guard keeps the one `SiteReconciler` may be starting concurrently. Same
+  **one-api-process-per-Docker-daemon** assumption the Functions sweep already documents: running
+  `dotnet test` on a machine that also runs a dev instance reclaims that instance's site containers,
+  which `SiteReconciler` then restarts — the Functions sweep already clears its warm pool the same
+  way. No new configuration. Also: catalog migrations no longer run under the data plane's
+  `statement_timeout` (`CatalogMigrator` sets `statement_timeout = 0` for its own session, the way
+  `SchemaJobRunner` already raises it for long index builds) — a migration is not request work, and
+  being cancelled by a request-shaped budget means the instance fails to *start*, not that a request
+  degrades. `StatementTimeoutTests` asserts both that the opt-out works and that Npgsql's pool reset
+  keeps it from leaking to the next borrower, since a leak's only symptom is a timeout that stops
+  firing.
 
 ## Session end — handoff protocol
 
