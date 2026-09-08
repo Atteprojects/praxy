@@ -13077,7 +13077,7 @@ export interface components {
         };
         CreateProjectRequest: {
             name: string;
-            projectId?: string;
+            projectId?: WireId;
             organizationId?: WireId;
         };
         CreateProviderRequest: {

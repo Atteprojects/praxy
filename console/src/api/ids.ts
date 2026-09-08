@@ -13,17 +13,24 @@
  *
  * `docs/api-reference.md`'s generated document distinguishes exactly one of these two encodings on its
  * own: a plain C# `Guid` property serializes with `format: "uuid"`, which `console/scripts/generate-api-types.mjs`
- * maps straight to `GuidId` — no guessing involved. Every other id in the API is a `string` populated via
- * `Ids.Wire(...)`, and OpenAPI/JSON Schema has no way to say "this string happens to hold 32 hex chars" —
- * that's not a property the schema tracks. So `WireId` is applied by the generator from a curated,
- * hand-reviewed list of property paths (see that script's `WIRE_ID_PATHS`), not inferred from the schema.
- * That list is a judgment call recorded in code, not a fact machine-verified from the document — the
- * honest tradeoff of branding an encoding the wire format itself doesn't expose.
+ * maps straight to `GuidId` — no guessing involved. The other encoding has no such signal: OpenAPI/JSON
+ * Schema has no way to say "this string happens to hold 32 hex chars." So `WireId` is applied by a
+ * *naming* heuristic instead — any `format`-less string property named `id`, or ending in `Id`/`Ids` —
+ * minus a hand-reviewed deny-list of the few such names that aren't Praxy ids at all (that script's
+ * `WIRE_ID_EXCLUDE`). Note the direction: **the default is to brand**, so a newly-added `*Id`-named
+ * property that isn't a Praxy id is branded wrongly until someone adds it to that list. The heuristic
+ * fails open, not safe — the honest cost of branding an encoding the wire format itself doesn't expose.
  */
 
 declare const wireIdBrand: unique symbol;
 
-/** A Praxy-generated resource id: 32 lowercase hex characters, no dashes (`Ids.Wire` on the server). */
+/**
+ * A Praxy resource id as it appears on the wire. Two forms, one family: 32 lowercase hex characters
+ * with no dashes (`Ids.Wire` on the server) for a generated id, or — for the resources that let the
+ * operator choose one — a custom id of 1-36 lowercase alphanumerics and hyphens (`Ids.IsValidCustomId`:
+ * projects, sites, functions, messaging topics). What both forms have in common, and what this brand
+ * exists to enforce, is that neither is ever a dashed `Guid`.
+ */
 export type WireId = string & { readonly [wireIdBrand]: true };
 
 declare const guidIdBrand: unique symbol;

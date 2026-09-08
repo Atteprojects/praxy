@@ -104,7 +104,7 @@ to mechanically detect it. `console/scripts/generate-api-types.mjs` uses a namin
 OpenAPI document itself, unlike the nullability and numeric fixes: doing that would publish an
 already-known-imperfect heuristic as canonical metadata for every consumer of the document, not just
 this generator. Checked by hand against every matching property's origin in `src/Praxy.Api`, this
-heuristic had **three real false positives**, each recorded with its reasoning in the script's
+heuristic had **two real false positives**, each recorded with its reasoning in the script's
 `WIRE_ID_EXCLUDE` set:
 
 - `AuthSettingsResponse`/`UpdateAuthSettingsRequest.googleClientId` — a third-party Google OAuth
@@ -114,18 +114,26 @@ heuristic had **three real false positives**, each recorded with its reasoning i
   response via `.Select` over something other than a database entity. (The other such place,
   `IdentityResponse`, was checked and does use `Ids.Wire` — confirming this is the only exception of
   its kind, not an unchecked assumption.)
-- `CreateProjectRequest.projectId` — a client-chosen custom slug, validated with
-  `Ids.IsValidCustomId` (1-36 lowercase alphanumeric/hyphen), not `Ids.TryParseWire`. Found because
-  `tsc` correctly rejected the console's own custom-project-id form field once it was wrongly
-  branded `WireId` — the type system catching a misclassification in this session's own work, which
-  is exactly the point of doing this mechanically. (`CreateRowRequest.rowId` looks like the same
-  shape — also client-suppliable — but is parsed with `Ids.TryParseWire`, confirmed by reading
-  `RowsService.cs`, so it correctly stays `WireId`.)
 
-This list is a curated judgment call recorded in code, not a fact machine-verified from the
-document — the honest cost of branding an encoding the wire format itself doesn't expose. It needs a
-human to extend it if a new `*Id`-named-but-not-wire-shaped field is added later; `ids.ts`'s header
-comment says so explicitly.
+**A third was excluded first and then put back, in review** — `CreateProjectRequest.projectId`, the
+operator's optional custom project id (`Ids.IsValidCustomId`: 1-36 lowercase alphanumerics and
+hyphens, not `Ids.Wire`'s fixed 32 hex). Excluding it looked right in isolation and was wrong in
+context: the very same value comes back out as `ProjectResponse.id`, `AuditLogEntryResponse.projectId`
+and `PingResponse.projectId`, none of which the heuristic excludes — so the identical string was
+`string` going in and `WireId` coming out, and `WireId`'s own doc comment ("32 lowercase hex") was
+false for every custom-id project. The brand's real job is separating the wire family from a dashed
+`Guid`, which a custom id belongs to just as much as a generated one, so it is branded like the rest
+and the console's create-project form casts at the boundary with `wireId(...)` — the same
+trust-boundary pattern route params and response headers already use. `WireId`'s definition now says
+both forms explicitly. (`CreateRowRequest.rowId` looks like the same shape — also client-suppliable —
+but is parsed with `Ids.TryParseWire`, confirmed by reading `RowsService.cs`, so it was never in
+question.)
+
+This list is a curated judgment call recorded in code, not a fact machine-verified from the document
+— the honest cost of branding an encoding the wire format itself doesn't expose. Note the direction:
+**the heuristic fails open**, branding any new `*Id`-named string automatically, so a future property
+that isn't a Praxy id is wrong until a human adds it here. `ids.ts`'s header and the script's own
+comment both say so.
 
 ## A third kind of document/reality mismatch, found along the way
 

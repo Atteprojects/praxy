@@ -26,14 +26,21 @@ const outPath = path.join(scriptDir, "../src/api/generated/schema.ts");
 /**
  * Every property below is a `string` with no `format` — indistinguishable, in JSON Schema, from a
  * `Praxy.Core.Ids.Wire`-encoded resource id. Most of them *are* one, so that's the default (see
- * `looksLikeWireId` below). These are the exceptions found by reading every match against
- * `src/Praxy.Api`'s DTOs by hand: `googleClientId` holds a third-party Google OAuth client id, not
- * anything `Ids.Wire` ever touches. There is no schema-level signal for this distinction — OpenAPI
- * has no "this string happens to be 32 hex chars" format — so this list is a curated judgment call,
- * not something derived mechanically from the document. Keep it in sync by hand if the API grows
- * another `*Id`-named field that isn't a Praxy resource id.
+ * `looksLikeWireId` below); these are the exceptions, found by reading every match against
+ * `src/Praxy.Api`'s DTOs by hand. There is no schema-level signal for the distinction — OpenAPI has
+ * no "this string happens to be 32 hex chars" format — so this list is a curated judgment call, not
+ * something derived mechanically from the document.
+ *
+ * The bar for an entry is "not a Praxy resource id at all," not "not 32 hex chars": a project, site,
+ * function or messaging topic may carry an operator-chosen custom id (`Ids.IsValidCustomId` — 1-36
+ * lowercase alphanumerics and hyphens) rather than a generated one, and those are still `WireId`,
+ * because what the brand separates is the wire family from a dashed `Guid` — see `../src/api/ids.ts`.
+ *
+ * **This heuristic fails open.** A newly-added `*Id`-named string property is branded `WireId`
+ * automatically; if it isn't a Praxy id, nothing catches that but a human adding it here.
  */
 const WIRE_ID_EXCLUDE = new Set([
+  // A third-party Google OAuth client id — nothing Ids.Wire ever touches.
   "#/components/schemas/AuthSettingsResponse/googleClientId",
   "#/components/schemas/UpdateAuthSettingsRequest/googleClientId",
   // FunctionRuntimeResponse.id is the runtime's fixed key ("dart"/"node"), built from
@@ -41,11 +48,6 @@ const WIRE_ID_EXCLUDE = new Set([
   // whole API that builds a *Response via .Select over something other than a DB entity
   // (IdentityResponse, checked by hand) does use Ids.Wire, so this is confirmed the only exception.
   "#/components/schemas/FunctionRuntimeResponse/id",
-  // CreateProjectRequest.projectId is a client-chosen custom slug (validated by
-  // Ids.IsValidCustomId — 1-36 lowercase alphanumeric/hyphen — not Ids.Wire's fixed 32-hex shape),
-  // typed by the operator in the console's "custom id" field. Unlike CreateRowRequest.rowId (also
-  // client-suppliable, but parsed with Ids.TryParseWire — checked — so still genuinely WireId-shaped).
-  "#/components/schemas/CreateProjectRequest/projectId",
 ]);
 
 function isPlainString(schemaObject) {
