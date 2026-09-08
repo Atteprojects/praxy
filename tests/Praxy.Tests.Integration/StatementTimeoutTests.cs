@@ -29,4 +29,37 @@ public class StatementTimeoutTests(PostgresContainerFixture pg) : ApiTestBase(pg
         var ex = await Assert.ThrowsAsync<PostgresException>(() => cmd.ExecuteNonQueryAsync());
         Assert.Equal("57014", ex.SqlState); // query_canceled
     }
+
+    /// <summary>
+    /// <see cref="Praxy.Persistence.CatalogMigrator"/> raises this timeout away for its own session,
+    /// because a migration is not request work and being cancelled mid-upgrade stops the instance
+    /// from starting at all. That opt-out is only safe because Npgsql resets session state when the
+    /// connection goes back to the pool — without that, one migration would silently disarm the
+    /// data-plane protection the test above exists to guarantee, for every connection afterward.
+    /// Both halves are asserted here rather than assumed, since the leak would be invisible: the
+    /// only symptom is a timeout that no longer fires.
+    /// </summary>
+    [Fact]
+    public async Task Raising_the_timeout_for_one_session_does_not_leak_it_back_to_the_pool()
+    {
+        var dataSource = Factory.Services.GetRequiredService<NpgsqlDataSource>();
+
+        // What CatalogMigrator does for the duration of a migration. Two seconds would be cancelled
+        // under the configured one-second budget, so this succeeding is the opt-out working.
+        await using (var raised = await dataSource.OpenConnectionAsync())
+        {
+            await using var optOut = new NpgsqlCommand("SET statement_timeout = 0", raised);
+            await optOut.ExecuteNonQueryAsync();
+            await using var slow = new NpgsqlCommand("SELECT pg_sleep(2)", raised);
+            await slow.ExecuteNonQueryAsync();
+        }
+
+        // The pool has exactly one physical connection here, so this is necessarily the same one
+        // handed back — and it must have the pool's own timeout again, not the raised one.
+        await using var reused = await dataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand("SELECT pg_sleep(5)", reused);
+
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => cmd.ExecuteNonQueryAsync());
+        Assert.Equal("57014", ex.SqlState);
+    }
 }

@@ -306,6 +306,79 @@ public sealed class SiteDockerExecutor : IDisposable
     }
 
     /// <summary>
+    /// Removes running site containers that no deployment row claims — the leak
+    /// <c>Praxy.Functions.DockerExecutor.RemoveOrphanedContainersAsync</c> deliberately left open
+    /// for Sites, closed without the consequence that made it say no.
+    ///
+    /// <para>That method's own doc explains why Sites can't be swept the same way: a site container
+    /// is <em>designed</em> to outlive the api process, so removing everything labelled
+    /// <c>praxy.site=true</c> at startup would take every hosted site down on every restart. True,
+    /// and this doesn't do that. It removes only containers whose id appears on no
+    /// <c>site_deployments</c> row — a container nothing can ever reach again, since both the proxy
+    /// and <c>SiteReconciler</c> resolve a container exclusively through that column. The live ones
+    /// are exactly the referenced ones, so they are exactly what this keeps.</para>
+    ///
+    /// <para>Two ways a container ends up unreferenced. A redeploy clears the previous deployment's
+    /// <c>ContainerId</c> and then stops that container <em>only if the in-memory registry still
+    /// holds it</em> (<c>SitesService</c>) — if this process never populated that entry, the row is
+    /// nulled and the container is abandoned in the same breath. And a test run, or any instance
+    /// pointed at a new database, leaves every container from the old one behind with no row that
+    /// could ever mention it. Both accumulate forever, one per occurrence, because nothing looked.</para>
+    ///
+    /// <para><paramref name="startedBefore"/> closes the race against <c>SiteReconciler</c>, which
+    /// runs its first pass concurrently with this one: a container it starts right now is not in
+    /// the database yet, and would otherwise look exactly like an orphan. Anything this process
+    /// created is newer than this process, so age is the discriminator that needs no coordination
+    /// between the two services.</para>
+    ///
+    /// <para>Like the Functions sweep, this <b>assumes one api process per Docker daemon</b> — a
+    /// second replica sharing the daemon would have its own database and would reclaim the first's
+    /// containers. Multiple api instances need an instance id in the label before either sweep is
+    /// safe.</para>
+    /// </summary>
+    public async Task<int> RemoveUnreferencedContainersAsync(
+        IReadOnlySet<string> referencedContainerIds, DateTime startedBefore, CancellationToken ct)
+    {
+        var containers = await _client.Containers.ListContainersAsync(new ContainersListParameters
+        {
+            All = true,
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["label"] = new Dictionary<string, bool> { ["praxy.site=true"] = true },
+            },
+        }, ct);
+
+        var removed = 0;
+        foreach (var container in containers)
+        {
+            if (referencedContainerIds.Contains(container.ID) || container.Created >= startedBefore)
+                continue;
+
+            try
+            {
+                // Force-remove rather than StopAndRemoveAsync, for the same reason the Functions
+                // sweep does: the graceful path spends WaitBeforeKillSeconds per container, which is
+                // right for one still serving a request and pointless for one nothing can route to.
+                // It also swallows its own failures, and the count returned here is logged as
+                // "reclaimed", so it has to mean containers that are actually gone.
+                await _client.Containers.RemoveContainerAsync(
+                    container.ID, new ContainerRemoveParameters { Force = true }, ct);
+                removed++;
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                // Already gone. Not an error, and not something this process reclaimed.
+            }
+            catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                // "removal already in progress" — a previous shutdown's own cleanup still settling.
+                // Must not abort the loop, or one contended container leaves every orphan after it.
+            }
+        }
+        return removed;
+    }
+
+    /// <summary>
     /// How many currently-running containers carry a given Docker label (<c>key=value</c>) — a real
     /// <c>Docker.DotNet</c> query, kept here so test code (e.g. <c>SiteTests</c>' preview-container
     /// assertions) never needs to shell out to a raw <c>docker ps</c> CLI, matching this class's own

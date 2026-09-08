@@ -33,6 +33,24 @@ public static class CatalogMigrator
         {
             using var scope = services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PraxyDb>();
+
+            // Migrations run on the same pool as the data plane, whose connection string carries a
+            // default statement_timeout (Program.cs). That timeout bounds *request* work; a
+            // migration is not request work, and cancelling one is not a graceful degradation —
+            // this runs before the server accepts traffic, so a cancelled statement means the
+            // instance fails to start at all. A schema creation on a fresh database, or a backfill
+            // over a table that has grown since the migration was written, can legitimately outlast
+            // a request-shaped budget. So the migration connection opts out for its own session,
+            // the same way SchemaJobRunner already raises it for long index builds; Npgsql resets
+            // session state when the connection returns to the pool, so nothing else inherits it.
+            //
+            // The tradeoff, stated plainly: an unbounded migration can hang startup (blocked on a
+            // lock, say) where the old behavior failed fast. Failing fast here meant failing the
+            // upgrade, which is the worse of the two — and the advisory lock above already
+            // serializes migrations cluster-wide.
+            await db.Database.OpenConnectionAsync(ct);
+            await db.Database.ExecuteSqlRawAsync("SET statement_timeout = 0", ct);
+
             var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
             if (pending.Count > 0)
             {
