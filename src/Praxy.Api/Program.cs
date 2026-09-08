@@ -410,6 +410,7 @@ try
         o.AddOperationTransformer<OpenApiErrorResponses>();
         o.AddDocumentTransformer<OpenApiErrorResponses>();
         o.AddDocumentTransformer<OpenApiServers>();
+        o.AddDocumentTransformer<OpenApiWireNullability>();
     });
 
     var app = builder.Build();

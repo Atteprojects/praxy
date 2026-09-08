@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./client";
+import { wireId } from "./ids";
 import type {
   Bucket, BucketList, BucketPermissions, ErrorEnvelope, FileDerivativeList, FilePermissions, InlineTypeList,
   StorageUsage, StoredFile, StoredFileList,
@@ -290,5 +291,5 @@ function parseEnvelope(request: XMLHttpRequest): ErrorEnvelope {
 }
 
 function fallbackEnvelope(message: string, code: number): ErrorEnvelope {
-  return { message, code, type: "general_server_error", version: "", requestId: "" };
+  return { message, code, type: "general_server_error", version: "", requestId: wireId("") };
 }

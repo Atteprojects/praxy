@@ -44,6 +44,10 @@ jobs:
               - '.github/workflows/ci.yml'
             console:
               - 'console/**'
+              # The console's generated API types are derived from this snapshot — a backend PR
+              # that changes it must still run the staleness check below, even when it touches no
+              # file under console/.
+              - 'docs/openapi/v1.json'
               - '.github/workflows/ci.yml'
             flutter:
               - 'sdk/flutter/**'
@@ -101,6 +105,14 @@ jobs:
       - name: Install
         if: needs.changes.outputs.console == 'true'
         run: npm ci --prefix console
+
+      # Mirrors OpenApiDocumentTests' snapshot check on the .NET side: regenerate from the
+      # committed docs/openapi/v1.json and fail if that doesn't match the committed generated
+      # output — "forgot to regenerate" fails here instead of shipping a console lying about the
+      # API it's built against.
+      - name: Check generated API types are current
+        if: needs.changes.outputs.console == 'true'
+        run: npm run check:api-types --prefix console
 
       - name: Build
         if: needs.changes.outputs.console == 'true'

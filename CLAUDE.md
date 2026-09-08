@@ -285,6 +285,32 @@ Filled in as phases land — keep this section current.
   rather than handing back a secret for the client to exchange. Sequence complete — see
   `docs/research/organizations.md`'s own phasing; a security-review-style pass over this new OAuth
   surface is a candidate next initiative, not yet scheduled.
+- Console/API contract (2026-09-07, `docs/handoff/console-api-contract-report.md`, one phase,
+  sequence complete): `console/src/api/types.ts` (897 hand-written lines) is now mostly a thin
+  re-export layer over `console/src/api/generated/schema.ts` — committed, generated from
+  `docs/openapi/v1.json` by `openapi-typescript`, never hand-edited. `npm run generate:api --prefix
+  console` regenerates it; `npm run check:api-types --prefix console` regenerates into the working
+  tree and `git diff --exit-code`s it against the committed copy — the CI gate, mirroring
+  `OpenApiDocumentTests`' own snapshot check, and also why the console CI job's path filter now
+  watches `docs/openapi/v1.json` in addition to `console/**` (a backend-only PR can make this
+  stale). `npm run build` never runs codegen, so the console still builds from a clean checkout with
+  no database and no network. Getting there needed two real backend fixes, both zero-wire-shape-
+  change: a new `OpenApiWireNullability` document transformer (`src/Praxy.Api/Infrastructure`)
+  correcting the OpenAPI document's nullability to match `Program.cs`'s `WhenWritingNull` (the
+  document said most fields were "present and possibly null"; the wire truth is "present-or-absent,
+  never null" — verified by reverting the fix and confirming a generator would reproduce PR #55's
+  exact bug), and `OrganizationMemberResponse.UserId` promoted `string` → `Guid` so the schema's
+  `format: "uuid"` correctly flags both of the API's two dashed-`Guid` ids (previously only
+  `ConsoleAccount.Id`) for the new `console/src/api/ids.ts` `WireId`/`GuidId` branded types to pick
+  up — closing the Organizations Phase 2 id-encoding-mismatch bug class at the type level. Also
+  fixed: two webhook endpoints' `.Produces<>()` annotations documented the wrong response shape
+  entirely (anonymous `{webhook, secret}`/`{delivery, payload, attempts}` objects declared as bare
+  `WebhookResponse`/`WebhookDeliveryResponse`) — replaced with real named DTOs,
+  `CreatedWebhookResponse`/`WebhookDeliveryDetailResponse`. One disclosed gap, not fixed here (a
+  real wire-shape question — a C# `enum`'s default JSON representation is its ordinal number, not
+  the strings already on the wire): several DTOs model an enum-like field as bare `string`, so
+  `docs/openapi/v1.json` can't express the closed set of values, and `types.ts` still hand-narrows
+  those few fields (`ColumnType`, every `*Status`, etc.), documented inline everywhere it happens.
 
 ## Session end — handoff protocol
 

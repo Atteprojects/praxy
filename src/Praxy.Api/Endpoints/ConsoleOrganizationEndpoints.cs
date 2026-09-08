@@ -22,14 +22,18 @@ public sealed record CreateOrganizationRequest(string Name);
 public sealed record UpdateOrganizationRequest(string Name);
 
 public sealed record OrganizationMemberResponse(
-    string UserId, string Email, string Name, string Role, bool Confirmed,
+    Guid UserId, string Email, string Name, string Role, bool Confirmed,
     DateTimeOffset? InvitedAt, DateTimeOffset CreatedAt)
 {
-    // UserId matches ConsoleAccount.Id's own (unconverted, dashed) Guid serialization — not
-    // Ids.Wire — so the console can compare a member row against /console/account's own id
-    // directly, string-for-string, to know "is this row me" without a second lookup.
+    // UserId is a plain Guid — matching ConsoleAccount.Id's own (unconverted, dashed) serialization,
+    // not Ids.Wire — so the console can compare a member row against /console/account's own id
+    // directly, string-for-string, to know "is this row me" without a second lookup. Typing it Guid
+    // rather than a pre-formatted string (as before) is what lets the OpenAPI document say so too
+    // (`format: uuid`) instead of looking identical to every Ids.Wire-encoded id in the schema —
+    // the console/API contract initiative's whole point. Same bytes on the wire either way:
+    // Guid.ToString() and System.Text.Json's default Guid converter both emit dashed lowercase.
     public static OrganizationMemberResponse From(OrganizationMemberWithAccount m) => new(
-        m.Member.UserId.ToString(), m.Account.Email, m.Account.Name, m.Member.Role, m.Member.Confirmed,
+        m.Member.UserId, m.Account.Email, m.Account.Name, m.Member.Role, m.Member.Confirmed,
         m.Member.InvitedAt, m.Member.CreatedAt);
 }
 

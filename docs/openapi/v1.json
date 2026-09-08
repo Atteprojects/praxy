@@ -7521,7 +7521,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookResponse"
+                  "$ref": "#/components/schemas/CreatedWebhookResponse"
                 }
               }
             }
@@ -7723,7 +7723,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WebhookDeliveryResponse"
+                  "$ref": "#/components/schemas/WebhookDeliveryDetailResponse"
                 }
               }
             }
@@ -13684,8 +13684,7 @@
       },
       "AcceptOrganizationInviteRequest": {
         "required": [
-          "secret",
-          "password"
+          "secret"
         ],
         "type": "object",
         "properties": {
@@ -13693,10 +13692,7 @@
             "type": "string"
           },
           "password": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -13728,8 +13724,6 @@
           "id",
           "name",
           "scopes",
-          "expiresAt",
-          "lastUsedAt",
           "bypassRowPermissions",
           "createdAt"
         ],
@@ -13748,17 +13742,11 @@
             }
           },
           "expiresAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "lastUsedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "bypassRowPermissions": {
@@ -13844,14 +13832,7 @@
             }
           },
           "prefs": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JsonNode"
-              }
-            ]
+            "$ref": "#/components/schemas/JsonNode"
           },
           "createdAt": {
             "type": "string",
@@ -13866,11 +13847,9 @@
       "AuditLogEntryResponse": {
         "required": [
           "id",
-          "projectId",
           "actor",
           "action",
           "resource",
-          "ip",
           "createdAt"
         ],
         "type": "object",
@@ -13879,10 +13858,7 @@
             "type": "string"
           },
           "projectId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "actor": {
             "type": "string"
@@ -13894,10 +13870,7 @@
             "type": "string"
           },
           "ip": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -13932,7 +13905,6 @@
         "required": [
           "emailPassword",
           "googleEnabled",
-          "googleClientId",
           "googleClientSecretSet",
           "sessionLimit",
           "passwordMinLength"
@@ -13946,10 +13918,7 @@
             "type": "boolean"
           },
           "googleClientId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "googleClientSecretSet": {
             "type": "boolean"
@@ -14017,7 +13986,6 @@
           "enabled",
           "fileSecurity",
           "maxFileSizeBytes",
-          "allowedMimeTypes",
           "inlineTypes",
           "createdAt",
           "updatedAt"
@@ -14048,10 +14016,7 @@
             "format": "int64"
           },
           "allowedMimeTypes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -14141,9 +14106,7 @@
       "ClaimRequest": {
         "required": [
           "email",
-          "password",
-          "name",
-          "setupToken"
+          "password"
         ],
         "type": "object",
         "properties": {
@@ -14154,16 +14117,10 @@
             "type": "string"
           },
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "setupToken": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -14198,12 +14155,7 @@
           "type",
           "required",
           "array",
-          "size",
-          "default",
-          "elements",
-          "targetTableId",
           "status",
-          "error",
           "position",
           "createdAt",
           "updatedAt"
@@ -14231,45 +14183,28 @@
           "size": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "default": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JsonNode"
-              }
-            ]
+            "$ref": "#/components/schemas/JsonNode"
           },
           "elements": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "targetTableId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "status": {
             "type": "string"
           },
           "error": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "position": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -14379,30 +14314,16 @@
         }
       },
       "ConsoleAddMemberRequest": {
-        "required": [
-          "email",
-          "userId",
-          "roles"
-        ],
         "type": "object",
         "properties": {
           "email": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "userId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "roles": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -14422,9 +14343,7 @@
       },
       "ConsoleCreateUserRequest": {
         "required": [
-          "email",
-          "password",
-          "name"
+          "email"
         ],
         "type": "object",
         "properties": {
@@ -14432,16 +14351,10 @@
             "type": "string"
           },
           "password": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -14557,8 +14470,7 @@
       },
       "ConsoleUserRow": {
         "required": [
-          "user",
-          "lastActivityAt"
+          "user"
         ],
         "type": "object",
         "properties": {
@@ -14566,10 +14478,7 @@
             "$ref": "#/components/schemas/AppUserResponse"
           },
           "lastActivityAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -14577,9 +14486,7 @@
       "CreateApiKeyRequest": {
         "required": [
           "name",
-          "scopes",
-          "expiresAt",
-          "bypassRowPermissions"
+          "scopes"
         ],
         "type": "object",
         "properties": {
@@ -14593,28 +14500,18 @@
             }
           },
           "expiresAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "bypassRowPermissions": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
       "CreateBucketRequest": {
         "required": [
           "key",
-          "name",
-          "maxFileSizeBytes",
-          "allowedMimeTypes",
-          "fileSecurity",
-          "inlineTypes"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -14627,32 +14524,22 @@
           "maxFileSizeBytes": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int64"
           },
           "allowedMimeTypes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "fileSecurity": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "inlineTypes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -14661,13 +14548,7 @@
       },
       "CreateColumnRequest": {
         "required": [
-          "key",
-          "required",
-          "array",
-          "default",
-          "size",
-          "elements",
-          "targetTableId"
+          "key"
         ],
         "type": "object",
         "properties": {
@@ -14675,50 +14556,30 @@
             "type": "string"
           },
           "required": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "array": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "default": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JsonElement"
-              }
-            ]
+            "$ref": "#/components/schemas/JsonElement"
           },
           "size": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "elements": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "targetTableId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -14771,6 +14632,21 @@
           }
         }
       },
+      "CreatedWebhookResponse": {
+        "required": [
+          "webhook",
+          "secret"
+        ],
+        "type": "object",
+        "properties": {
+          "webhook": {
+            "$ref": "#/components/schemas/WebhookResponse"
+          },
+          "secret": {
+            "type": "string"
+          }
+        }
+      },
       "CreateFunctionFromTemplateRequest": {
         "required": [
           "templateKey",
@@ -14795,11 +14671,7 @@
           "key",
           "name",
           "runtime",
-          "entrypoint",
-          "timeoutSeconds",
-          "events",
-          "execute",
-          "schedule"
+          "entrypoint"
         ],
         "type": "object",
         "properties": {
@@ -14818,35 +14690,25 @@
           "timeoutSeconds": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "events": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "execute": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "schedule": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -14854,8 +14716,7 @@
         "required": [
           "key",
           "type",
-          "columns",
-          "orders"
+          "columns"
         ],
         "type": "object",
         "properties": {
@@ -14872,10 +14733,7 @@
             }
           },
           "orders": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -14883,15 +14741,11 @@
         }
       },
       "CreateJwtRequest": {
-        "required": [
-          "durationSeconds"
-        ],
         "type": "object",
         "properties": {
           "durationSeconds": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -14900,49 +14754,29 @@
         }
       },
       "CreateMembershipRequest": {
-        "required": [
-          "email",
-          "userId",
-          "roles",
-          "url"
-        ],
         "type": "object",
         "properties": {
           "email": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "userId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "roles": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "url": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
       "CreateMessageRequest": {
         "required": [
           "subject",
-          "body",
-          "topicIds",
-          "userIds"
+          "body"
         ],
         "type": "object",
         "properties": {
@@ -14953,19 +14787,13 @@
             "type": "string"
           },
           "topicIds": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "userIds": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -14986,8 +14814,7 @@
       "CreatePlatformRequest": {
         "required": [
           "type",
-          "name",
-          "hostname"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -14998,18 +14825,13 @@
             "type": "string"
           },
           "hostname": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
       "CreateProjectRequest": {
         "required": [
-          "name",
-          "projectId",
-          "organizationId"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -15017,16 +14839,10 @@
             "type": "string"
           },
           "projectId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "organizationId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -15036,11 +14852,8 @@
           "name",
           "host",
           "port",
-          "username",
           "from",
-          "useTls",
-          "secret",
-          "isDefault"
+          "useTls"
         ],
         "type": "object",
         "properties": {
@@ -15062,10 +14875,7 @@
             "format": "int32"
           },
           "username": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "from": {
             "type": "string"
@@ -15074,41 +14884,27 @@
             "type": "boolean"
           },
           "secret": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "isDefault": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
       "CreateRowRequest": {
         "required": [
-          "rowId",
-          "data",
-          "permissions"
+          "data"
         ],
         "type": "object",
         "properties": {
           "rowId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "data": {
             "$ref": "#/components/schemas/JsonElement"
           },
           "permissions": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -15129,8 +14925,7 @@
       "CreateSiteRequest": {
         "required": [
           "key",
-          "name",
-          "rootDirectory"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -15141,10 +14936,7 @@
             "type": "string"
           },
           "rootDirectory": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -15165,8 +14957,7 @@
       },
       "CreateTeamRequest": {
         "required": [
-          "name",
-          "roles"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -15174,10 +14965,7 @@
             "type": "string"
           },
           "roles": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -15187,8 +14975,7 @@
       "CreateTopicRequest": {
         "required": [
           "key",
-          "name",
-          "description"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -15199,10 +14986,7 @@
             "type": "string"
           },
           "description": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -15306,10 +15090,7 @@
             "type": "string"
           },
           "fields": {
-            "type": [
-              "null",
-              "object"
-            ],
+            "type": "object",
             "additionalProperties": {
               "type": "array",
               "items": {
@@ -15357,7 +15138,6 @@
           "width",
           "height",
           "format",
-          "quality",
           "gravity",
           "mimeType",
           "sizeBytes",
@@ -15390,7 +15170,6 @@
           "quality": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -15568,15 +15347,9 @@
           "status",
           "sourceSizeBytes",
           "source",
-          "commitSha",
-          "commitMessage",
-          "branch",
           "buildLog",
-          "error",
-          "imageTag",
           "createdAt",
-          "updatedAt",
-          "activatedAt"
+          "updatedAt"
         ],
         "type": "object",
         "properties": {
@@ -15598,37 +15371,22 @@
             "type": "string"
           },
           "commitSha": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "commitMessage": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "branch": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "buildLog": {
             "type": "string"
           },
           "error": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "imageTag": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -15639,10 +15397,7 @@
             "format": "date-time"
           },
           "activatedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -15722,15 +15477,9 @@
           "status",
           "method",
           "path",
-          "statusCode",
-          "responseBody",
           "logs",
-          "errors",
-          "durationMs",
           "coldStart",
-          "triggeredBy",
-          "createdAt",
-          "completedAt"
+          "createdAt"
         ],
         "type": "object",
         "properties": {
@@ -15755,31 +15504,23 @@
           "statusCode": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "responseBody": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "logs": {
             "type": "string"
           },
           "errors": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "durationMs": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -15789,20 +15530,14 @@
             "type": "boolean"
           },
           "triggeredBy": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
             "format": "date-time"
           },
           "completedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -15855,12 +15590,7 @@
           "enabled",
           "events",
           "execute",
-          "schedule",
-          "nextScheduledRunAt",
-          "activeDeploymentId",
           "isWarm",
-          "repositoryFullName",
-          "productionBranch",
           "platformScopes",
           "createdAt",
           "updatedAt"
@@ -15906,38 +15636,23 @@
             }
           },
           "schedule": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "nextScheduledRunAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "activeDeploymentId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "isWarm": {
             "type": "boolean"
           },
           "repositoryFullName": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "productionBranch": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "platformScopes": {
             "type": "array",
@@ -16004,8 +15719,7 @@
           "name",
           "description",
           "runtime",
-          "entrypoint",
-          "defaultSchedule"
+          "entrypoint"
         ],
         "type": "object",
         "properties": {
@@ -16025,10 +15739,7 @@
             "type": "string"
           },
           "defaultSchedule": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -16052,7 +15763,6 @@
           "id",
           "provider",
           "providerUid",
-          "providerEmail",
           "createdAt"
         ],
         "type": "object",
@@ -16067,10 +15777,7 @@
             "type": "string"
           },
           "providerEmail": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -16110,7 +15817,6 @@
           "columns",
           "orders",
           "status",
-          "error",
           "createdAt",
           "updatedAt"
         ],
@@ -16144,10 +15850,7 @@
             "type": "string"
           },
           "error": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -16176,7 +15879,6 @@
       "InviteOrganizationMemberRequest": {
         "required": [
           "email",
-          "role",
           "url"
         ],
         "type": "object",
@@ -16185,10 +15887,7 @@
             "type": "string"
           },
           "role": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "url": {
             "type": "string"
@@ -16196,30 +15895,16 @@
         }
       },
       "InvokeFunctionRequest": {
-        "required": [
-          "method",
-          "path",
-          "body"
-        ],
         "type": "object",
         "properties": {
           "method": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "path": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "body": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -16285,9 +15970,7 @@
           "userEmail",
           "userName",
           "roles",
-          "confirmed",
-          "invitedAt",
-          "joinedAt"
+          "confirmed"
         ],
         "type": "object",
         "properties": {
@@ -16316,17 +15999,11 @@
             "type": "boolean"
           },
           "invitedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "joinedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -16381,8 +16058,7 @@
           "status",
           "topicIds",
           "userIds",
-          "createdAt",
-          "completedAt"
+          "createdAt"
         ],
         "type": "object",
         "properties": {
@@ -16418,10 +16094,7 @@
             "format": "date-time"
           },
           "completedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -16431,8 +16104,6 @@
           "id",
           "identifier",
           "status",
-          "error",
-          "deliveredAt",
           "createdAt"
         ],
         "type": "object",
@@ -16447,16 +16118,10 @@
             "type": "string"
           },
           "error": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "deliveredAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "createdAt": {
@@ -16497,7 +16162,6 @@
           "isDefault",
           "host",
           "port",
-          "username",
           "from",
           "useTls",
           "hasSecret",
@@ -16533,10 +16197,7 @@
             "format": "int32"
           },
           "username": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "from": {
             "type": "string"
@@ -16669,7 +16330,6 @@
           "id",
           "key",
           "name",
-          "description",
           "subscriberCount",
           "createdAt",
           "updatedAt"
@@ -16686,10 +16346,7 @@
             "type": "string"
           },
           "description": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "subscriberCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -16762,13 +16419,13 @@
           "name",
           "role",
           "confirmed",
-          "invitedAt",
           "createdAt"
         ],
         "type": "object",
         "properties": {
           "userId": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "email": {
             "type": "string"
@@ -16783,10 +16440,7 @@
             "type": "boolean"
           },
           "invitedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "createdAt": {
@@ -16867,7 +16521,6 @@
           "id",
           "type",
           "name",
-          "hostname",
           "createdAt"
         ],
         "type": "object",
@@ -16882,10 +16535,7 @@
             "type": "string"
           },
           "hostname": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -16920,8 +16570,6 @@
         "required": [
           "id",
           "name",
-          "organizationId",
-          "lastPingAt",
           "createdAt"
         ],
         "type": "object",
@@ -16933,16 +16581,10 @@
             "type": "string"
           },
           "organizationId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "lastPingAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "createdAt": {
@@ -17137,8 +16779,7 @@
       "ResolvedRolesResponse": {
         "required": [
           "roles",
-          "principal",
-          "scopes"
+          "principal"
         ],
         "type": "object",
         "properties": {
@@ -17152,10 +16793,7 @@
             "type": "string"
           },
           "scopes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -17164,7 +16802,6 @@
       },
       "RowListResponse": {
         "required": [
-          "total",
           "rows"
         ],
         "type": "object",
@@ -17172,7 +16809,6 @@
           "total": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -17213,12 +16849,9 @@
         "required": [
           "id",
           "databaseId",
-          "tableId",
-          "indexId",
           "kind",
           "status",
           "attempts",
-          "error",
           "startedAt",
           "createdAt",
           "updatedAt"
@@ -17232,16 +16865,10 @@
             "type": "string"
           },
           "tableId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "indexId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "kind": {
             "type": "string"
@@ -17258,10 +16885,7 @@
             "format": "int32"
           },
           "error": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "startedAt": {
             "type": "string",
@@ -17305,9 +16929,7 @@
       },
       "ServerCreateUserRequest": {
         "required": [
-          "email",
-          "password",
-          "name"
+          "email"
         ],
         "type": "object",
         "properties": {
@@ -17315,16 +16937,10 @@
             "type": "string"
           },
           "password": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -17356,8 +16972,6 @@
           "id",
           "userId",
           "provider",
-          "ip",
-          "userAgent",
           "current",
           "expiresAt",
           "createdAt"
@@ -17374,16 +16988,10 @@
             "type": "string"
           },
           "ip": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "userAgent": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "current": {
             "type": "boolean"
@@ -17438,8 +17046,7 @@
       "SignupRequest": {
         "required": [
           "email",
-          "password",
-          "name"
+          "password"
         ],
         "type": "object",
         "properties": {
@@ -17450,10 +17057,7 @@
             "type": "string"
           },
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -17486,16 +17090,9 @@
           "status",
           "sourceSizeBytes",
           "source",
-          "commitSha",
-          "commitMessage",
-          "branch",
           "buildLog",
-          "error",
-          "imageTag",
-          "previewUrl",
           "createdAt",
-          "updatedAt",
-          "activatedAt"
+          "updatedAt"
         ],
         "type": "object",
         "properties": {
@@ -17517,43 +17114,25 @@
             "type": "string"
           },
           "commitSha": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "commitMessage": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "branch": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "buildLog": {
             "type": "string"
           },
           "error": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "imageTag": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "previewUrl": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -17564,10 +17143,7 @@
             "format": "date-time"
           },
           "activatedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -17600,8 +17176,7 @@
           "id",
           "hostname",
           "status",
-          "createdAt",
-          "verifiedAt"
+          "createdAt"
         ],
         "type": "object",
         "properties": {
@@ -17619,10 +17194,7 @@
             "format": "date-time"
           },
           "verifiedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -17780,11 +17352,8 @@
           "name",
           "rootDirectory",
           "enabled",
-          "activeDeploymentId",
           "isRunning",
           "publicUrl",
-          "repositoryFullName",
-          "productionBranch",
           "createdAt",
           "updatedAt"
         ],
@@ -17806,10 +17375,7 @@
             "type": "boolean"
           },
           "activeDeploymentId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "isRunning": {
             "type": "boolean"
@@ -17818,16 +17384,10 @@
             "type": "string"
           },
           "repositoryFullName": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "productionBranch": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -18038,44 +17598,23 @@
         }
       },
       "UpdateAuthSettingsRequest": {
-        "required": [
-          "emailPassword",
-          "googleEnabled",
-          "googleClientId",
-          "googleClientSecret",
-          "sessionLimit",
-          "passwordMinLength"
-        ],
         "type": "object",
         "properties": {
           "emailPassword": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "googleEnabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "googleClientId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "googleClientSecret": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "sessionLimit": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -18084,7 +17623,6 @@
           "passwordMinLength": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
@@ -18107,57 +17645,33 @@
         }
       },
       "UpdateBucketRequest": {
-        "required": [
-          "name",
-          "enabled",
-          "maxFileSizeBytes",
-          "allowedMimeTypes",
-          "fileSecurity",
-          "inlineTypes"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "enabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "maxFileSizeBytes": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int64"
           },
           "allowedMimeTypes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "fileSecurity": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "inlineTypes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -18165,23 +17679,13 @@
         }
       },
       "UpdateColumnRequest": {
-        "required": [
-          "key",
-          "required"
-        ],
         "type": "object",
         "properties": {
           "key": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "required": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
@@ -18211,88 +17715,50 @@
         }
       },
       "UpdateFileRequest": {
-        "required": [
-          "name"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
       "UpdateFunctionRequest": {
-        "required": [
-          "name",
-          "entrypoint",
-          "timeoutSeconds",
-          "events",
-          "execute",
-          "schedule",
-          "enabled",
-          "platformScopes"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "entrypoint": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "timeoutSeconds": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "events": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "execute": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "schedule": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "enabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "platformScopes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -18348,8 +17814,7 @@
       },
       "UpdatePasswordRequest": {
         "required": [
-          "password",
-          "oldPassword"
+          "password"
         ],
         "type": "object",
         "properties": {
@@ -18357,10 +17822,7 @@
             "type": "string"
           },
           "oldPassword": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -18387,107 +17849,53 @@
         }
       },
       "UpdateProviderRequest": {
-        "required": [
-          "name",
-          "host",
-          "port",
-          "username",
-          "from",
-          "useTls",
-          "secret",
-          "clearSecret",
-          "enabled",
-          "isDefault"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "host": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "port": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "username": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "from": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "useTls": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "secret": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "clearSecret": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "enabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "isDefault": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
       "UpdateRowRequest": {
-        "required": [
-          "data",
-          "permissions"
-        ],
         "type": "object",
         "properties": {
           "data": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JsonElement"
-              }
-            ]
+            "$ref": "#/components/schemas/JsonElement"
           },
           "permissions": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -18495,51 +17903,27 @@
         }
       },
       "UpdateSiteRequest": {
-        "required": [
-          "name",
-          "rootDirectory",
-          "enabled"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "rootDirectory": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "enabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
       "UpdateTablePermissionsRequest": {
-        "required": [
-          "rowSecurity",
-          "permissions"
-        ],
         "type": "object",
         "properties": {
           "rowSecurity": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           },
           "permissions": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
@@ -18547,23 +17931,13 @@
         }
       },
       "UpdateTableRequest": {
-        "required": [
-          "name",
-          "enabled"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "enabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
@@ -18579,23 +17953,13 @@
         }
       },
       "UpdateTopicRequest": {
-        "required": [
-          "name",
-          "description"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "description": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           }
         }
       },
@@ -18669,40 +18033,22 @@
         }
       },
       "UpdateWebhookRequest": {
-        "required": [
-          "name",
-          "url",
-          "events",
-          "enabled"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "url": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "events": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string"
             }
           },
           "enabled": {
-            "type": [
-              "null",
-              "boolean"
-            ]
+            "type": "boolean"
           }
         }
       },
@@ -18773,6 +18119,71 @@
           }
         }
       },
+      "WebhookDeliveryAttemptResponse": {
+        "required": [
+          "attemptNumber",
+          "startedAt",
+          "durationMs"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "statusCode": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "responseBody": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookDeliveryDetailResponse": {
+        "required": [
+          "delivery",
+          "attempts"
+        ],
+        "type": "object",
+        "properties": {
+          "delivery": {
+            "$ref": "#/components/schemas/WebhookDeliveryResponse"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/JsonNode"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookDeliveryAttemptResponse"
+            }
+          }
+        }
+      },
       "WebhookDeliveryListResponse": {
         "required": [
           "total",
@@ -18804,10 +18215,6 @@
           "status",
           "attempts",
           "nextAttemptAt",
-          "lastAttemptAt",
-          "lastStatusCode",
-          "lastError",
-          "redeliveredFromId",
           "createdAt"
         ],
         "type": "object",
@@ -18837,32 +18244,22 @@
             "format": "date-time"
           },
           "lastAttemptAt": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "lastStatusCode": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
-              "null",
               "integer",
               "string"
             ],
             "format": "int32"
           },
           "lastError": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "redeliveredFromId": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -18900,7 +18297,6 @@
           "url",
           "events",
           "enabled",
-          "disabledReason",
           "consecutiveFailures",
           "createdAt",
           "updatedAt"
@@ -18926,10 +18322,7 @@
             "type": "boolean"
           },
           "disabledReason": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "consecutiveFailures": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",

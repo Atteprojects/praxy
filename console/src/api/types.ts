@@ -1,117 +1,82 @@
 /**
- * Wire shapes for the Praxy API.
+ * Wire shapes for the Praxy API — generated from `docs/openapi/v1.json`, not hand-written.
  *
- * **Optional (`foo?: T`) here means "the server may omit this key", never "the server may send
- * `null`".** `Program.cs` configures minimal-API serialization with
- * `DefaultIgnoreCondition = WhenWritingNull`, so a DTO property whose value is null is dropped from
- * the JSON entirely — it arrives `undefined`. Nothing in this file is modelled `| null`, and that is
- * deliberate: a `foo === null` guard against one of these fields is dead code that silently never
- * fires, which is exactly how the Storage screens shipped
- * "Cannot read properties of undefined (reading 'join')" (PR #55).
+ * `console/scripts/generate-api-types.mjs` produces `./generated/schema.ts` (committed, regenerate
+ * with `npm run generate:api`, verified current in CI by `npm run check:api-types`). Everything below
+ * is a thin, hand-maintained re-export layer over that generated file: mostly direct aliases, plus a
+ * handful of deliberate narrowings recorded inline where the schema can't express them. See
+ * `docs/research/console-api-contract.md` and `docs/handoff/console-api-contract-report.md` for why
+ * this file used to be 897 lines of hand-modeled shapes and isn't anymore.
  *
- * Note that TypeScript will *not* flag `foo === null` on an optional field — it exempts null and
- * undefined literals from its no-overlap check — so the compiler only catches the dereference half
- * of the mistake (TS18048), not the guard half. Use `== null` when you mean "absent or null".
+ * **Optional (`foo?: T`) here still means "the server may omit this key", never "the server may send
+ * `null`"** — `Program.cs` configures `DefaultIgnoreCondition = WhenWritingNull`, so a null-valued
+ * property is dropped from the JSON entirely rather than sent as `null`. That used to be a fact this
+ * file's authors had to remember by hand; it's now enforced by `OpenApiWireNullability`
+ * (`src/Praxy.Api/Infrastructure`), which corrects the OpenAPI document itself before generation ever
+ * sees it. `foo === null` against an optional field here is exactly as dead as it always was — the
+ * type system just backs that up now instead of relying on the header comment this replaced.
  *
- * The one exception is dynamic row data: a null column value in `Row` is a real, present `null`,
- * because `JsonNode` contents are written verbatim and bypass `WhenWritingNull`. `Row` models
- * column values as `unknown` for that reason.
+ * **Ids are branded.** A `WireId` (32 lowercase hex, `Ids.Wire` on the server) and a `GuidId` (a plain
+ * dashed `Guid` — today only `ConsoleAccount.id` and `OrganizationMember.userId`) are both real
+ * strings at runtime but distinct, incompatible types — see `./ids.ts`. Comparing or assigning across
+ * the two is a compile error, which is what Organizations Phase 2 needed and didn't have: a wire id
+ * compared against a dashed guid to answer "is this row me?", silently never matching.
+ *
+ * **Row data is the one deliberate exception to all of the above.** A null column value in `Row` is a
+ * real, present `null` — `JsonObject` contents are copied verbatim and bypass `WhenWritingNull` — so
+ * the generator maps it to `Record<string, unknown>` rather than treating it as another optional-field
+ * case. `Row` itself has no backing schema (its shape is dynamic — one property per column) and stays
+ * hand-written below.
  */
 
-export interface ErrorEnvelope {
-  message: string;
-  code: number;
-  type: string;
-  version: string;
-  requestId: string;
-  fields?: Record<string, string[]>;
-}
+import type { components } from "./generated/schema.ts";
 
-export interface Capabilities {
-  version: string;
-  claimed: boolean;
-  setupTokenRequired: boolean;
-  googleOAuthEnabled: boolean;
-  features: {
-    auth: boolean;
-    databases: boolean;
-    realtime: boolean;
-    messaging: boolean;
-    functions: boolean;
-    webhooks: boolean;
-    sites: boolean;
-    storage: boolean;
-  };
-}
+type Schemas = components["schemas"];
 
-export interface Account {
-  id: string;
-  email: string;
-  name: string;
-  createdAt: string;
-}
+export type ErrorEnvelope = Schemas["ErrorEnvelope"];
 
-export interface Organization {
-  id: string;
-  name: string;
-  /** The caller's own role in this organization — not a property of the organization itself. */
+export type Capabilities = Schemas["CapabilitiesResponse"];
+
+export type Account = Schemas["ConsoleAccount"];
+
+/**
+ * `role` is modelled as a bare `string` in the schema — `OrganizationResponse.Role` is a plain C#
+ * `string` parameter, not an enum type, so there's nothing for the generator to narrow. Narrowed by
+ * hand here since the server only ever sends one of these two values.
+ */
+export type Organization = Omit<Schemas["OrganizationResponse"], "role"> & {
   role: "owner" | "member";
-  createdAt: string;
-}
+};
 
 export interface OrganizationList {
   total: number;
   organizations: Organization[];
 }
 
-export interface OrganizationMember {
-  userId: string;
-  email: string;
-  name: string;
+/** See `Organization.role` above — same schema limitation, same narrowing. */
+export type OrganizationMember = Omit<Schemas["OrganizationMemberResponse"], "role"> & {
   role: "owner" | "member";
-  confirmed: boolean;
-  invitedAt?: string;
-  createdAt: string;
-}
+};
 
 export interface OrganizationMemberList {
   total: number;
   members: OrganizationMember[];
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  organizationId?: string;
-  lastPingAt?: string;
-  createdAt: string;
-}
+export type Project = Schemas["ProjectResponse"];
 
-export interface CreateProjectInput {
-  name: string;
-  /** Required once an operator belongs to more than one organization — the server only guesses when it's unambiguous. */
-  organizationId: string;
-  projectId?: string;
-}
+export type CreateProjectInput = Schemas["CreateProjectRequest"];
 
-export interface ProjectList {
-  total: number;
-  projects: Project[];
-}
+export type ProjectList = Schemas["ProjectListResponse"];
 
 // ---- Phase 1: auth ----
 
-export interface AppUser {
-  id: string;
-  email: string;
-  name: string;
-  emailVerified: boolean;
-  status: boolean;
-  labels: string[];
+/** `prefs` is redeclared `Record<string, unknown>` rather than the generated `unknown` — it's always
+ *  a JSON object in practice (`AppUserResponse.From` never lets it be anything else), and callers
+ *  index into it by key. */
+export type AppUser = Omit<Schemas["AppUserResponse"], "prefs"> & {
   prefs: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
+};
 
 export interface UserListEntry {
   user: AppUser;
@@ -123,170 +88,81 @@ export interface UserList {
   users: UserListEntry[];
 }
 
-export interface UserIdentity {
-  id: string;
-  provider: string;
-  providerUid: string;
-  providerEmail?: string;
-  createdAt: string;
-}
+export type UserIdentity = Schemas["IdentityResponse"];
 
 export interface UserDetail {
   user: AppUser;
   identities: UserIdentity[];
 }
 
-export interface AppSession {
-  id: string;
-  userId: string;
-  provider: string;
-  ip?: string;
-  userAgent?: string;
-  current: boolean;
-  expiresAt: string;
-  createdAt: string;
-}
+export type AppSession = Schemas["SessionResponse"];
 
-export interface SessionList {
-  total: number;
-  sessions: AppSession[];
-}
+export type SessionList = Schemas["SessionListResponse"];
 
-export interface Team {
-  id: string;
-  name: string;
-  memberCount: number;
-  createdAt: string;
-}
+export type Team = Schemas["TeamResponse"];
 
-export interface TeamList {
-  total: number;
-  teams: Team[];
-}
+export type TeamList = Schemas["TeamListResponse"];
 
-export interface Membership {
-  id: string;
-  teamId: string;
-  userId: string;
-  userEmail: string;
-  userName: string;
-  roles: string[];
-  confirmed: boolean;
-  invitedAt?: string;
-  joinedAt?: string;
-}
+export type Membership = Schemas["MembershipResponse"];
 
-export interface MembershipList {
-  total: number;
-  memberships: Membership[];
-}
+export type MembershipList = Schemas["MembershipListResponse"];
 
-export interface UserMembershipList {
-  total: number;
-  memberships: { membership: Membership; teamName: string }[];
-}
+export type UserMembershipList = Schemas["ConsoleMembershipListResponse"];
 
-export interface AuthSettings {
-  emailPassword: boolean;
-  googleEnabled: boolean;
-  googleClientId?: string;
-  googleClientSecretSet: boolean;
-  sessionLimit: number;
-  passwordMinLength: number;
-}
+export type AuthSettings = Schemas["AuthSettingsResponse"];
 
-export interface ApiKey {
-  id: string;
-  name: string;
-  scopes: string[];
-  expiresAt?: string;
-  lastUsedAt?: string;
-  bypassRowPermissions: boolean;
-  createdAt: string;
-}
+export type ApiKey = Schemas["ApiKeyResponse"];
 
-export interface ApiKeyList {
-  total: number;
-  keys: ApiKey[];
-}
+export type ApiKeyList = Schemas["ApiKeyListResponse"];
 
-export interface CreatedApiKey {
-  key: ApiKey;
-  secret: string;
-}
+export type CreatedApiKey = Schemas["CreatedApiKeyResponse"];
 
-export interface Platform {
-  id: string;
-  type: string;
-  name: string;
-  hostname?: string;
-  createdAt: string;
-}
+export type Platform = Schemas["PlatformResponse"];
 
-export interface PlatformList {
-  total: number;
-  platforms: Platform[];
-}
+export type PlatformList = Schemas["PlatformListResponse"];
 
 // ---- Phase 2: schema engine ----
 
-export interface Database {
-  id: string;
-  key: string;
-  name: string;
-  createdAt: string;
-}
+export type Database = Schemas["DatabaseResponse"];
 
-export interface DatabaseList {
-  total: number;
-  databases: Database[];
-}
+export type DatabaseList = Schemas["DatabaseListResponse"];
 
-export interface TableSchema {
-  id: string;
-  databaseId: string;
-  key: string;
-  name: string;
-  rowSecurity: boolean;
-  enabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type TableSchema = Schemas["TableResponse"];
 
-export interface TableList {
-  total: number;
-  tables: TableSchema[];
-}
+export type TableList = Schemas["TableListResponse"];
 
+/**
+ * `ColumnResponse.type`/`.status`, `IndexResponse.type`/`.status`, `SchemaJobResponse.status`, every
+ * `*DeploymentResponse.status`/`.source`, `FunctionExecutionResponse.trigger`/`.status`,
+ * `MessageResponse.status`, `MessageTargetResponse.status`, `SiteDomainResponse.status`, and
+ * `MessagingTemplateResponse.key` are all bare `string` in the schema for the same reason as
+ * `Organization.role` above: the C# DTOs declare these as `string`, not an enum type, so nothing in
+ * `docs/openapi/v1.json` records the closed set of values a client can rely on. Every union below is
+ * hand-maintained against the server code that actually produces these strings — this is exactly the
+ * kind of thing a future backend phase could close by switching these DTO properties to real C#
+ * enums, which `docs/handoff/console-api-contract-report.md` records as a finding, not fixed here
+ * (no wire-shape changes in this initiative). Losing one of these unions to a stale hand-edit is a
+ * real risk this file already carried before generation existed; the risk hasn't gone up, but it also
+ * didn't go away just because the rest of this file did.
+ */
 export const COLUMN_TYPES = [
   "string", "integer", "float", "boolean", "datetime", "email", "url", "ip", "enum", "relationship", "geo",
 ] as const;
 export type ColumnType = (typeof COLUMN_TYPES)[number];
 
-/** A `geo` column's value: `{"lat","lng"}`, never GeoJSON's own `[lng, lat]` array convention. */
+/** A `geo` column's value: `{"lat","lng"}`, never GeoJSON's own `[lng, lat]` array convention. Not a
+ *  named schema of its own — it only ever appears inside a `Row`'s dynamic column data. */
 export interface GeoPoint {
   lat: number;
   lng: number;
 }
 
-export interface ColumnSchema {
-  id: string;
-  tableId: string;
-  key: string;
+type SchemaEntityStatus = "available" | "processing" | "failed";
+
+export type ColumnSchema = Omit<Schemas["ColumnResponse"], "type" | "status"> & {
   type: ColumnType;
-  required: boolean;
-  array: boolean;
-  size?: number;
-  default: unknown;
-  elements?: string[];
-  /** Set only when type === "relationship": the target table's id. */
-  targetTableId?: string;
-  status: "available" | "processing" | "failed";
-  error?: string;
-  position: number;
-  createdAt: string;
-  updatedAt: string;
-}
+  status: SchemaEntityStatus;
+};
 
 export interface ColumnList {
   total: number;
@@ -296,42 +172,21 @@ export interface ColumnList {
 export const INDEX_TYPES = ["key", "unique", "fulltext", "spatial"] as const;
 export type IndexType = (typeof INDEX_TYPES)[number];
 
-export interface IndexSchema {
-  id: string;
-  tableId: string;
-  key: string;
+export type IndexSchema = Omit<Schemas["IndexResponse"], "type" | "status"> & {
   type: IndexType;
-  columns: string[];
-  orders: string[];
-  status: "available" | "processing" | "failed";
-  error?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+  status: SchemaEntityStatus;
+};
 
 export interface IndexList {
   total: number;
   indexes: IndexSchema[];
 }
 
-export interface TablePermissions {
-  rowSecurity: boolean;
-  permissions: string[];
-}
+export type TablePermissions = Schemas["TablePermissionsResponse"];
 
-export interface SchemaJob {
-  id: string;
-  databaseId: string;
-  tableId?: string;
-  indexId?: string;
-  kind: string;
+export type SchemaJob = Omit<Schemas["SchemaJobResponse"], "status"> & {
   status: "queued" | "processing" | "available" | "failed" | "cancelled";
-  attempts: number;
-  error?: string;
-  startedAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
+};
 
 export interface SchemaJobList {
   total: number;
@@ -340,7 +195,11 @@ export interface SchemaJobList {
 
 // ---- Phase 3: data plane ----
 
-/** A row's shape is dynamic (one property per column) plus the fixed `$`-prefixed system fields. */
+/**
+ * A row's shape is dynamic (one property per column) plus the fixed `$`-prefixed system fields, so
+ * unlike everything else in this file it has no backing named schema to alias — `RowListResponse`
+ * only says its rows are `JsonObject` (opaque `Record<string, unknown>`). Kept hand-written.
+ */
 export interface Row {
   $id: string;
   $tableId: string;
@@ -358,7 +217,8 @@ export interface RowList {
   rows: Row[];
 }
 
-/** One chip in the filter popover — mirrors the query DSL's `{method, attribute, values}` shape. */
+/** One chip in the filter popover — a client-side concept (the query DSL's wire format), not a
+ *  response shape, so it has no backing schema either. */
 export interface QueryFilter {
   method: string;
   attribute?: string;
@@ -367,58 +227,33 @@ export interface QueryFilter {
 
 // ---- Phase 6: webhooks ----
 
-export interface Webhook {
-  id: string;
-  name: string;
-  url: string;
-  events: string[];
-  enabled: boolean;
-  disabledReason?: string;
-  consecutiveFailures: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export type Webhook = Schemas["WebhookResponse"];
 
-export interface WebhookList {
-  total: number;
-  webhooks: Webhook[];
-}
+export type WebhookList = Schemas["WebhookListResponse"];
 
-export interface CreatedWebhook {
-  webhook: Webhook;
-  secret: string;
-}
+export type CreatedWebhook = Schemas["CreatedWebhookResponse"];
 
 export type WebhookDeliveryStatus = "queued" | "delivering" | "succeeded" | "failed";
 
-export interface WebhookDelivery {
-  id: string;
-  eventId: string;
-  eventType: string;
+export type WebhookDelivery = Omit<Schemas["WebhookDeliveryResponse"], "status"> & {
   status: WebhookDeliveryStatus;
-  attempts: number;
-  nextAttemptAt: string;
-  lastAttemptAt?: string;
-  lastStatusCode?: number;
-  lastError?: string;
-  redeliveredFromId?: string;
-  createdAt: string;
-}
+};
 
 export interface WebhookDeliveryList {
   total: number;
   deliveries: WebhookDelivery[];
 }
 
-export interface WebhookDeliveryAttempt {
-  attemptNumber: number;
-  startedAt: string;
-  durationMs: number;
-  statusCode?: number;
-  responseBody?: string;
-  error?: string;
-}
+export type WebhookDeliveryAttempt = Schemas["WebhookDeliveryAttemptResponse"];
 
+/**
+ * The endpoint backing this used to return an anonymous `{delivery, payload, attempts}` documented
+ * (wrongly) as a bare `WebhookDeliveryResponse` — `docs/handoff/console-api-contract-report.md`
+ * records it as a real finding, fixed at the source (`WebhookDeliveryDetailResponse`, a named DTO,
+ * same JSON either way) rather than worked around here. `delivery`/`attempts` are redeclared against
+ * this file's own narrowed `WebhookDelivery`/`WebhookDeliveryAttempt`, and `payload` as `unknown`
+ * (real, present JSON content — the raw stored event, not a WhenWritingNull-governed property).
+ */
 export interface WebhookDeliveryDetail {
   delivery: WebhookDelivery;
   payload: unknown;
@@ -430,76 +265,34 @@ export interface WebhookDeliveryDetail {
 export const FUNCTION_RUNTIMES = ["dart", "node"] as const;
 export type FunctionRuntime = (typeof FUNCTION_RUNTIMES)[number];
 
-export interface FunctionRuntimeInfo {
+export type FunctionRuntimeInfo = Omit<Schemas["FunctionRuntimeResponse"], "id"> & {
   id: FunctionRuntime;
-  baseImage: string;
-}
+};
 
 export interface FunctionRuntimeList {
   runtimes: FunctionRuntimeInfo[];
 }
 
-export interface PraxyFunction {
-  id: string;
-  key: string;
-  name: string;
+export type PraxyFunction = Omit<Schemas["FunctionResponse"], "runtime"> & {
   runtime: FunctionRuntime;
-  entrypoint: string;
-  timeoutSeconds: number;
-  enabled: boolean;
-  events: string[];
-  /** Roles allowed to invoke over the data plane. Empty = nobody (deny by default). */
-  execute: string[];
-  schedule?: string;
-  nextScheduledRunAt?: string;
-  activeDeploymentId?: string;
-  isWarm: boolean;
-  /** The connected GitHub repository, "owner/repo" (Functions git integration) — null until one is connected. Set together with productionBranch. */
-  repositoryFullName?: string;
-  /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a deployment that finishes ready without activating. Null until a repository is connected. */
-  productionBranch?: string;
-  /** ApiKeyScopes granted for schedule-/event-triggered executions, injected as PRAXY_FUNCTION_API_KEY. Empty = no platform credential (deny by default). */
-  platformScopes: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+};
 
 export interface FunctionList {
   total: number;
   functions: PraxyFunction[];
 }
 
-export interface FunctionEnvVar {
-  key: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type FunctionEnvVar = Schemas["FunctionEnvVarResponse"];
 
-export interface FunctionEnvVarList {
-  total: number;
-  vars: FunctionEnvVar[];
-}
+export type FunctionEnvVarList = Schemas["FunctionEnvVarListResponse"];
 
 export type FunctionDeploymentStatus = "queued" | "building" | "ready" | "failed";
 export type FunctionDeploymentSource = "upload" | "git";
 
-export interface FunctionDeployment {
-  id: string;
+export type FunctionDeployment = Omit<Schemas["FunctionDeploymentResponse"], "status" | "source"> & {
   status: FunctionDeploymentStatus;
-  sourceSizeBytes: number;
   source: FunctionDeploymentSource;
-  /** Set only for a "git" deployment — the pushed commit's full SHA. */
-  commitSha?: string;
-  commitMessage?: string;
-  /** Set only for a "git" deployment — the branch that was pushed to (may or may not be the function's production branch). */
-  branch?: string;
-  buildLog: string;
-  error?: string;
-  imageTag?: string;
-  createdAt: string;
-  updatedAt: string;
-  activatedAt?: string;
-}
+};
 
 export interface FunctionDeploymentList {
   total: number;
@@ -508,37 +301,19 @@ export interface FunctionDeploymentList {
 
 export type FunctionExecutionStatus = "waiting" | "processing" | "completed" | "failed";
 
-export interface FunctionExecution {
-  id: string;
+export type FunctionExecution = Omit<Schemas["FunctionExecutionResponse"], "trigger" | "status"> & {
   trigger: "http" | "event" | "schedule";
-  async: boolean;
   status: FunctionExecutionStatus;
-  method: string;
-  path: string;
-  statusCode?: number;
-  responseBody?: string;
-  logs: string;
-  errors?: string;
-  durationMs?: number;
-  coldStart: boolean;
-  triggeredBy?: string;
-  createdAt: string;
-  completedAt?: string;
-}
+};
 
 export interface FunctionExecutionList {
   total: number;
   executions: FunctionExecution[];
 }
 
-export interface FunctionTemplate {
-  key: string;
-  name: string;
-  description: string;
+export type FunctionTemplate = Omit<Schemas["FunctionTemplateResponse"], "runtime"> & {
   runtime: FunctionRuntime;
-  entrypoint: string;
-  defaultSchedule?: string;
-}
+};
 
 export interface FunctionTemplateList {
   templates: FunctionTemplate[];
@@ -551,62 +326,21 @@ export interface FunctionCreatedFromTemplate {
 
 // ---- Sites (post-v0.1.0): Next.js hosting ----
 
-export interface PraxySite {
-  id: string;
-  key: string;
-  name: string;
-  rootDirectory: string;
-  enabled: boolean;
-  activeDeploymentId?: string;
-  /** Whether the active deployment's container is actually running right now — distinct from the deployment's own "ready" status, which only means "buildable." */
-  isRunning: boolean;
-  publicUrl: string;
-  /** The connected GitHub repository, "owner/repo" (Sites Phase 4) — null until one is connected. Set together with productionBranch. */
-  repositoryFullName?: string;
-  /** A push to this branch of repositoryFullName builds and auto-activates; any other branch builds a preview-only deployment. Null until a repository is connected. */
-  productionBranch?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type PraxySite = Schemas["SiteResponse"];
 
-export interface SiteList {
-  total: number;
-  sites: PraxySite[];
-}
+export type SiteList = Schemas["SiteListResponse"];
 
-export interface SiteEnvVar {
-  key: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type SiteEnvVar = Schemas["SiteEnvVarResponse"];
 
-export interface SiteEnvVarList {
-  total: number;
-  vars: SiteEnvVar[];
-}
+export type SiteEnvVarList = Schemas["SiteEnvVarListResponse"];
 
 export type SiteDeploymentStatus = "queued" | "building" | "ready" | "failed";
 export type SiteDeploymentSource = "upload" | "git";
 
-export interface SiteDeployment {
-  id: string;
+export type SiteDeployment = Omit<Schemas["SiteDeploymentResponse"], "status" | "source"> & {
   status: SiteDeploymentStatus;
-  sourceSizeBytes: number;
   source: SiteDeploymentSource;
-  /** Set only for a "git" deployment — the pushed commit's full SHA. */
-  commitSha?: string;
-  commitMessage?: string;
-  /** Set only for a "git" deployment — the branch that was pushed to (may or may not be the site's production branch). */
-  branch?: string;
-  buildLog: string;
-  error?: string;
-  imageTag?: string;
-  /** This deployment's own preview URL — set once it's `ready`, regardless of whether it's the site's active deployment. Null before that. */
-  previewUrl?: string;
-  createdAt: string;
-  updatedAt: string;
-  activatedAt?: string;
-}
+};
 
 export interface SiteDeploymentList {
   total: number;
@@ -615,120 +349,51 @@ export interface SiteDeploymentList {
 
 export type SiteDomainStatus = "pending" | "verified";
 
-export interface SiteDomain {
-  id: string;
-  hostname: string;
+export type SiteDomain = Omit<Schemas["SiteDomainResponse"], "status"> & {
   status: SiteDomainStatus;
-  createdAt: string;
-  /** Set the moment the first request through this hostname is successfully proxied — proof Caddy's on-demand TLS actually issued a cert, not just that issuance was allowed. Null while still `pending`. */
-  verifiedAt?: string;
-}
+};
 
 export interface SiteDomainList {
   total: number;
   domains: SiteDomain[];
 }
 
-export interface SiteRequestLog {
-  id: string;
-  method: string;
-  path: string;
-  statusCode: number;
-  durationMs: number;
-  createdAt: string;
-}
+export type SiteRequestLog = Schemas["SiteRequestResponse"];
 
-export interface SiteRequestLogList {
-  total: number;
-  requests: SiteRequestLog[];
-}
+export type SiteRequestLogList = Schemas["SiteRequestListResponse"];
 
-export interface SiteGitBranches {
-  branches: string[];
-}
+export type SiteGitBranches = Schemas["SiteGitBranchesResponse"];
 
-export interface FunctionGitBranches {
-  branches: string[];
-}
+export type FunctionGitBranches = Schemas["FunctionGitBranchesResponse"];
 
 // ---- Sites Phase 4: Praxy.Vcs (instance-wide GitHub App integration) ----
 
-export interface GithubInstallation {
-  id: string;
-  installationId: number;
-  accountLogin: string;
-  accountType: string;
-  createdAt: string;
-}
+export type GithubInstallation = Schemas["VcsInstallationResponse"];
 
-export interface GithubInstallationList {
-  total: number;
-  installations: GithubInstallation[];
-}
+export type GithubInstallationList = Schemas["VcsInstallationListResponse"];
 
-export interface GithubInstallUrl {
-  url: string;
-}
+export type GithubInstallUrl = Schemas["VcsInstallUrlResponse"];
 
 // ---- Phase 8: messaging ----
 
-export interface MessagingProvider {
-  id: string;
-  type: string;
-  name: string;
-  enabled: boolean;
-  isDefault: boolean;
-  host: string;
-  port: number;
-  username?: string;
-  from: string;
-  useTls: boolean;
-  hasSecret: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export type MessagingProvider = Schemas["MessagingProviderResponse"];
 
-export interface MessagingProviderList {
-  total: number;
-  providers: MessagingProvider[];
-}
+export type MessagingProviderList = Schemas["MessagingProviderListResponse"];
 
-export interface MessagingTopic {
-  id: string;
-  key: string;
-  name: string;
-  description?: string;
-  subscriberCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export type MessagingTopic = Schemas["MessagingTopicResponse"];
 
-export interface MessagingTopicList {
-  total: number;
-  topics: MessagingTopic[];
-}
+export type MessagingTopicList = Schemas["MessagingTopicListResponse"];
 
-export interface MessagingSubscriber {
-  id: string;
-  userId: string;
-  email: string;
-  createdAt: string;
-}
+export type MessagingSubscriber = Schemas["MessagingSubscriberResponse"];
 
-export interface MessagingSubscriberList {
-  total: number;
-  subscribers: MessagingSubscriber[];
-}
+export type MessagingSubscriberList = Schemas["MessagingSubscriberListResponse"];
 
 export const AUTH_TEMPLATE_KEYS = ["verification", "recovery", "invitation"] as const;
 export type AuthTemplateKey = (typeof AUTH_TEMPLATE_KEYS)[number];
 
-export interface MessagingTemplate {
+export type MessagingTemplate = Omit<Schemas["MessagingTemplateResponse"], "key"> & {
   key: AuthTemplateKey;
-  subject: string;
-  body: string;
-  overridden: boolean;
-}
+};
 
 export interface MessagingTemplateList {
   templates: MessagingTemplate[];
@@ -736,17 +401,9 @@ export interface MessagingTemplateList {
 
 export type MessageStatus = "processing" | "completed";
 
-export interface PraxyMessage {
-  id: string;
-  type: string;
-  subject: string;
-  body: string;
+export type PraxyMessage = Omit<Schemas["MessageResponse"], "status"> & {
   status: MessageStatus;
-  topicIds: string[];
-  userIds: string[];
-  createdAt: string;
-  completedAt?: string;
-}
+};
 
 export interface MessageList {
   total: number;
@@ -755,14 +412,9 @@ export interface MessageList {
 
 export type MessageTargetStatus = "queued" | "sending" | "sent" | "failed";
 
-export interface MessageTarget {
-  id: string;
-  identifier: string;
+export type MessageTarget = Omit<Schemas["MessageTargetResponse"], "status"> & {
   status: MessageTargetStatus;
-  error?: string;
-  deliveredAt?: string;
-  createdAt: string;
-}
+};
 
 export interface MessageDetail {
   message: PraxyMessage;
@@ -772,126 +424,36 @@ export interface MessageDetail {
 // ---- Phase 9: quotas ----
 
 /** Usage vs. the effective limit (org override, else instance default) for this project. */
-export interface QuotaSnapshot {
-  projectsUsed: number;
-  projectsMax: number;
-  databasesUsed: number;
-  databasesMax: number;
-  busiestDatabaseTables: number;
-  tablesPerDatabaseMax: number;
-  busiestTableColumns: number;
-  columnsPerTableMax: number;
-  busiestTableIndexes: number;
-  indexesPerTableMax: number;
-  sitesUsed: number;
-  sitesMax: number;
-  bucketsUsed: number;
-  bucketsMax: number;
-  storageBytesUsed: number;
-  storageBytesMax: number;
-}
+export type QuotaSnapshot = Schemas["QuotaSnapshot"];
 
 // ---- Storage ----
 
-export interface Bucket {
-  id: string;
-  key: string;
-  name: string;
-  enabled: boolean;
-  /** On: files also carry their own grants, consulted when the bucket matrix doesn't already allow the action. */
-  fileSecurity: boolean;
-  maxFileSizeBytes: number;
-  /** Absent means any type is accepted — check with `== null`, not `=== null` (see the file header). */
-  allowedMimeTypes?: string[];
-  /** Types this bucket serves inline instead of as a download. Always present; empty means none. */
-  inlineTypes: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+export type Bucket = Schemas["BucketResponse"];
 
-export interface BucketList {
-  total: number;
-  buckets: Bucket[];
-}
+export type BucketList = Schemas["BucketListResponse"];
 
-export interface BucketPermissions {
-  permissions: string[];
-}
+export type BucketPermissions = Schemas["BucketPermissionsResponse"];
 
-export interface FilePermissions {
-  permissions: string[];
-}
+export type FilePermissions = Schemas["FilePermissionsResponse"];
 
 /** The types this build will serve inline — server-owned, so the console never hard-codes them. */
-export interface InlineTypeList {
-  types: string[];
-}
+export type InlineTypeList = Schemas["InlineTypeListResponse"];
 
-export interface StoredFile {
-  id: string;
-  bucketId: string;
-  name: string;
-  mimeType: string;
-  sizeBytes: number;
-  /** What this file was actually written with, not what config currently says. */
-  chunkSizeBytes: number;
-  chunkCount: number;
-  checksum: string;
-  createdAt: string;
-  updatedAt: string;
-  /**
-   * The file's own grants, same spelling and grammar as a row's. Empty whenever the bucket has
-   * `fileSecurity` off — nothing consults them then.
-   */
-  $permissions: string[];
-}
+export type StoredFile = Schemas["FileResponse"];
 
-export interface StoredFileList {
-  total: number;
-  files: StoredFile[];
-}
+export type StoredFileList = Schemas["FileListResponse"];
 
-export interface StorageUsage {
-  usedBytes: number;
-  maxBytes: number;
-  maxFileSizeBytes: number;
-}
+export type StorageUsage = Schemas["StorageUsageResponse"];
 
-/** Storage Phase 3: one cached image transform of a file — a representation of it, never a resource of its own. */
-export interface FileDerivative {
-  id: string;
-  width: number;
-  height: number;
-  format: string;
-  /** Absent for `png` — lossless, quality has no meaning. */
-  quality?: number;
-  /** The crop anchor — always present; `"center"` for an uncropped derivative is the real value, not a missing one. */
-  gravity: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: string;
-}
+export type FileDerivative = Schemas["FileDerivativeResponse"];
 
-export interface FileDerivativeList {
-  total: number;
-  totalBytes: number;
-  derivatives: FileDerivative[];
-}
+export type FileDerivativeList = Schemas["FileDerivativeListResponse"];
 
 // ---- Audit log ----
 
 /** Actor is opaque (`admin:<id>` or `key:<id>`) — no endpoint resolves it to a name. */
-export interface AuditLogEntry {
-  id: string;
-  projectId?: string;
-  actor: string;
-  action: string;
-  resource: string;
-  ip?: string;
-  createdAt: string;
-}
+export type AuditLogEntry = Schemas["AuditLogEntryResponse"];
 
-export interface AuditLogList {
-  total: number;
-  entries: AuditLogEntry[];
-}
+export type AuditLogList = Schemas["AuditLogListResponse"];
+
+export type { WireId, GuidId } from "./ids.ts";

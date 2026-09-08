@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
+import type { WireId } from "../api/ids";
 import { useCreateProject } from "../api/queries";
 import { ErrorNote, Field, Footer, Logo } from "../components/ui";
 
@@ -15,7 +16,7 @@ export function CreateProjectCard({
   organizationId,
   standalone = false,
 }: {
-  organizationId: string;
+  organizationId: WireId;
   standalone?: boolean;
 }) {
   const create = useCreateProject();

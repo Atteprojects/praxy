@@ -50,6 +50,22 @@ public sealed record WebhookListResponse(int Total, IReadOnlyList<WebhookRespons
 public sealed record WebhookDeliveryListResponse(
     int Total, IReadOnlyList<WebhookDeliveryResponse> Deliveries);
 
+/// <summary>
+/// The signing secret appears exactly once, on creation — no GET ever echoes it back. Named so the
+/// OpenAPI document can say so: the endpoint used to return an anonymous `new { webhook, secret }`
+/// documented as a bare <see cref="WebhookResponse"/>, which was simply wrong — a generator reading
+/// the document would never learn `secret` exists. Same JSON either way; this only names the shape.
+/// </summary>
+public sealed record CreatedWebhookResponse(WebhookResponse Webhook, string Secret);
+
+/// <summary>
+/// One delivery's full detail: the delivery itself, its raw event payload, and every attempt so far.
+/// Named for the same reason as <see cref="CreatedWebhookResponse"/> — the endpoint returned this
+/// anonymously while <c>.Produces&lt;WebhookDeliveryResponse&gt;()</c> claimed a bare delivery.
+/// </summary>
+public sealed record WebhookDeliveryDetailResponse(
+    WebhookDeliveryResponse Delivery, JsonNode? Payload, IReadOnlyList<WebhookDeliveryAttemptResponse> Attempts);
+
 public static class WebhookEndpoints
 {
     public static void Map(IEndpointRouteBuilder api)
@@ -61,7 +77,7 @@ public static class WebhookEndpoints
         admin.MapGet("", ListWebhooks)
             .Produces<WebhookListResponse>();
         admin.MapPost("", CreateWebhook)
-            .Produces<WebhookResponse>(StatusCodes.Status201Created);
+            .Produces<CreatedWebhookResponse>(StatusCodes.Status201Created);
         admin.MapGet("/{webhookId}", GetWebhook)
             .Produces<WebhookResponse>();
         admin.MapPatch("/{webhookId}", UpdateWebhook)
@@ -72,7 +88,7 @@ public static class WebhookEndpoints
         admin.MapGet("/{webhookId}/deliveries", ListDeliveries)
             .Produces<WebhookDeliveryListResponse>();
         admin.MapGet("/{webhookId}/deliveries/{deliveryId}", GetDelivery)
-            .Produces<WebhookDeliveryResponse>();
+            .Produces<WebhookDeliveryDetailResponse>();
         admin.MapPost("/{webhookId}/deliveries/{deliveryId}/redeliver", Redeliver)
             .Produces<WebhookDeliveryResponse>(StatusCodes.Status202Accepted);
     }
@@ -97,7 +113,7 @@ public static class WebhookEndpoints
         // The signing secret appears exactly once — here. No GET ever echoes it back.
         return Results.Created(
             $"/v1/console/projects/{project.Id}/webhooks/{Ids.Wire(subscription.Id)}",
-            new { webhook = WebhookResponse.From(subscription), secret });
+            new CreatedWebhookResponse(WebhookResponse.From(subscription), secret));
     }
 
     private static async Task<IResult> GetWebhook(
@@ -150,12 +166,10 @@ public static class WebhookEndpoints
         var subscription = await FindAsync(webhooks, project.Id, webhookId, ct);
         var delivery = await FindDeliveryAsync(deliveries, subscription.Id, deliveryId, ct);
         var attempts = await deliveries.ListAttemptsAsync(delivery.Id, ct);
-        return Results.Ok(new
-        {
-            delivery = WebhookDeliveryResponse.From(delivery),
-            payload = JsonNode.Parse(delivery.Payload),
-            attempts = attempts.Select(WebhookDeliveryAttemptResponse.From),
-        });
+        return Results.Ok(new WebhookDeliveryDetailResponse(
+            WebhookDeliveryResponse.From(delivery),
+            JsonNode.Parse(delivery.Payload),
+            [.. attempts.Select(WebhookDeliveryAttemptResponse.From)]));
     }
 
     private static async Task<IResult> Redeliver(
