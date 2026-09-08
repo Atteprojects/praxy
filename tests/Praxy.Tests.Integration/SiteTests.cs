@@ -237,6 +237,53 @@ public class SiteTests(PostgresContainerFixture pg) : AuthTestBase(pg)
     // ---- helpers ------------------------------------------------------------------------------
 
     /// <summary>
+    /// The redeploy that abandoned a container, at its source. <c>SitesService.ActivateAsync</c>
+    /// cleared the outgoing deployment's <c>container_id</c> unconditionally but stopped the
+    /// container only when the in-memory <see cref="Praxy.Sites.SiteContainerRegistry"/> still held
+    /// an entry for it — so a redeploy in a process that had never populated one left a container
+    /// running that nothing could reach (the column is the only way anything resolves a site
+    /// container) and nothing could stop (the id had just been erased).
+    ///
+    /// The registry is emptied by every restart, which is what this test reproduces: evicting the
+    /// entry is exactly the state an api process is in after starting up and not yet having
+    /// reconciled or served this site. Reverting the fix leaves v1's container running here.
+    /// </summary>
+    [Fact]
+    public async Task Redeploying_stops_the_outgoing_container_even_when_the_registry_has_forgotten_it()
+    {
+        var (operatorToken, projectId) = await SetupProjectAsync();
+        var siteId = await CreateSiteAsync(operatorToken, projectId, "swap");
+        var docker = Factory.Services.GetRequiredService<Praxy.Sites.SiteDockerExecutor>();
+        var registry = Factory.Services.GetRequiredService<Praxy.Sites.SiteContainerRegistry>();
+
+        var v1 = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildNextAppTar("v1"));
+        await WaitForDeploymentStatusAsync(operatorToken, projectId, siteId, v1, "ready");
+        await WaitForSiteActiveAsync(operatorToken, projectId, siteId, v1);
+
+        var v1Label = $"praxy.deployment={Guid.ParseExact(v1, "N")}";
+        Assert.Equal(1, await docker.CountRunningContainersAsync(v1Label, CancellationToken.None));
+
+        // What a restart does to the registry, without restarting the host: the row still records
+        // v1's container, nothing in memory does.
+        Assert.True(registry.TryRemove(Guid.ParseExact(v1, "N"), out _));
+
+        var v2 = await UploadDeploymentAsync(operatorToken, projectId, siteId, BuildNextAppTar("v2"));
+        await WaitForDeploymentStatusAsync(operatorToken, projectId, siteId, v2, "ready");
+        await WaitForSiteActiveAsync(operatorToken, projectId, siteId, v2);
+        Assert.Contains("praxy-site-v2", await GetSiteBodyAsync($"swap.{projectId}.sites.localhost"));
+
+        // The swap flips the DB pointer first and stops the outgoing container after, and that stop
+        // is a graceful one (WaitBeforeKillSeconds), so "the site is serving v2" is reached strictly
+        // before v1's container is gone — poll rather than assert instantly. Without the fix this
+        // deadline expires with the container still up, which is the failure this exists to catch.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTime.UtcNow < deadline
+               && await docker.CountRunningContainersAsync(v1Label, CancellationToken.None) > 0)
+            await Task.Delay(500);
+        Assert.Equal(0, await docker.CountRunningContainersAsync(v1Label, CancellationToken.None));
+    }
+
+    /// <summary>
     /// The leak this class's own DisposeAsync comment predicted, from the other direction. That
     /// cleanup is best-effort and needs an orderly shutdown; a killed run, or a redeploy whose
     /// previous container was never in the in-memory registry (<c>SitesService.ActivateAsync</c>

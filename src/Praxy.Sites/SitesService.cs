@@ -230,10 +230,29 @@ public sealed partial class SitesService(
 
         if (previousDeploymentId is { } prevId && prevId != deployment.Id)
         {
+            // Read the outgoing container's id before erasing it. The row is the durable record of
+            // which container a deployment is running; the registry is an in-memory cache of the
+            // same fact that every restart empties. Consulting only the registry meant a redeploy in
+            // a process that had never populated an entry for this site — the first redeploy after
+            // any restart, since SiteReconciler only adopts sites it has reconciled — cleared the
+            // column and then stopped nothing, abandoning a container in the same breath that made
+            // it unreachable: nothing resolves a site container except that column, and nothing else
+            // remembered the id. Found as 17 such containers on a dev machine and 2 in production.
+            var previousContainerId = await db.SiteDeployments
+                .Where(d => d.Id == prevId)
+                .Select(d => d.ContainerId)
+                .FirstOrDefaultAsync(ct);
+            if (registry.TryRemove(prevId, out var previousContainer))
+                previousContainerId ??= previousContainer.ContainerId;
+
+            // Ordering unchanged from when only the registry was consulted (clear, then stop), so
+            // none of the swap reasoning above moves. A crash in the gap still abandons a container,
+            // which is now SitePreviewSweeper's startup reclaim to catch — a second line of defence
+            // for the crash case, rather than the only one for the ordinary case.
             await db.SiteDeployments.Where(d => d.Id == prevId)
                 .ExecuteUpdateAsync(s => s.SetProperty(d => d.ContainerId, (string?)null), ct);
-            if (registry.TryRemove(prevId, out var previousContainer))
-                await docker.StopAndRemoveAsync(previousContainer.ContainerId, CancellationToken.None);
+            if (previousContainerId is not null)
+                await docker.StopAndRemoveAsync(previousContainerId, CancellationToken.None);
         }
 
         return deployment;

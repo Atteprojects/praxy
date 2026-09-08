@@ -323,7 +323,11 @@ Filled in as phases land — keep this section current.
   **one-api-process-per-Docker-daemon** assumption the Functions sweep already documents: running
   `dotnet test` on a machine that also runs a dev instance reclaims that instance's site containers,
   which `SiteReconciler` then restarts — the Functions sweep already clears its warm pool the same
-  way. No new configuration. Also: catalog migrations no longer run under the data plane's
+  way. No new configuration. The leak's *source* is fixed too: `SitesService.ActivateAsync` cleared
+  the outgoing deployment's `container_id` unconditionally but stopped the container only when the
+  in-memory registry happened to hold it, so **the first redeploy after any restart abandoned one** —
+  it now reads the recorded id before erasing it, and the startup reclaim is the second line of
+  defence for the crash case rather than the only one for the ordinary case. Also: catalog migrations no longer run under the data plane's
   `statement_timeout` (`CatalogMigrator` sets `statement_timeout = 0` for its own session, the way
   `SchemaJobRunner` already raises it for long index builds) — a migration is not request work, and
   being cancelled by a request-shaped budget means the instance fails to *start*, not that a request
