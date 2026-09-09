@@ -59,106 +59,6 @@
         }
       }
     },
-    "/v1/console/sessions/oauth2/{provider}": {
-      "get": {
-        "tags": [
-          "ConsoleOAuthEndpoints"
-        ],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Found"
-          },
-          "default": {
-            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limit exceeded (`general_rate_limit_exceeded`). Retry after the number of seconds in Retry-After; RateLimit-Limit/-Remaining/-Reset describe the bucket. Buckets partition on project plus caller identity, falling back to source address.",
-            "headers": {
-              "Retry-After": {
-                "description": "Seconds to wait before retrying.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "RateLimit-Limit": {
-                "description": "Requests permitted per window.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "RateLimit-Remaining": {
-                "description": "Requests left in the current window.",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "RateLimit-Reset": {
-                "description": "Seconds until the window resets.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/console/sessions/oauth2/callback/{provider}": {
-      "get": {
-        "tags": [
-          "ConsoleOAuthEndpoints"
-        ],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Found"
-          },
-          "default": {
-            "description": "Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/console/organizations/{organizationId}/members/{userId}/accept": {
       "post": {
         "tags": [
@@ -14042,7 +13942,6 @@
           "version",
           "claimed",
           "setupTokenRequired",
-          "googleOAuthEnabled",
           "features"
         ],
         "type": "object",
@@ -14054,9 +13953,6 @@
             "type": "boolean"
           },
           "setupTokenRequired": {
-            "type": "boolean"
-          },
-          "googleOAuthEnabled": {
             "type": "boolean"
           },
           "features": {
@@ -18347,9 +18243,6 @@
   "tags": [
     {
       "name": "Praxy.Api"
-    },
-    {
-      "name": "ConsoleOAuthEndpoints"
     },
     {
       "name": "ConsoleOrganizationEndpoints"

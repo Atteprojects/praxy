@@ -1,5 +1,9 @@
 # Session task — Organizations, Phase 3: operator OAuth
 
+
+> **Superseded 2026-09-08.** Operator Google sign-in was removed — see
+> `docs/handoff/console-oauth-removal-report.md` for why. Kept as the record of what was built.
+
 > **Status: shipped.** 2026-09-06 — see `docs/handoff/organizations-phase-3-report.md`. Last phase
 > in the Organizations sequence; no `organizations-phase-4-prompt.md` follows.
 

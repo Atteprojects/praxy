@@ -131,7 +131,6 @@ var are the same setting, standard ASP.NET Core config binding). The compose fil
 | `Praxy:TrustForwardedHeaders` (`PRAXY_TRUST_FORWARDED_HEADERS`) | `false` | Trust `X-Forwarded-For`/`-Proto` from the `https` profile's Caddy. Only enable alongside that profile — never if `api`'s port is also directly internet-reachable. |
 | `PRAXY_BIND` | `0.0.0.0` | Host interface `PRAXY_PORT` binds to. `up.sh` sets this to `127.0.0.1` whenever a domain is configured — the actual mechanism that keeps the plain-HTTP port off the public internet. |
 | `Praxy:Auth:SessionCacheSeconds` | 60 | In-memory session cache TTL. |
-| `Praxy:ConsoleAuth:Google:ClientId` / `ClientSecret` | unset | This instance's own Google OAuth client, for **console operator** sign-in — separate from a developer project's own Google credentials (set per-project on that project's Auth Settings screen, for that project's app users). Unset means the feature is off: the console never shows "Continue with Google" and the endpoint refuses with a clean, typed error. See [Operator Google sign-in](#operator-google-sign-in) below. |
 | `Praxy:Database:StatementTimeoutSeconds` | 30 | `statement_timeout` applied to every connection in the shared pool (Postgres-side, via the connection string's `Options`). DDL/schema-job connections `SET` their own longer value per session and are unaffected. |
 | `Praxy:Smtp:Host`/`Port`/`Username`/`Password`/`From`/`UseTls` | unset (logs instead) | Instance-wide fallback email transport — used for auth emails and Messaging sends on any project that hasn't configured its own provider. |
 | `Praxy:Smtp:AllowPrivateNetworkTargets` | `false` | Same shape as Webhooks' own flag below — an SMTP `Host` (instance-wide **or** a per-project Messaging provider) is otherwise blocked from resolving to a private/loopback/link-local address (SSRF guard). Set `true` if you run your own internal mail relay. |
@@ -195,36 +194,6 @@ UPDATE praxy.organizations SET limits = '{"maxDatabasesPerProject": 5}'::jsonb W
 
 Every project's current usage against its effective limit is visible in the console on that
 project's Overview page.
-
-## Operator Google sign-in
-
-Console operators (the people who administer this Praxy instance — not your app's own end users)
-can sign in with Google instead of a password once you set `Praxy:ConsoleAuth:Google:ClientId` and
-`ClientSecret`. This is separate from a developer project's own Google provider, which app users
-sign in with and which a project's own Auth Settings screen configures — operators have no project
-to hang credentials off of, so this is instance-wide config instead, the same shape as the
-[Git integration](#git-integration) GitHub App below.
-
-1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an
-   **OAuth client ID** of type "Web application".
-2. Add this instance's own origin plus the fixed callback path as an **authorized redirect URI**:
-   `https://<your-domain>/v1/console/sessions/oauth2/callback/google` (or
-   `http://localhost:5090/v1/console/sessions/oauth2/callback/google` for local/plain-HTTP use —
-   the console itself is served from the same origin as the API, so there is exactly one redirect
-   URI to register no matter how many browsers or devices operators sign in from).
-3. Set `Praxy:ConsoleAuth:Google:ClientId` and `Praxy:ConsoleAuth:Google:ClientSecret` (env vars
-   `Praxy__ConsoleAuth__Google__ClientId`/`ClientSecret`, or the equivalent in
-   `deploy/docker-compose.yml`'s `environment:` block for `api`) and restart.
-
-Once configured, "Continue with Google" appears everywhere the console already has a password
-option — the login screen, the very first claim, and accepting an organization invite — never in
-place of it (`CLAUDE.md`'s "minimal options everywhere"). Claiming the instance and accepting an
-invite both work via Google exactly as they do via password: the first Google sign-in on an
-unclaimed instance claims it (still gated by the setup token when `PRAXY_PUBLIC_URL` is set, same
-as the password claim); accepting an invite via Google links the identity instead of asking for a
-password. A **claimed** instance never creates a new operator from a Google sign-in on its own,
-though — Google only ever signs in an operator who already exists (via claim or an organization
-invite), the same closed-membership model the console already has.
 
 ## Functions and the Docker socket
 

@@ -263,28 +263,20 @@ Filled in as phases land — keep this section current.
   route's `auth-email` rate limit bounds outbound mail per window, this bounds the total. Also note
   **leaving your only organization is now reachable** (deliberate — self-removal is blocked only by
   the last-owner rule), so zero-organization is a real state the console handles rather than an error.
-- Organizations Phase 3 (2026-09-06, `docs/handoff/organizations-phase-3-report.md`, completing the
-  Organizations sequence): operator Google sign-in. **Not `OAuthService`** (that class is app-user-
-  and project-scoped by construction) — a new `ConsoleOAuthService` reuses only `IOAuthProvider`/
-  `GoogleOAuthProvider`. New instance-wide knob `Praxy:ConsoleAuth:Google:ClientId`/`ClientSecret`
-  (unset = feature off), unrelated to a developer project's own per-project Google credentials. An
-  operator's Google identity resolves in the existing `Identities` table scoped to
-  `ProjectId == Ids.ConsoleProjectId`, not a new table. **A claimed instance never auto-creates an
-  operator from a Google profile** — the biggest divergence from the app-user flow — Google sign-in
-  only ever resolves an operator created by claim or by an organization invite
-  (`console_oauth_account_not_found` otherwise); the very first Google sign-in on an *unclaimed*
-  instance claims it instead (through `ConsoleAuthService.ClaimResolvedUserAsync`, the atomic core
-  both claim doors now share), gated by the setup token exactly like the password door. Accepting an
-  organization invite via Google links the identity instead of asking for a password, gated by the
-  same secret-validation `OrganizationsService.ValidateInviteSecretAsync` the password door uses,
-  plus an extra check the OAuth door alone needs: the linked Google account's own verified email
-  must match the invited address. No caller-supplied success/failure redirect URL anywhere in this
-  flow (unlike the app-user OAuth flow) — the console is always same-origin with these endpoints, so
-  the callback always redirects to a fixed relative path (`/` on success; `/login` or
-  `/accept-invite?...` with `?oauthError=<type>` on failure) and sets the session cookie itself
-  rather than handing back a secret for the client to exchange. Sequence complete — see
-  `docs/research/organizations.md`'s own phasing; a security-review-style pass over this new OAuth
-  surface is a candidate next initiative, not yet scheduled.
+- Organizations Phase 3 (2026-09-06) shipped **operator Google sign-in**, and it was **removed
+  again on 2026-09-08** — see `docs/handoff/console-oauth-removal-report.md`. The reasoning, kept
+  because it will come up again: console SSO is nearly free to offer in a *managed* service (one
+  OAuth client, configured centrally, every tenant benefits) and genuinely annoying to offer
+  *per self-hosted instance* — the redirect URI is per-domain, so every single installation had to
+  register its own Google client before the feature did anything. That is the asymmetry behind
+  Appwrite reserving console OAuth for their Cloud tier, and it means the value lands in the
+  managed offering rather than in self-host, where email+password is what people actually want to
+  start with. Removing it also retired the four `console_oauth_*` error types, the
+  `googleOAuthEnabled` capability flag, and `Praxy:ConsoleAuth:Google:*`. **The Organizations
+  sequence itself is complete and unaffected** — orgs, members, roles and invites all stand; only
+  the Google door onto them is gone, and the password door was always the primary one. If console
+  SSO is ever rebuilt for managed hosting, the removed implementation and a half-finished security
+  review of it are in git history (branch `oauth-security-review-wip`, and PRs #75/#79).
 - Console/API contract (2026-09-07, `docs/handoff/console-api-contract-report.md`, one phase,
   sequence complete): `console/src/api/types.ts` (897 hand-written lines) is now mostly a thin
   re-export layer over `console/src/api/generated/schema.ts` — committed, generated from

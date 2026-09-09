@@ -10,7 +10,7 @@ public sealed record CapabilityFeatures(
     bool Auth, bool Databases, bool Realtime, bool Messaging, bool Functions, bool Webhooks, bool Sites, bool Storage);
 
 public sealed record CapabilitiesResponse(
-    string Version, bool Claimed, bool SetupTokenRequired, bool GoogleOAuthEnabled, CapabilityFeatures Features);
+    string Version, bool Claimed, bool SetupTokenRequired, CapabilityFeatures Features);
 
 public static class CapabilitiesEndpoints
 {
@@ -19,12 +19,11 @@ public static class CapabilitiesEndpoints
         // Server-driven feature flags the console gates screens on. Unauthenticated: the
         // login/claim screen itself depends on `claimed`. Features flip on phase by phase.
         api.MapGet("/v1/console/capabilities", async (
-            ConsoleAuthService auth, SetupTokenService setupTokens, ConsoleOAuthOptions consoleOAuth, CancellationToken ct) =>
+            ConsoleAuthService auth, SetupTokenService setupTokens, CancellationToken ct) =>
             Results.Ok(new CapabilitiesResponse(
                 PraxyVersion.Current,
                 await auth.IsClaimedAsync(ct),
                 setupTokens.Required,
-                consoleOAuth.GoogleConfigured,
                 new CapabilityFeatures(
                     Auth: true,
                     Databases: true,

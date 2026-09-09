@@ -101,10 +101,15 @@ Three phases, each independently useful and shippable:
   `owner` vs `member`** for the first time. This is where the dead column comes alive and where
   authorization actually changes; it is also the phase that most needs the security review's habits,
   since it adds a whole new authorization surface.
-- **Phase 3 — operator OAuth.** `CLAUDE.md` defers this to "future multitenancy work" and this is it.
-  Separable and last: an invited colleague can already accept with email+password, so this is
-  convenience and managed-signup polish rather than a blocker. Worth its own design pass — operator
-  OAuth is not app-user OAuth, and the existing Google provider code is written for the latter.
+- **Phase 3 — operator OAuth.** Shipped 2026-09-06, **removed 2026-09-08**
+  (`docs/handoff/console-oauth-removal-report.md`). This entry called it "convenience and
+  managed-signup polish rather than a blocker" before it was built, and that read turned out to be
+  the whole story: console SSO is nearly free to offer in a *managed* service (one central OAuth
+  client) and genuinely annoying per *self-hosted* instance (every installation registers its own,
+  because the redirect URI is per-domain). Self-hosters want email+password to get started. The
+  phasing judgment was right; what it should have concluded is "not yet, and not here" rather than
+  "last". Worth revisiting when managed hosting exists — and worth designing *for* that context
+  then, not carrying a self-host-shaped implementation forward.
 
 **Explicitly out of scope for the whole sequence**: per-project operator roles (a much larger
 permission model), organization-level billing or plans (a business decision with no code shape yet),
