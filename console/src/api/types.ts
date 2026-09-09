@@ -426,6 +426,8 @@ export interface MessageDetail {
 /** Usage vs. the effective limit (org override, else instance default) for this project. */
 export type QuotaSnapshot = Schemas["QuotaSnapshot"];
 
+export type ProjectOverview = Schemas["ProjectOverviewResponse"];
+
 // ---- Storage ----
 
 export type Bucket = Schemas["BucketResponse"];

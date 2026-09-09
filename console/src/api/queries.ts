@@ -10,6 +10,7 @@ import type {
   OrganizationMemberList,
   Project,
   ProjectList,
+  ProjectOverview,
   QuotaSnapshot,
 } from "./types";
 
@@ -170,6 +171,19 @@ export function useQuotas(projectId: string) {
   return useQuery({
     queryKey: ["projects", projectId, "quotas"],
     queryFn: () => api<QuotaSnapshot>(`/console/projects/${projectId}/quotas`),
+  });
+}
+
+/**
+ * Counts for the overview's resource tiles, plus the two traffic windows Praxy can actually
+ * measure. One request rather than a dozen list endpoints read for their `total` — see
+ * `ProjectOverviewResponse`'s own remarks for why the server does the counting.
+ */
+export function useProjectOverview(projectId: string) {
+  return useQuery({
+    queryKey: ["projects", projectId, "overview"],
+    queryFn: () => api<ProjectOverview>(`/console/projects/${projectId}/overview`),
+    staleTime: 15_000,
   });
 }
 

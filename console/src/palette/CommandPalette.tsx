@@ -28,6 +28,11 @@ const DESTINATIONS = [
   { key: "m", label: "Go to messaging", to: "/project/$projectId/messaging" },
   { key: "k", label: "Go to API keys", to: "/project/$projectId/api-keys" },
   { label: "Go to platforms", to: "/project/$projectId/platforms" },
+  // `,` rather than a letter: `s` is auth settings (above) and has been since before the project
+  // had settings of its own, so taking it would break a chord people already use. Comma is the
+  // near-universal settings shortcut anyway, and the handler compares `e.key` directly, so a
+  // punctuation key needs nothing special.
+  { key: ",", label: "Go to project settings", to: "/project/$projectId/settings" },
 ] as const;
 
 /**

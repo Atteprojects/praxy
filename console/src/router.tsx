@@ -26,11 +26,15 @@ import { MessagingProvidersPage } from "./screens/MessagingProvidersPage";
 import { MessagingTemplatesPage } from "./screens/MessagingTemplatesPage";
 import { MessagingTopicsPage } from "./screens/MessagingTopicsPage";
 import { AcceptOrganizationInvitePage } from "./screens/AcceptOrganizationInvitePage";
+import { HomeRedirect } from "./screens/HomeRoute";
+import { OrganizationLayout } from "./screens/OrganizationLayout";
 import { OrganizationMembersPage } from "./screens/OrganizationMembersPage";
-import { HomeRedirect, OrganizationPage } from "./screens/OrganizationPage";
+import { OrganizationProjectsPage } from "./screens/OrganizationProjectsPage";
+import { OrganizationSettingsPage } from "./screens/OrganizationSettingsPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
+import { ProjectSettingsPage } from "./screens/ProjectSettingsPage";
 import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
 import { SiteDeploymentsPage } from "./screens/SiteDeploymentsPage";
@@ -89,16 +93,31 @@ const homeRoute = createRoute({
   component: HomeRedirect,
 });
 
+// Organization-scoped pages render inside the switcher-rail layout, with their sections as tabs —
+// the same shape project pages have had since Phase 1, which is what the rail and tabs below give
+// the organization for the first time.
 const organizationRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/organization/$organizationId",
-  component: OrganizationPage,
+  component: OrganizationLayout,
+});
+
+const organizationProjectsRoute = createRoute({
+  getParentRoute: () => organizationRoute,
+  path: "/",
+  component: OrganizationProjectsPage,
 });
 
 const organizationMembersRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: "/organization/$organizationId/members",
+  getParentRoute: () => organizationRoute,
+  path: "members",
   component: OrganizationMembersPage,
+});
+
+const organizationSettingsRoute = createRoute({
+  getParentRoute: () => organizationRoute,
+  path: "settings",
+  component: OrganizationSettingsPage,
 });
 
 // Everything project-scoped renders inside the sidebar layout; entries appear as the
@@ -113,6 +132,12 @@ const projectOverviewRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/",
   component: ProjectOverviewPage,
+});
+
+const projectSettingsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "settings",
+  component: ProjectSettingsPage,
 });
 
 const usersRoute = createRoute({
@@ -330,10 +355,14 @@ const routeTree = rootRoute.addChildren([
   acceptInviteRoute,
   shellRoute.addChildren([
     homeRoute,
-    organizationRoute,
-    organizationMembersRoute,
+    organizationRoute.addChildren([
+      organizationProjectsRoute,
+      organizationMembersRoute,
+      organizationSettingsRoute,
+    ]),
     projectRoute.addChildren([
       projectOverviewRoute,
+      projectSettingsRoute,
       usersRoute,
       userDetailRoute,
       teamsRoute,

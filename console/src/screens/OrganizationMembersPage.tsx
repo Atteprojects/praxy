@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import {
   useAccount,
@@ -11,7 +11,8 @@ import {
 import { ApiError } from "../api/client";
 import type { OrganizationMember } from "../api/types";
 import { ConfirmButton } from "../components/ConfirmButton";
-import { Badge, DataTable, FullPageSpinner, PageHeader, Spinner, timeAgo } from "../components/ui";
+import { Badge, DataTable, FullPageSpinner, Spinner, timeAgo } from "../components/ui";
+import { OrganizationTabs } from "./OrganizationTabs";
 
 /**
  * Invite, accept (a separate public route — see AcceptOrganizationInvitePage), remove, and change
@@ -43,16 +44,13 @@ export function OrganizationMembersPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-6 py-10">
-      <Link
-        to="/organization/$organizationId"
-        params={{ organizationId }}
-        className="btn-ghost mb-4 -ml-3 text-xs"
-      >
-        ← {organization.data.name}
-      </Link>
-
-      <PageHeader title="Members" description={`Who can administer or use "${organization.data.name}".`} />
+    <>
+      <OrganizationTabs
+        organizationId={organizationId}
+        name={organization.data.name}
+        active="members"
+        description="Who can administer or use this organization."
+      />
 
       {isOwner ? (
         <div className="mb-6 max-w-2xl surface p-5">
@@ -101,7 +99,7 @@ export function OrganizationMembersPage() {
           ))}
         </DataTable>
       )}
-    </div>
+    </>
   );
 }
 
