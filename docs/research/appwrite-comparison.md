@@ -127,6 +127,69 @@ Two small validations of work landed this week: their project header carries an 
 beside the project id, and their organization page is **Projects | Settings tabs with an Invite
 action**. We arrived at both independently, days earlier.
 
+## By subsystem
+
+Walked the console with a claimed instance, creating a database and table to reach the real dialogs.
+
+### Auth
+
+Their **auth methods** are individually toggleable: Email/Password, Phone, Magic URL, Email OTP,
+Anonymous, Team Invites, JWT. We have email/password and Google OAuth, by a fixed decision.
+
+Three of those are worth reopening that decision for:
+
+- **Anonymous sessions.** Let someone use the app before registering, then convert the account.
+  This is table stakes for mobile, it is how Firebase and Appwrite both onboard, and nothing in
+  Praxy models it.
+- **Email OTP** and **Magic URL** — passwordless, and increasingly what users expect over a
+  password form.
+
+Beyond methods, `Auth → Policies → Sessions` has four controls; we have one (session limit):
+
+| | Appwrite | Praxy |
+|---|---|---|
+| session limit per user | ✅ | ✅ |
+| session length | ✅ (max 365d) | ❌ |
+| **session alerts** — email on new session | ✅ | ❌ |
+| **invalidate all sessions on password change** | ✅ | ❌ |
+
+That last one is a genuine security gap rather than a nicety: today a Praxy password change leaves
+every stolen session alive.
+
+Also present and absent from us: **MFA with recovery codes** (`/account/mfa`), **per-user activity
+logs** (`/account/logs`), **Presences**, and mock phone numbers for App Store review.
+
+### Databases
+
+Column types line up better than expected. Theirs: Text, Mediumtext, Longtext, Varchar, Integer,
+Bigint, Float, Boolean, Datetime, Email, IP, URL, Enum, Relationship, Point, Line, Polygon. Ours
+covers all of it except geometry beyond a point — and our `integer` is already 64-bit
+(`bigint` in Postgres), so their Integer/Bigint split is a MySQL artifact rather than a capability.
+Their four text sizes are our `string` plus `size`.
+
+The real gaps:
+
+- **Line and Polygon**, with `within`/`intersects`/`contains`. This is precisely our deferred **geo
+  Phase 4** (`docs/research/geo-nearby.md:157`) — the comparison independently landed on the same
+  scope we already wrote down and postponed.
+- **Encrypted columns.** A per-column toggle: "Values are encrypted at rest (AES-128-GCM). No plain
+  text is stored. Encrypted columns cannot be used for queries." We have nothing equivalent, and for
+  a self-hosted product holding other people's PII it is an easy thing to be asked for.
+- **Visualizer** (schema/ERD), **Monitor**, and **Export / Import** — three database-level tabs with
+  no Praxy equivalent. Export/Import matters most: our only story is instance-wide `backup.sh`.
+- **Generate sample data** on an empty table. Small, and exactly the kind of thing that makes an
+  empty console feel less like homework.
+
+### Console-wide
+
+- **Explorer.** A full API explorer *inside* the console: Client/Server API toggle, every endpoint
+  grouped by service, required scopes, an "Act as Guest / User" switch, Copy as cURL, and **Send
+  request** against the live project. Ours is Scalar at `/scalar/v1`, dev-only, with no project
+  context.
+- **In-browser terminal** running the Appwrite CLI with session and project pre-configured.
+- **Usage** as a first-class nav item.
+- An onboarding checklist — "Get started · 0 of 14 completed".
+
 ## Product surface we lack entirely
 
 Ordered by what I would actually put in 1.0:
