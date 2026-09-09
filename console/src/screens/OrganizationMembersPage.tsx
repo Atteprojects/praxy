@@ -6,7 +6,6 @@ import {
   useOrganization,
   useOrganizationMembers,
   useRemoveOrganizationMember,
-  useUpdateOrganization,
   useUpdateOrganizationMemberRole,
 } from "../api/queries";
 import { ApiError } from "../api/client";
@@ -27,7 +26,6 @@ export function OrganizationMembersPage() {
   const members = useOrganizationMembers(organizationId);
   const account = useAccount();
   const invite = useInviteOrganizationMember(organizationId);
-  const update = useUpdateOrganization(organizationId);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
 
@@ -51,8 +49,6 @@ export function OrganizationMembersPage() {
         organizationId={organizationId}
         name={organization.data.name}
         active="members"
-        isOwner={isOwner}
-        onRename={(name) => update.mutateAsync({ name })}
         description="Who can administer or use this organization."
       />
 

@@ -1,7 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { wireId } from "../api/ids";
-import { useOrganization, useOrganizations, useProjects, useUpdateOrganization } from "../api/queries";
+import { useOrganization, useOrganizations, useProjects } from "../api/queries";
 import { Badge, FullPageSpinner, IdChip } from "../components/ui";
 import { CreateProjectCard } from "./CreateProjectCard";
 import { OrganizationTabs } from "./OrganizationTabs";
@@ -21,7 +21,6 @@ export function OrganizationProjectsPage() {
   const organization = useOrganization(organizationId);
   const organizations = useOrganizations();
   const projects = useProjects();
-  const update = useUpdateOrganization(organizationId);
   const [creating, setCreating] = useState(false);
 
   if (organization.isPending || organizations.isPending || projects.isPending) return <FullPageSpinner />;
@@ -45,8 +44,6 @@ export function OrganizationProjectsPage() {
         organizationId={organizationId}
         name={organization.data.name}
         active="projects"
-        isOwner={organization.data.role === "owner"}
-        onRename={(name) => update.mutateAsync({ name })}
         actions={
           <button type="button" onClick={() => setCreating(true)} className="btn-primary">
             + Create project
@@ -66,7 +63,7 @@ export function OrganizationProjectsPage() {
       {owned.length === 0 ? (
         <p className="surface p-6 text-sm text-ink-400">No projects in this organization yet.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {owned.map((project) => (
             <Link
               key={project.id}
