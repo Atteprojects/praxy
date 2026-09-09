@@ -40,17 +40,22 @@ export function ProjectOverviewPage() {
         description={`Created ${new Date(project.data.createdAt).toLocaleString()}`}
       />
 
-      <ResourceTiles projectId={project.data.id} />
+      {/* One vertical rhythm, full width, rather than two ragged columns: status, what exists,
+          what it has been doing, then the destructive action last. */}
+      <div className="space-y-8">
+        {lastPingAt ? <ConnectedBar lastPingAt={lastPingAt} /> : <WaitingCard projectId={project.data.id} />}
 
-      {/* Two columns from `lg` up: the connection state and its live counter on the left, usage on
-          the right. Stacked full-width cards left most of a desktop viewport empty. */}
-      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          {lastPingAt ? <ConnectedCard lastPingAt={lastPingAt} /> : <WaitingCard projectId={project.data.id} />}
-          <ConnectionsTile projectId={project.data.id} />
-          <ActivityCard projectId={project.data.id} />
-        </div>
-        <QuotaCard projectId={project.data.id} />
+        <section>
+          <h2 className="mb-3 text-sm font-medium tracking-widest text-ink-500 uppercase">Resources</h2>
+          <ResourceTiles projectId={project.data.id} />
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-medium tracking-widest text-ink-500 uppercase">Activity</h2>
+          <ActivityTiles projectId={project.data.id} />
+        </section>
+
+        <QuotaWarnings projectId={project.data.id} />
       </div>
 
       <DangerZone projectId={project.data.id} projectName={project.data.name} />
@@ -109,175 +114,193 @@ function DangerZone({ projectId, projectName }: { projectId: string; projectName
 }
 
 /**
- * What exists in this project, and where to go next — the question the overview screen was not
- * answering before, which left an operator opening a project with no idea whether it had two
- * databases or none without visiting every screen.
+ * What exists in this project, and where to go next — the question the overview was not answering
+ * before, which left an operator opening a project unable to tell whether it had two databases or
+ * none without visiting every screen.
  *
- * Counts come from one endpoint rather than a dozen list calls read for their `total`; see
- * `ProjectOverviewResponse`. A tile with nothing in it still renders, because "0 users" is
- * information — the empty tiles are the ones worth clicking on a new project.
+ * Limits live on the tiles rather than in a card of their own. A separate usage panel repeated
+ * three of these counts and, on a project nowhere near any ceiling, was eight progress bars all
+ * reading near-empty — noise in the common case, in exchange for information that only matters as
+ * you approach a wall. `QuotaWarnings` below covers approaching the wall; this covers the rest of
+ * the time.
  */
 function ResourceTiles({ projectId }: { projectId: string }) {
   const overview = useProjectOverview(projectId);
+  const quotas = useQuotas(projectId);
   if (!overview.data) return null;
   const o = overview.data;
+  const q = quotas.data;
 
-  const tiles: Array<{ to: string; label: string; value: number; hint?: string }> = [
-    { to: "/project/$projectId/databases", label: "Databases", value: o.databases, hint: `${o.tables} ${o.tables === 1 ? "table" : "tables"}` },
+  // `max` only where a quota actually exists — users, teams, functions, webhooks, topics, keys and
+  // platforms have none, and inventing a ceiling for them would be worse than showing none.
+  const tiles: Array<{ to: string; label: string; value: number; max?: number; hint?: string }> = [
+    { to: "/project/$projectId/databases", label: "Databases", value: o.databases, max: q?.databasesMax, hint: `${o.tables} ${o.tables === 1 ? "table" : "tables"}` },
     { to: "/project/$projectId/auth/users", label: "Users", value: o.users, hint: `${o.teams} ${o.teams === 1 ? "team" : "teams"}` },
     { to: "/project/$projectId/functions", label: "Functions", value: o.functions },
-    { to: "/project/$projectId/sites", label: "Sites", value: o.sites },
-    { to: "/project/$projectId/storage", label: "Buckets", value: o.buckets },
+    { to: "/project/$projectId/sites", label: "Sites", value: o.sites, max: q?.sitesMax },
+    {
+      to: "/project/$projectId/storage",
+      label: "Buckets",
+      value: o.buckets,
+      max: q?.bucketsMax,
+      // The one number worth keeping from the old usage panel: stored bytes bound how large every
+      // backup gets, since files live in the schema backup.sh dumps (docs/self-host.md).
+      hint: q ? `${formatBytes(q.storageBytesUsed)} of ${formatBytes(q.storageBytesMax)}` : undefined,
+    },
     { to: "/project/$projectId/messaging", label: "Topics", value: o.messagingTopics },
     { to: "/project/$projectId/webhooks", label: "Webhooks", value: o.webhooks },
     { to: "/project/$projectId/api-keys", label: "API keys", value: o.apiKeys, hint: `${o.platforms} ${o.platforms === 1 ? "platform" : "platforms"}` },
   ];
 
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {tiles.map((tile) => (
-        <Link
-          key={tile.label}
-          to={tile.to}
-          params={{ projectId }}
-          className="surface flex flex-col gap-0.5 p-4 transition-colors hover:border-iris-500/60"
-        >
-          <span className="text-2xl font-semibold tabular-nums text-ink-100">{tile.value}</span>
-          <span className="text-sm text-ink-400">{tile.label}</span>
-          {tile.hint ? <span className="text-xs text-ink-600">{tile.hint}</span> : null}
-        </Link>
-      ))}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {tiles.map((tile) => {
+        const pressure = tile.max && tile.max > 0 ? tile.value / tile.max : 0;
+        const valueColor = pressure >= 1 ? "text-red-400" : pressure >= 0.8 ? "text-amber-400" : "text-ink-100";
+        return (
+          <Link
+            key={tile.label}
+            to={tile.to}
+            params={{ projectId }}
+            className="surface flex flex-col gap-0.5 p-4 transition-colors hover:border-iris-500/60"
+          >
+            <span className="flex items-baseline gap-1.5">
+              <span className={`text-2xl font-semibold tabular-nums ${valueColor}`}>{tile.value}</span>
+              {tile.max ? <span className="text-xs text-ink-600 tabular-nums">of {tile.max}</span> : null}
+            </span>
+            <span className="text-sm text-ink-400">{tile.label}</span>
+            {tile.hint ? <span className="truncate text-xs text-ink-600">{tile.hint}</span> : null}
+          </Link>
+        );
+      })}
     </div>
   );
 }
 
 /**
- * The two things Praxy actually meters. There is deliberately no "requests" or "bandwidth" figure
- * for the data plane — nothing counts those, and a number that looked like API traffic while only
- * measuring part of it would be worse than its absence.
+ * The three things Praxy actually meters, in the same tile shape as Resources so the page has one
+ * visual vocabulary rather than a stack of differently-sized cards.
  *
- * Seven days because that is `Praxy:Retention:SiteRequestsMaxAgeDays`' default: a longer window
- * would quietly under-report as rows age out.
+ * There is deliberately no "requests" or "bandwidth" total for the data plane — nothing counts
+ * those, and a figure that read as API traffic while measuring only the slice we happen to log
+ * would be worse than its absence. Seven days because that is
+ * `Praxy:Retention:SiteRequestsMaxAgeDays`' default: a longer window would quietly under-report as
+ * rows age out. Live connections is a right-now number, labelled as such.
  */
-function ActivityCard({ projectId }: { projectId: string }) {
+function ActivityTiles({ projectId }: { projectId: string }) {
   const overview = useProjectOverview(projectId);
+  const connections = useConnectionCount(projectId);
   if (!overview.data) return null;
 
   return (
-    <div className="surface p-6">
-      <h2 className="mb-1 text-lg font-medium">Activity</h2>
-      <p className="mb-4 text-xs text-ink-500">Last 7 days.</p>
-      <div className="grid grid-cols-2 gap-4">
-        <Link
-          to="/project/$projectId/sites"
-          params={{ projectId }}
-          className="rounded-lg border border-ink-800 p-3 transition-colors hover:border-ink-600"
-        >
-          <div className="text-xl font-semibold tabular-nums">{overview.data.siteRequestsLast7Days}</div>
-          <div className="text-xs text-ink-500">Site requests</div>
-        </Link>
-        <Link
-          to="/project/$projectId/functions"
-          params={{ projectId }}
-          className="rounded-lg border border-ink-800 p-3 transition-colors hover:border-ink-600"
-        >
-          <div className="text-xl font-semibold tabular-nums">{overview.data.functionExecutionsLast7Days}</div>
-          <div className="text-xs text-ink-500">Function executions</div>
-        </Link>
-      </div>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <ActivityTile
+        projectId={projectId}
+        to="/project/$projectId/sites"
+        value={overview.data.siteRequestsLast7Days}
+        label="Site requests"
+        hint="last 7 days"
+      />
+      <ActivityTile
+        projectId={projectId}
+        to="/project/$projectId/functions"
+        value={overview.data.functionExecutionsLast7Days}
+        label="Function executions"
+        hint="last 7 days"
+      />
+      <ActivityTile
+        projectId={projectId}
+        to="/project/$projectId/realtime"
+        value={connections.data?.count ?? "—"}
+        label="Live connections"
+        hint="right now"
+      />
     </div>
+  );
+}
+
+function ActivityTile({
+  projectId,
+  to,
+  value,
+  label,
+  hint,
+}: {
+  projectId: string;
+  to: string;
+  value: number | string;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <Link
+      to={to}
+      params={{ projectId }}
+      className="surface flex flex-col gap-0.5 p-4 transition-colors hover:border-iris-500/60"
+    >
+      <span className="text-2xl font-semibold tabular-nums text-ink-100">{value}</span>
+      <span className="truncate text-sm text-ink-400">{label}</span>
+      <span className="text-xs text-ink-600">{hint}</span>
+    </Link>
   );
 }
 
 /**
- * Org-level quota usage (roadmap Phase 9). The owning organization is named on the console home,
- * but there is still no org switcher and no cross-project view: this shows this project's own
- * numbers against the effective limit (org override, else instance default).
+ * Quota pressure, and *only* pressure — this renders nothing at all until something is at 80% of
+ * its limit.
+ *
+ * It replaces an always-visible usage panel that showed all eight dimensions as progress bars.
+ * That panel duplicated three of the resource tiles above and, on any project not near a ceiling,
+ * was a column of near-empty bars: permanent cost for information that only matters occasionally.
+ * The per-database and per-table dimensions have nowhere else to appear, though, and hitting the
+ * columns-per-table limit mid-DDL with no warning is a genuinely bad surprise — so they are kept
+ * here, silent until they are worth reading.
  */
-function QuotaCard({ projectId }: { projectId: string }) {
+function QuotaWarnings({ projectId }: { projectId: string }) {
   const quotas = useQuotas(projectId);
   if (!quotas.data) return null;
+  const q = quotas.data;
 
-  const rows: Array<{ label: string; used: number; max: number; format?: (value: number) => string }> = [
-    { label: "Projects (organization)", used: quotas.data.projectsUsed, max: quotas.data.projectsMax },
-    { label: "Databases", used: quotas.data.databasesUsed, max: quotas.data.databasesMax },
-    { label: "Tables (busiest database)", used: quotas.data.busiestDatabaseTables, max: quotas.data.tablesPerDatabaseMax },
-    { label: "Columns (busiest table)", used: quotas.data.busiestTableColumns, max: quotas.data.columnsPerTableMax },
-    { label: "Indexes (busiest table)", used: quotas.data.busiestTableIndexes, max: quotas.data.indexesPerTableMax },
-    { label: "Sites", used: quotas.data.sitesUsed, max: quotas.data.sitesMax },
-    { label: "Buckets", used: quotas.data.bucketsUsed, max: quotas.data.bucketsMax },
-    // Bytes rather than a count: this is the dimension that bounds how large every backup gets,
-    // since stored files live in the schema deploy/backup.sh dumps (docs/self-host.md).
-    {
-      label: "Stored files",
-      used: quotas.data.storageBytesUsed,
-      max: quotas.data.storageBytesMax,
-      format: formatBytes,
-    },
+  const dimensions: Array<{ label: string; used: number; max: number; format?: (v: number) => string }> = [
+    { label: "Projects in this organization", used: q.projectsUsed, max: q.projectsMax },
+    { label: "Databases", used: q.databasesUsed, max: q.databasesMax },
+    { label: "Tables in the busiest database", used: q.busiestDatabaseTables, max: q.tablesPerDatabaseMax },
+    { label: "Columns in the busiest table", used: q.busiestTableColumns, max: q.columnsPerTableMax },
+    { label: "Indexes in the busiest table", used: q.busiestTableIndexes, max: q.indexesPerTableMax },
+    { label: "Sites", used: q.sitesUsed, max: q.sitesMax },
+    { label: "Buckets", used: q.bucketsUsed, max: q.bucketsMax },
+    { label: "Stored files", used: q.storageBytesUsed, max: q.storageBytesMax, format: formatBytes },
   ];
 
+  const pressured = dimensions.filter((d) => d.max > 0 && d.used / d.max >= 0.8);
+  if (pressured.length === 0) return null;
+
   return (
-    <div className="surface p-6">
-      <h2 className="mb-4 text-lg font-medium">Usage</h2>
+    <section className="surface border-amber-400/20 p-5">
+      <h2 className="mb-3 text-sm font-medium text-amber-400">Approaching a limit</h2>
       <div className="space-y-3">
-        {rows.map((row) => (
-          <QuotaRow key={row.label} {...row} />
-        ))}
+        {pressured.map((d) => {
+          const ratio = d.used / d.max;
+          const format = d.format ?? ((v: number) => String(v));
+          return (
+            <div key={d.label}>
+              <div className="mb-1 flex items-center justify-between text-sm">
+                <span className="text-ink-400">{d.label}</span>
+                <span className={`tabular-nums ${ratio >= 1 ? "text-red-400" : "text-amber-400"}`}>
+                  {format(d.used)} / {format(d.max)}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">
+                <div
+                  className={`h-full rounded-full ${ratio >= 1 ? "bg-red-500" : "bg-amber-400"}`}
+                  style={{ width: `${Math.min(100, ratio * 100)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
-    </div>
-  );
-}
-
-function QuotaRow({
-  label,
-  used,
-  max,
-  format = (value: number) => String(value),
-}: {
-  label: string;
-  used: number;
-  max: number;
-  format?: (value: number) => string;
-}) {
-  const ratio = max > 0 ? used / max : 0;
-  const barColor = ratio >= 1 ? "bg-red-500" : ratio >= 0.8 ? "bg-amber-400" : "bg-mint-400";
-  const textColor = ratio >= 1 ? "text-red-400" : ratio >= 0.8 ? "text-amber-400" : "text-ink-300";
-
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-sm">
-        <span className="text-ink-400">{label}</span>
-        <span className={`tabular-nums ${textColor}`}>
-          {format(used)} / {format(max)}
-        </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-ink-800">
-        <div
-          className={`h-full rounded-full ${barColor}`}
-          style={{ width: `${Math.min(100, ratio * 100)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** The realtime inspector's cheapest possible advertisement: a live count, updating on its own. */
-function ConnectionsTile({ projectId }: { projectId: string }) {
-  const connections = useConnectionCount(projectId);
-  return (
-    <Link
-      to="/project/$projectId/realtime"
-      params={{ projectId }}
-      className="surface flex items-center justify-between p-6 transition-colors hover:border-ink-600"
-    >
-      <div>
-        <h2 className="text-lg font-medium">Realtime</h2>
-        <p className="mt-0.5 text-sm text-ink-400">Live WebSocket connections on this project.</p>
-      </div>
-      <span className="text-3xl font-semibold tabular-nums text-ink-100">
-        {connections.data?.count ?? "—"}
-      </span>
-    </Link>
+    </section>
   );
 }
 
@@ -315,17 +338,13 @@ function WaitingCard({ projectId }: { projectId: string }) {
   );
 }
 
-function ConnectedCard({ lastPingAt }: { lastPingAt: string }) {
+function ConnectedBar({ lastPingAt }: { lastPingAt: string }) {
   return (
-    <div className="surface p-6">
-      <div className="mb-2 flex items-center gap-3">
-        <span className="size-2.5 rounded-full bg-mint-400" />
-        <h2 className="text-lg font-medium">Connected</h2>
-      </div>
-      <p className="text-sm text-ink-400">
-        Last ping {new Date(lastPingAt).toLocaleString()}. Head to Users and Teams to manage who can
-        sign in, Databases to model your data, or Functions, Webhooks and Messaging to react to it.
-      </p>
+    <div className="flex items-center gap-2.5 text-sm text-ink-400">
+      <span className="size-2 shrink-0 rounded-full bg-mint-400" />
+      <span className="text-ink-300">Connected</span>
+      <span className="text-ink-600">·</span>
+      <span>last ping {new Date(lastPingAt).toLocaleString()}</span>
     </div>
   );
 }
