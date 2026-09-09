@@ -12,6 +12,7 @@ import {
   OverviewIcon,
   PlatformsIcon,
   RealtimeIcon,
+  SettingsIcon,
   SitesIcon,
   StorageIcon,
   UsersIcon,
@@ -56,6 +57,7 @@ const NAV: NavItem[] = [
   { to: "/project/$projectId/platforms", label: "Platforms", icon: <PlatformsIcon />, feature: "auth", group: "manage" },
   { to: "/project/$projectId/github", label: "GitHub", icon: <GithubIcon />, feature: "sites", group: "manage" },
   { to: "/project/$projectId/audit", label: "Audit log", icon: <AuditIcon />, kbd: "g a", group: "manage" },
+  { to: "/project/$projectId/settings", label: "Settings", icon: <SettingsIcon />, kbd: "g ,", group: "manage" },
 ];
 
 /**

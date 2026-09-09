@@ -34,6 +34,7 @@ import { OrganizationSettingsPage } from "./screens/OrganizationSettingsPage";
 import { PlatformsPage } from "./screens/PlatformsPage";
 import { ProjectLayout } from "./screens/ProjectLayout";
 import { ProjectOverviewPage } from "./screens/ProjectOverviewPage";
+import { ProjectSettingsPage } from "./screens/ProjectSettingsPage";
 import { RealtimeInspectorPage } from "./screens/RealtimeInspectorPage";
 import { RowsPage } from "./screens/RowsPage";
 import { SiteDeploymentsPage } from "./screens/SiteDeploymentsPage";
@@ -131,6 +132,12 @@ const projectOverviewRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/",
   component: ProjectOverviewPage,
+});
+
+const projectSettingsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: "settings",
+  component: ProjectSettingsPage,
 });
 
 const usersRoute = createRoute({
@@ -355,6 +362,7 @@ const routeTree = rootRoute.addChildren([
     ]),
     projectRoute.addChildren([
       projectOverviewRoute,
+      projectSettingsRoute,
       usersRoute,
       userDetailRoute,
       teamsRoute,
