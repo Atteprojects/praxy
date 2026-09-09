@@ -2,7 +2,11 @@
   "name": "praxy-js-sdk-workspace",
   "private": true,
   "version": "0.0.0",
-  "workspaces": ["packages/*", "examples/*"],
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
   "scripts": {
     "build": "npm run build -w packages/core && npm run build -w packages/react && npm run build -w packages/nextjs && npm run build -w packages/codegen",
     "test": "npm run test -w packages/core && npm run test -w packages/react && npm run test -w packages/nextjs && npm run test -w packages/codegen",

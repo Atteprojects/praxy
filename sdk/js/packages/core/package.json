@@ -2,6 +2,7 @@
   "name": "@praxy/core",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Isomorphic, fetch-only TypeScript client for Praxy. No React, no Next.js dependency.",
   "type": "module",
   "main": "./dist/index.js",
