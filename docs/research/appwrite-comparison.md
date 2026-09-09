@@ -1,11 +1,27 @@
-# Appwrite 2.0 self-hosted, measured against Praxy — what 1.0 is missing
+# Appwrite 2.0 self-hosted, read against Praxy
 
 Notes from installing **Appwrite 2.0.0 self-hosted** locally (2026-09-09) and reading its running
 stack, its `.env`, its install flow and its console, alongside the Appwrite Cloud console.
 
-The point of this document is to scope Praxy 1.0 honestly: what a self-hoster gets from the
-incumbent that they would not get from us, and — equally — where we already give them more, so we
-don't spend 1.0 rebuilding things we've already beaten.
+## This is not a 1.0 backlog
+
+Read it as intelligence, not as work. **Praxy 1.0 is not trying to match Appwrite**, and most of
+what follows is Appwrite *2.0* — a seven-year-old product's latest expansion (an API explorer, an
+in-browser CLI, MCP packaging, ClickHouse-backed metering, compute billing in GB-hours, encrypted
+columns, a schema visualizer). Those describe where a mature competitor has got to. They are not
+entry requirements, and a 1.0 assembled by walking this list would be a worse product that shipped
+later.
+
+The document is useful for three things:
+
+1. **Positioning** — knowing where we are already ahead, so we don't rebuild what we've beaten.
+2. **Calibration** — knowing the real cost of things that look cheap (usage charts are an OLAP
+   deployment, not a screen).
+3. **A menu for later**, once 1.0 is out and real users say what they actually miss.
+
+Where something below genuinely belongs in 1.0, it is because it stands on its own — a security
+expectation or a defect — not because Appwrite has it. Those are marked **[1.0]** and there are very
+few of them.
 
 ## Where Praxy is already ahead
 
@@ -153,8 +169,9 @@ Beyond methods, `Auth → Policies → Sessions` has four controls; we have one 
 | **session alerts** — email on new session | ✅ | ❌ |
 | **invalidate all sessions on password change** | ✅ | ❌ |
 
-That last one is a genuine security gap rather than a nicety: today a Praxy password change leaves
-every stolen session alive.
+That last one is **[1.0]** — not because Appwrite has it, but because "changing my password logs out
+whoever stole my session" is something users assume is already true. Today a Praxy password change
+leaves every stolen session alive. It is small, and it is hard to defend shipping without.
 
 Also present and absent from us: **MFA with recovery codes** (`/account/mfa`), **per-user activity
 logs** (`/account/logs`), **Presences**, and mock phone numbers for App Store review.
@@ -192,7 +209,8 @@ The real gaps:
 
 ## Product surface we lack entirely
 
-Ordered by what I would actually put in 1.0:
+**None of this is 1.0 scope.** Listed so the shape of the gap is known, roughly in the order I would
+consider it *after* launch:
 
 1. **Per-project service toggles.** Their Settings → Services disables a service *for client SDKs
    while server SDKs keep working* (13 of them). A security control, not a preference. Our
@@ -217,7 +235,7 @@ different product bet). Their console also carries a permanent "Introducing the 
 banner and an Upgrade button — self-hosted software advertising its cloud tier is exactly the
 texture a self-hoster resents, and it is free for us not to do.
 
-## The gap that is ours alone
+## [1.0] The gap that is ours alone
 
 Nothing in Appwrite's comparison surfaced it, but it is the most urgent 1.0 item found this week:
 **Praxy never reclaims Docker images or build cache.** Production had 42.31GB of build cache on a
