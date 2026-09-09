@@ -54,7 +54,12 @@ export function FullPageSpinner() {
 }
 
 /** Every entity screen shows its id, always visible, always copyable. */
-export function IdChip({ id }: { id: string }) {
+/**
+ * A copy-to-clipboard chip. Named for its overwhelmingly common use — a resource id — but `title`
+ * is overridable for the few places that show something else copyable in the same slot (the
+ * project overview's API endpoint), which is cheaper than a second near-identical component.
+ */
+export function IdChip({ id, title = "Copy ID" }: { id: string; title?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -64,7 +69,7 @@ export function IdChip({ id }: { id: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
       }}
-      title="Copy ID"
+      title={title}
       className="group inline-flex max-w-full items-center gap-1.5 rounded-md border border-ink-700 bg-ink-900 px-2 py-0.5 font-mono text-xs text-ink-300 hover:border-ink-500 hover:text-ink-100 transition-colors cursor-pointer"
     >
       <span className="truncate">{id}</span>

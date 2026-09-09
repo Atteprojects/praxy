@@ -14,6 +14,26 @@ public sealed record CreateProjectRequest(string Name, string? ProjectId, string
 
 public sealed record UpdateProjectRequest(string Name);
 
+/// <summary>
+/// What the project's overview screen shows at a glance: how much of each resource exists, and how
+/// much traffic the two things Praxy actually serves have handled recently.
+///
+/// One endpoint rather than the console fetching a dozen list endpoints for their `total` — the
+/// overview is the first screen after opening a project, and a dozen round trips to render counts
+/// is the wrong trade when a dozen indexed COUNTs on one connection cost a single request.
+///
+/// **There is deliberately no bandwidth or request-count metric for the API itself.** Praxy does
+/// not meter data-plane traffic, so the two windows below are exactly what is measurable: proxied
+/// site requests (<c>site_requests</c>) and function executions. Both are windowed to 7 days
+/// because that is `Praxy:Retention:SiteRequestsMaxAgeDays`' default — a longer window would
+/// silently under-report as rows age out, which is worse than not offering it.
+/// </summary>
+public sealed record ProjectOverviewResponse(
+    int Databases, int Tables, int Users, int Teams,
+    int Functions, int Sites, int Buckets,
+    int ApiKeys, int Platforms, int Webhooks, int MessagingTopics,
+    int SiteRequestsLast7Days, int FunctionExecutionsLast7Days);
+
 public sealed record ProjectResponse(
     string Id, string Name, string? OrganizationId, DateTimeOffset? LastPingAt, DateTimeOffset CreatedAt)
 {
@@ -45,6 +65,9 @@ public static class ProjectEndpoints
         projects.MapGet("/{projectId}/quotas", GetQuotas)
             .AddEndpointFilter<ConsoleProjectFilter>()
             .Produces<QuotaSnapshot>();
+        projects.MapGet("/{projectId}/overview", GetOverview)
+            .AddEndpointFilter<ConsoleProjectFilter>()
+            .Produces<ProjectOverviewResponse>();
     }
 
     private static async Task<IResult> List(HttpContext http, PraxyDb db, CancellationToken ct)
@@ -194,6 +217,31 @@ public static class ProjectEndpoints
         var project = ConsoleProjectFilter.Current(http);
         var snapshot = await quotas.GetSnapshotAsync(project.Id, ct);
         return Results.Ok(snapshot);
+    }
+
+    private static async Task<IResult> GetOverview(HttpContext http, PraxyDb db, CancellationToken ct)
+    {
+        var project = ConsoleProjectFilter.Current(http);
+        var id = project.Id;
+        var since = DateTimeOffset.UtcNow.AddDays(-7);
+
+        // Tables are the one count not scoped by project_id directly — they hang off a database.
+        var databaseIds = db.Databases.Where(d => d.ProjectId == id).Select(d => d.Id);
+
+        return Results.Ok(new ProjectOverviewResponse(
+            Databases: await db.Databases.CountAsync(d => d.ProjectId == id, ct),
+            Tables: await db.Tables.CountAsync(t => databaseIds.Contains(t.DatabaseId), ct),
+            Users: await db.Users.CountAsync(u => u.ProjectId == id, ct),
+            Teams: await db.Teams.CountAsync(t => t.ProjectId == id, ct),
+            Functions: await db.Functions.CountAsync(f => f.ProjectId == id, ct),
+            Sites: await db.Sites.CountAsync(s => s.ProjectId == id, ct),
+            Buckets: await db.Buckets.CountAsync(b => b.ProjectId == id, ct),
+            ApiKeys: await db.ApiKeys.CountAsync(k => k.ProjectId == id, ct),
+            Platforms: await db.Platforms.CountAsync(p => p.ProjectId == id, ct),
+            Webhooks: await db.WebhookSubscriptions.CountAsync(w => w.ProjectId == id, ct),
+            MessagingTopics: await db.MessagingTopics.CountAsync(t => t.ProjectId == id, ct),
+            SiteRequestsLast7Days: await db.SiteRequestLogs.CountAsync(r => r.ProjectId == id && r.CreatedAt >= since, ct),
+            FunctionExecutionsLast7Days: await db.FunctionExecutions.CountAsync(e => e.ProjectId == id && e.CreatedAt >= since, ct)));
     }
 
     /// <summary>
