@@ -46,13 +46,13 @@ export function ProjectOverviewPage() {
         {lastPingAt ? <ConnectedBar lastPingAt={lastPingAt} /> : <WaitingCard projectId={project.data.id} />}
 
         <section>
-          <h2 className="mb-3 text-sm font-medium tracking-widest text-ink-500 uppercase">Resources</h2>
-          <ResourceTiles projectId={project.data.id} />
+          <h2 className="mb-3 text-sm font-medium tracking-widest text-ink-500 uppercase">Activity</h2>
+          <ActivityTiles projectId={project.data.id} />
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-medium tracking-widest text-ink-500 uppercase">Activity</h2>
-          <ActivityTiles projectId={project.data.id} />
+          <h2 className="mb-3 text-sm font-medium tracking-widest text-ink-500 uppercase">Resources</h2>
+          <ResourceTiles projectId={project.data.id} />
         </section>
 
         <QuotaWarnings projectId={project.data.id} />
@@ -192,8 +192,10 @@ function ActivityTiles({ projectId }: { projectId: string }) {
   const connections = useConnectionCount(projectId);
   if (!overview.data) return null;
 
+  // Three across the full row, not three of four — these lead the page, so a trailing empty cell
+  // read as a missing fourth metric rather than as deliberate space.
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <ActivityTile
         projectId={projectId}
         to="/project/$projectId/sites"
@@ -236,10 +238,10 @@ function ActivityTile({
     <Link
       to={to}
       params={{ projectId }}
-      className="surface flex flex-col gap-0.5 p-4 transition-colors hover:border-iris-500/60"
+      className="surface flex flex-col gap-0.5 p-5 transition-colors hover:border-iris-500/60"
     >
-      <span className="text-2xl font-semibold tabular-nums text-ink-100">{value}</span>
-      <span className="truncate text-sm text-ink-400">{label}</span>
+      <span className="text-3xl font-semibold tabular-nums text-ink-100">{value}</span>
+      <span className="truncate text-sm text-ink-300">{label}</span>
       <span className="text-xs text-ink-600">{hint}</span>
     </Link>
   );
