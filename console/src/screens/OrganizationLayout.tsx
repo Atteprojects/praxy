@@ -8,19 +8,21 @@ import { MenuIcon } from "../components/icons";
 import { rememberOrganization } from "../organizationMemory";
 
 /**
- * The organization chrome: a switcher rail on the left, tabbed sections in the main area.
+ * The organization chrome: a switcher sidebar on the left, tabbed sections in the main area.
  *
- * The rail deliberately does *not* mirror `ProjectLayout`'s feature nav. An organization has three
- * sections and they live in tabs, so a rail repeating them would be two controls for one job. It
- * switches organizations instead — the role the header's `<select>` used to play, which stopped
- * being reasonable somewhere around the fourth organization and gave no sense of where you were.
+ * The sidebar deliberately does *not* mirror `ProjectLayout`'s feature nav. An organization has
+ * three sections and they live in tabs, so a sidebar repeating them would be two controls for one
+ * job. It switches organizations instead — the role the header's `<select>` used to play, which
+ * stopped being reasonable somewhere around the fourth organization and gave no sense of where you
+ * were.
  *
- * One rail, not two: `ProjectLayout`'s own remarks record that a 208px sidebar plus the tables panel
- * cost 37% of a 1440px viewport before a single row rendered. A switcher rail *and* a section rail
- * would repeat that mistake for a page whose whole content is a project grid.
+ * Same 208px width and entry shape as `ProjectLayout`'s expanded nav, names truncating rather than
+ * collapsing to initials — this page has no tables panel beside it, so none of the horizontal
+ * pressure that made *that* sidebar collapse applies here. One sidebar, not two, for the same
+ * reason: `ProjectLayout`'s own remarks record the two together costing 37% of a 1440px viewport.
  *
- * Below `md` the rail becomes a drawer, same trade as the project rail: initials alone are a poor
- * control on a phone, and the drawer costs nothing closed.
+ * Below `md` it becomes a drawer, same trade as the project nav — a fixed sidebar is a poor use of
+ * a phone's width, and the drawer costs nothing closed.
  */
 export function OrganizationLayout() {
   const organizationId = wireId(
@@ -46,20 +48,24 @@ export function OrganizationLayout() {
   return (
     <div className="flex flex-1">
       <nav
-        className="sticky top-14 hidden w-16 shrink-0 flex-col items-center gap-1 border-r border-ink-800 bg-ink-900/50 py-4 md:flex"
+        className="sticky top-14 hidden w-52 shrink-0 flex-col border-r border-ink-800 bg-ink-900/50 px-3 py-4 md:flex"
         aria-label="Organizations"
       >
+        <span className="mb-1 block px-3 text-[11px] font-medium tracking-widest text-ink-500 uppercase">
+          Organizations
+        </span>
         {all.map((org) => (
-          <OrganizationSquare key={org.id} id={org.id} name={org.name} active={org.id === organizationId} />
+          <OrganizationEntry key={org.id} id={org.id} name={org.name} active={org.id === organizationId} />
         ))}
         <button
           type="button"
           onClick={() => setCreating(true)}
-          title="New organization"
-          aria-label="New organization"
-          className="mt-1 grid size-10 place-items-center rounded-lg border border-dashed border-ink-700 text-ink-500 transition-colors hover:border-ink-600 hover:text-ink-300"
+          className="mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-500 transition-colors hover:bg-ink-850 hover:text-ink-200"
         >
-          +
+          <span className="grid size-5 shrink-0 place-items-center rounded border border-dashed border-ink-700 text-[10px] leading-none">
+            +
+          </span>
+          <span className="min-w-0 flex-1 truncate text-left">New organization</span>
         </button>
       </nav>
 
@@ -125,21 +131,31 @@ function initials(name: string): string {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
-function OrganizationSquare({ id, name, active }: { id: string; name: string; active: boolean }) {
+/**
+ * Same shape as `ProjectLayout`'s expanded nav entry — initials stand in for its icon, and the name
+ * gets `min-w-0 flex-1 truncate`, which is what actually produces an ellipsis inside a flex row
+ * (`truncate` alone can't: the flex item's default `min-width: auto` refuses to shrink below its
+ * content). `title` carries the full name for the ones that do get cut.
+ */
+function OrganizationEntry({ id, name, active }: { id: string; name: string; active: boolean }) {
   return (
     <Link
       to="/organization/$organizationId"
       params={{ organizationId: id }}
       title={name}
-      aria-label={name}
       aria-current={active ? "true" : undefined}
-      className={`grid size-10 place-items-center rounded-lg text-xs font-semibold transition-colors ${
-        active
-          ? "bg-iris-500/20 text-iris-200 ring-1 ring-iris-400/60"
-          : "bg-ink-800/60 text-ink-400 hover:bg-ink-800 hover:text-ink-200"
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        active ? "bg-ink-800 text-ink-100" : "text-ink-400 hover:bg-ink-850 hover:text-ink-100"
       }`}
     >
-      {initials(name)}
+      <span
+        className={`grid size-5 shrink-0 place-items-center rounded text-[10px] font-semibold ${
+          active ? "bg-iris-500/25 text-iris-200" : "bg-ink-800 text-ink-400"
+        }`}
+      >
+        {initials(name)}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
     </Link>
   );
 }
