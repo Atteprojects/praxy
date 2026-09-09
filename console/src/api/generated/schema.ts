@@ -85,111 +85,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/console/sessions/oauth2/{provider}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    provider: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Found */
-                302: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Rate limit exceeded (`general_rate_limit_exceeded`). Retry after the number of seconds in Retry-After; RateLimit-Limit/-Remaining/-Reset describe the bucket. Buckets partition on project plus caller identity, falling back to source address. */
-                429: {
-                    headers: {
-                        /** @description Seconds to wait before retrying. */
-                        "Retry-After"?: string;
-                        /** @description Requests permitted per window. */
-                        "RateLimit-Limit"?: string;
-                        /** @description Requests left in the current window. */
-                        "RateLimit-Remaining"?: string;
-                        /** @description Seconds until the window resets. */
-                        "RateLimit-Reset"?: string;
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-                /** @description Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures. */
-                default: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/console/sessions/oauth2/callback/{provider}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    provider: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Found */
-                302: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Error. Every non-2xx response uses this envelope. `type` is a stable, machine-readable string SDKs may switch on; `code` repeats the HTTP status; `requestId` matches the X-Praxy-Request-Id response header; `fields` is present only on validation failures. */
-                default: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/console/organizations/{organizationId}/members/{userId}/accept": {
         parameters: {
             query?: never;
@@ -12871,7 +12766,6 @@ export interface components {
             version: string;
             claimed: boolean;
             setupTokenRequired: boolean;
-            googleOAuthEnabled: boolean;
             features: components["schemas"]["CapabilityFeatures"];
         };
         CapabilityFeatures: {

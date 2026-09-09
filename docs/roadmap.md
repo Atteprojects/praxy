@@ -628,17 +628,180 @@ resemblance is a trap with precedent.
   staleness) are written up in the report for Phase 3 to inherit, along with a third: leaving your
   only organization is deliberately allowed and is now a reachable state, so `HomeRedirect` offers a
   create-organization form instead of an error screen.
-- **Phase 3 — operator OAuth** — **shipped 2026-09-06, sequence complete** (kickoff:
-  `docs/handoff/organizations-phase-3-prompt.md`, report:
-  `docs/handoff/organizations-phase-3-report.md`) — what `CLAUDE.md` meant by deferring operator
-  OAuth to "future multitenancy work". A new `ConsoleOAuthService` (not `OAuthService`, which is
-  app-user- and project-scoped by construction) reuses only the `IOAuthProvider`/`GoogleOAuthProvider`
-  abstraction, behind a new instance-wide `Praxy:ConsoleAuth:Google:ClientId`/`ClientSecret` (unset =
-  off). Console operators get "Continue with Google" everywhere the password option already exists —
-  login, the very first claim, and accepting an organization invite — never in place of it. The one
-  property with no app-user equivalent: a **claimed** instance never auto-creates an operator from a
-  Google sign-in — Google only ever resolves an operator who already exists (via claim or an
-  organization invite), the same closed-membership model the console already has.
+- **Phase 3 — operator OAuth** — **shipped 2026-09-06, removed 2026-09-08** (report:
+  `docs/handoff/organizations-phase-3-report.md`; removal:
+  `docs/handoff/console-oauth-removal-report.md`). It worked, and it went anyway: console SSO's
+  value lands in a managed service, where one centrally-configured OAuth client serves every
+  tenant, while its cost lands on self-hosters, who each had to register their own Google client
+  before the feature did anything. See "Operator OAuth — shipped, then removed" above. **The rest
+  of the sequence is unaffected** — Phases 1 and 2 stand, and the password invite door was always
+  the primary one.
+**Explicitly out of scope for the whole sequence**: CDN integration, signed time-limited URLs, antivirus
+scanning.
+
+## Security review (post-v0.1.0 initiative)
+
+**Not a feature initiative.** An adversarial read of the three subsystems that turn untrusted network
+input into something the host acts on — Storage (bytes served over HTTP with a caller-chosen MIME type
+and filename), Sites (an attacker-authored app on an attacker-influenced hostname, proxied by the API),
+and Functions (attacker-authored **code**, built and run against a root-equivalent Docker socket).
+Tables/Auth/Realtime/Messaging are out of scope: they had Phase 9's hardening pass and are covered by
+`tests/Praxy.LoadTests`. These three were all built after v0.1.0 and have never had a dedicated pass.
+
+The case for it is the Storage sequence's own defect record (2026-09-03 → 09-05): a stored XSS
+introduced by a *design document* rather than an implementation slip, a production crash, three
+physical-naming 500s, two transform bugs found only by comparing against Appwrite on a running
+instance, and a flaky test. **The suite caught none of them**, and the XSS could not have been caught
+by tests at all — it was a design defect, faithfully implemented.
+
+Two actors, and rating each finding under **both** is the point: an **anonymous network caller**, and a
+**project developer** — who today is the owner and people they trust, since `CLAUDE.md` defers
+multitenancy. A finding that is harmless under one trusted operator but critical the moment a second
+untrusted developer shares an instance is not "low"; it is a **multitenancy prerequisite**, recorded as
+one, because that is the class of defect that silently blocks a future feature. A host-root attacker is
+explicitly *not* in scope — the compose file already concedes that boundary in writing; mapping what
+else becomes reachable because of it is what this reviews.
+
+Phased by **threat surface, not by subsystem**, because Functions and Sites build near-identical
+`HostConfig` blocks and splitting them across sessions would mean making the same isolation decisions
+twice with drift between them:
+
+- **Phase 1 — the container boundary — shipped 2026-09-05** (kickoff:
+  `docs/handoff/security-review-phase-1-prompt.md`; report:
+  `docs/handoff/security-review-phase-1-report.md`) (Functions + Sites) — the Docker execution seam: `HostConfig`
+  hardening applied consistently to both executors, network topology, what lands in a container's
+  environment, resource limits, egress, and the image-build path as a supply-chain surface. **Runs
+  first** — the only surface where untrusted *code* executes. Two findings are already verified and
+  waiting for it: function containers share a Docker network with the Postgres container (Compose's
+  `default` is renamed `praxy-functions`, and `postgres` joins `default` — confirmed live; Sites' own
+  network has no database on it, so the asymmetry is accidental, not designed), and neither executor
+  sets `PidsLimit`, `CapDrop`, `SecurityOpt`, `ReadonlyRootfs` or `User` — zero repo-wide matches for
+  any of them.
+- **Phase 2 — the HTTP edge — shipped 2026-09-05** (kickoff:
+  `docs/handoff/security-review-phase-2-prompt.md`; report:
+  `docs/handoff/security-review-phase-2-report.md`) (Storage + the Sites proxy) — the derivative/transform
+  path, `ByteRanges` arithmetic, `SiteProxyMiddleware`'s header and host handling, `SiteHostPattern` and
+  the `_ask-tls` endpoint sharing it, preview-URL enumeration, and whether `site_requests` logging can
+  be poisoned. Storage's download edge was already well defended (`ContentDisposition`, `InlineTypes`'
+  two gates, unconditional `nosniff`, verified still sound) — the real find was newer: a single-axis
+  transform request (`?width=` alone) derived its other dimension from the source's own aspect ratio
+  with no bound at all, so a real, honestly-encoded extreme-aspect-ratio image (no crafted file needed)
+  crashed the request or silently produced a huge allocation; the fix bounds a derivative's total pixel
+  area (not either axis alone, which would reject every ordinary non-square photo). Also fixed:
+  one oversized HTTP method/path on a proxied site request aborted the whole batch transaction
+  `SiteRequestLogWorker` writes, silently dropping every other request's log row alongside it.
+- **Phase 3 — authorization and project isolation** (all three) — the permission model itself: Storage's
+  additive bucket/per-file grants, the scope and lifetime of a function's minted credentials, and
+  whether project isolation holds at *every* entry point, including the ones that bypass the normal API
+  surface (the proxy, the webhook endpoint, the schedulers and workers).
+
+A review phase produces **findings, not features**, so it is judged differently: every finding is
+recorded whether or not it is fixed (attack, impact, severity under both actor models, fix or explicit
+acceptance); **not everything gets fixed**, because a review that tries to becomes a rewrite; every fix
+carries a regression test, since untested security fixes come back and the missing tests are the whole
+reason this exists; and no new features. Design: `docs/research/security-review.md`.
+
+---
+
+## Self-hosted and managed (assessment only — not scheduled)
+
+**Decided 2026-09-06**: follow Appwrite's shape — ship the self-hosted product *and* run a managed
+version of it. Two products from one codebase, with different security requirements: a self-hosted
+instance is run by someone who trusts everyone on it; a managed one hosts strangers.
+`docs/research/multitenancy.md` works out what that costs, checked against the running system.
+Nothing is scheduled, and there is deliberately no phase prompt.
+
+**The reframe that matters**: four designs look like multitenancy debt — the Docker socket, a single
+Postgres superuser with isolation enforced only in application code, a flat container network, and
+tenant content on the console's own origin. They are better read as **four decisions that stay right
+for self-host forever**, and are only problems for the managed product. `deploy/up.sh`'s one-question
+setup is a selling point; none of this hardening should land in the self-hosted path if it costs that.
+Appwrite does the same — the OSS product keeps the simple execution model and Cloud adds isolation
+that isn't in the repo.
+
+**The infrastructure model decides whether those four matter at all**, and it is a spectrum rather
+than a binary: *one instance per tenant* (isolation at the infrastructure layer, all four evaporate,
+the codebase needs almost nothing), *cells* of 50-200 tenants per instance (the middle most SaaS
+converges on), or *one shared instance* (cheapest, and all four become real engineering). Worth
+deciding first since it can make the rest moot, and it commits nobody to building anything.
+
+**The cost of one-instance-per-tenant is not the obvious one.** Money per customer is visible; the
+one that bites a small team is **fleet upgrades**, which scale with customers. Praxy helps here —
+migrations run themselves at startup under a `pg_advisory_lock`, so an update is "new image, restart"
+with no separate migration step to orchestrate — but a failed migration is then a *failed startup* on
+one tenant, found from monitoring; version skew becomes permanent; and backward compatibility stops
+being optional, since a fleet mid-rollout cannot be coordinated the way one instance can. Tens of
+tenants is a cron job; the low hundreds is a real job; past that you want cells — and cells need the
+same isolation work as a shared instance. **So instance-per-tenant defers that work rather than
+escaping it**, which is worth choosing deliberately rather than by accident.
+
+**What's already in Praxy's favour**, verified: the tenant seam exists and is load-bearing
+(`Organization`/`OrganizationMember` since Phase 0, org quotas enforced, authorization already joins
+through membership); the Docker client is confined to exactly two files with fifteen consumers going
+through them; the daemon endpoint and network are already configuration, just instance-wide rather
+than per-tenant; and superuser is needed for exactly one statement at migration time (PostGIS), so a
+non-superuser runtime looks like configuration rather than redesign.
+
+**Working direction, taken 2026-09-06**: one instance per tenant, on the grounds that it keeps both
+products as the same software and needs none of the four solved. Recorded for consistency, not
+committed, and taken knowing it is a *first* answer — revisit at the low hundreds of tenants, or
+sooner if free-tier economics demand it.
+
+**The one thing needed under either fork** is the org lifecycle — create/rename/switch, invites,
+operator OAuth (which `CLAUDE.md` already defers to exactly this). Ordinary feature work, commits you
+to neither fork, and the only part that can start before the fork is decided.
+
+---
+
+## Organization lifecycle (post-v0.1.0 initiative)
+
+The one piece of managed-hosting groundwork required under **either** infrastructure fork
+(`docs/research/multitenancy.md`), buildable now and committing to neither. Also worth having on its
+own: an operator today gets exactly one organization, created at signup and named "Personal", with no
+way to make another, rename it, or let a colleague in.
+
+The model has been there since Phase 0 and is load-bearing — `Organization`/`OrganizationMember`,
+projects belong to orgs, org quotas enforced, authorization already joins through membership. Three
+things are missing, and one of them is a trap: **`OrganizationMember.Role` is written once at signup
+and never read**, so every member is effectively an owner; enforcing it is a behaviour change, not a
+new feature. The console's `HomeRedirect` also states its assumption outright — *"list orgs, take the
+first — there is exactly one"* — which is the single line multi-org switching invalidates.
+
+**Organizations are not Teams.** Both have `owner`/`member`; they are different layers.
+Organizations hold console *operators* and own projects; Teams hold *app users* and live inside one
+project. A future session will conflate them if it doesn't read the design doc's comparison table
+first — and security-review Phase 3's Finding D was a membership information leak in Teams, so the
+resemblance is a trap with precedent.
+
+- **Phase 1 — the org itself** — **shipped 2026-09-05** (kickoff:
+  `docs/handoff/organizations-phase-1-prompt.md`, report:
+  `docs/handoff/organizations-phase-1-report.md`) — create, rename, delete (empty only — no cascade,
+  no `force`, matching how the engine treats every other destructive action), and multi-org switching
+  in the console (remembered last org, else a picker). Went first because it made "exactly one org"
+  false, which is what everything else assumed — including a second, previously-silent assumption
+  found in the same pass: project creation picked the operator's *oldest* org rather than asking,
+  now an explicit `organizationId` that fails loudly instead of guessing once it's ambiguous. No
+  membership changes — every org still has exactly one member, its creator.
+- **Phase 2 — members and roles** — **shipped 2026-09-06** (kickoff:
+  `docs/handoff/organizations-phase-2-prompt.md`, report:
+  `docs/handoff/organizations-phase-2-report.md`) — invite by email (mirroring Teams' proven
+  `SecretHash`/`InvitedAt`/`Confirmed` shape, as a pattern rather than shared code, on
+  `OrganizationMember` itself rather than a separate invite table), accept, remove, change role, and
+  `owner` vs `member` enforced for the first time (one choke point,
+  `OrganizationsService.RequireOwnerAsync`). `EnsureOrganizationQuotaAsync` became owner-scoped as
+  Phase 1's report said it would need to. Two bugs found only by clicking through the console (an
+  id-format mismatch breaking a client-side self-comparison, and a same-tab identity-swap cache
+  staleness) are written up in the report for Phase 3 to inherit, along with a third: leaving your
+  only organization is deliberately allowed and is now a reachable state, so `HomeRedirect` offers a
+  create-organization form instead of an error screen.
+- **Phase 3 — operator OAuth** — **shipped 2026-09-06, removed 2026-09-08** (report:
+  `docs/handoff/organizations-phase-3-report.md`; removal:
+  `docs/handoff/console-oauth-removal-report.md`). It worked, and it went anyway: console SSO's
+  value lands in a managed service, where one centrally-configured OAuth client serves every
+  tenant, while its cost lands on self-hosters, who each had to register their own Google client
+  before the feature did anything. See "Operator OAuth — shipped, then removed" above. **The rest
+  of the sequence is unaffected** — Phases 1 and 2 stand, and the password invite door was always
+  the primary one.
 
 **Explicitly out of scope for the whole sequence**: per-project operator roles, organization billing
 or plans, and transferring a project between organizations. Design: `docs/research/organizations.md`.
@@ -698,38 +861,27 @@ changing any wire shape, and generating the SDKs' models. Design: `docs/research
 8. **Console tests are the acceptance gate.** A phase without its console screens is not done.
 9. Commit style: conventional commits, small and topical. Never commit `.env` or generated secrets.
 
-## Security review: the operator OAuth surface (post-v0.1.0 initiative)
+## Operator OAuth — shipped, then removed (2026-09-08)
 
-Organizations Phase 3 added operator Google sign-in — the **first non-password door into the
-console**, shipped 2026-09-06, off by default, and never run in anger. An operator session is the
-whole instance: every project, every API key, every hosted site and function, and the Docker socket
-the api container holds. The app-user OAuth flow it resembles is scoped to one developer project;
-this one is scoped to nothing. `CLAUDE.md` already names a pass over it as the candidate initiative.
+Organizations Phase 3 shipped operator Google sign-in; two days later it was removed entirely, along
+with the security review that had been designed for it. Recorded here rather than silently deleted,
+because the question ("should the console support SSO?") will come back.
 
-**One phase** — one service, two endpoints, two console screens. Smaller than the console/API
-contract initiative, which was scoped as one phase and stayed one.
+**Why it went**: console SSO is nearly free to offer in a managed service — one OAuth client,
+configured centrally, every tenant benefits — and genuinely annoying to offer per self-hosted
+instance, because the redirect URI is per-domain and every installation had to register its own
+Google client first. Self-hosters overwhelmingly want email and password to get started, not a trip
+through the Google Cloud consent screen. That asymmetry is also the likeliest reason Appwrite
+reserves console OAuth for their Cloud tier rather than shipping it self-hosted.
 
-**What makes it unlike the last security review**: that one found things by *absence*, in subsystems
-that had grown organically. This code is 345 careful, densely-commented lines where nearly every
-decision is argued in place, and the comments make load-bearing assertions — "the callback never
-trusts its own query string", "a wrong secret gets the exact same error and timing as a nonexistent
-invite". Each either holds or doesn't, and the phase's deliverable is those properties **tested, not
-read**. The surface is off by default, so the phase has to turn it on and complete all three doors —
-claim, login, invite-accept — before attacking them; a review that never completed a flow is a code
-read and must be reported as one.
+**What that implies for later**: when managed hosting exists, console SSO becomes worth building
+again — and worth building *for that context*, with one central client and probably SAML/OIDC for
+enterprise, rather than carrying forward a self-host-shaped implementation. The removed code and a
+half-finished security review of it are recoverable from git (branch `oauth-security-review-wip`,
+PRs #75 and #79).
 
-**Ranked areas where a finding is plausible** (design doc has the reasoning): implicit account
-linking at login, which turns control of a Google account with a matching verified email into full
-operator access without a password; the invite secret's blast radius through the state cookie and
-the failure redirect; `CallbackUri` being built from `Request.Scheme`/`Host` with `AllowedHosts: *`;
-no rate limit on the callback; operator sign-in — the highest-privilege event in the product —
-leaving no audit entry through either door; and query-parameter handling on the two console screens.
-
-**Already verified sound, recorded so the phase doesn't re-spend the budget**: `CompactJwt` (HMAC
-checked with `FixedTimeEquals` before parsing, header `alg` ignored, `exp` enforced), PKCE `S256`,
-the fixed-time state comparison, no caller-supplied redirect anywhere, `user.Status` enforced at
-password login *and* at session resolution, and `up.sh` writing `PRAXY_TRUST_FORWARDED_HEADERS=true`
-whenever a domain is configured. Design: `docs/research/console-oauth-security-review.md`.
+**Unaffected**: the Organizations sequence itself. Orgs, members, roles and invites all stand; the
+password invite door was always the primary one.
 
 ---
 

@@ -1,24 +1,20 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
-import { GoogleIcon, googleSignInUrl, readOAuthError } from "../api/oauth";
-import { useAcceptOrganizationInvite, useCapabilities } from "../api/queries";
+import { useAcceptOrganizationInvite } from "../api/queries";
 import { ErrorNote, Field, Footer, Logo } from "../components/ui";
 
 /**
  * Public — no session required to accept, same posture as Teams' own membership accept. The
  * organizationId/userId/secret come from the emailed link's query string; a password is only
  * required when the account the invite created has never had one (an existing operator invited
- * into a second organization already does, and leaves it blank) — or Google can link an identity
- * to that same row instead, via ConsoleOAuthService's own accept door (no password at all).
+ * into a second organization already does, and leaves it blank).
  */
 export function AcceptOrganizationInvitePage() {
   const navigate = useNavigate();
-  const capabilities = useCapabilities();
   const accept = useAcceptOrganizationInvite();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<ApiError | null>(null);
-  const [oauthMessage] = useState(readOAuthError);
 
   const params = new URLSearchParams(window.location.search);
   const organizationId = params.get("organizationId") ?? "";
@@ -50,7 +46,6 @@ export function AcceptOrganizationInvitePage() {
             <ErrorNote message="This invite link is invalid or incomplete." />
           ) : (
             <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
-              {oauthMessage && !error ? <ErrorNote message={oauthMessage} /> : null}
               {error && !error.envelope.fields ? <ErrorNote message={error.message} /> : null}
               <Field label="Password" error={error?.fieldErrors("password")[0]}>
                 <input
@@ -70,22 +65,6 @@ export function AcceptOrganizationInvitePage() {
               <p className="text-center text-xs text-ink-500">
                 Already have a Praxy account with this email? Leave the password blank.
               </p>
-              {capabilities.data?.googleOAuthEnabled ? (
-                <>
-                  <div className="flex items-center gap-3 text-xs text-ink-500">
-                    <div className="h-px flex-1 bg-ink-800" />
-                    or
-                    <div className="h-px flex-1 bg-ink-800" />
-                  </div>
-                  <a
-                    href={googleSignInUrl({ organizationId, userId, secret })}
-                    className="btn-secondary w-full"
-                  >
-                    <GoogleIcon />
-                    Accept with Google
-                  </a>
-                </>
-              ) : null}
             </form>
           )}
         </div>

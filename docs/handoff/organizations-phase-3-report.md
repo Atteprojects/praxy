@@ -1,5 +1,9 @@
 # Organizations, Phase 3 (operator OAuth) — report
 
+
+> **Superseded 2026-09-08.** Operator Google sign-in was removed — see
+> `docs/handoff/console-oauth-removal-report.md` for why. Kept as the record of what was built.
+
 **Status: complete.** Every item in `docs/handoff/organizations-phase-3-prompt.md`'s scope shipped:
 operator Google sign-in on claim, login, and organization-invite accept, each gaining the option
 alongside its existing password door, never in place of it. This is the last phase in the

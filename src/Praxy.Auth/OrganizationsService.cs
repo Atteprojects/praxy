@@ -164,15 +164,13 @@ public sealed class OrganizationsService(PraxyDb db, ConsoleAuthService auth, IP
     }
 
     /// <summary>
-    /// The secret-validation core <see cref="AcceptInviteAsync"/> (password) and
-    /// organizations-phase-3's Google-accept door (<c>ConsoleOAuthService</c>) both go through —
-    /// same property either way: <c>Confirmed</c> checked before the secret, and a wrong secret
-    /// gets the exact same error and timing as a nonexistent invite (the dummy-hash burn below),
-    /// never a distinguishable 404 (security-review-phase-3's Finding D). Internal rather than
-    /// private so the OAuth door — same assembly, a different service — reuses this instead of
-    /// reimplementing it.
+    /// The secret-validation core <see cref="AcceptInviteAsync"/> goes through: <c>Confirmed</c>
+    /// checked before the secret, and a wrong secret gets the exact same error and timing as a
+    /// nonexistent invite (the dummy-hash burn below), never a distinguishable 404
+    /// (security-review-phase-3's Finding D). Kept as its own method rather than inlined so that
+    /// timing-equality property stays one readable thing a future second accept door would reuse.
     /// </summary>
-    internal async Task<(OrganizationMember Member, User User)> ValidateInviteSecretAsync(
+    private async Task<(OrganizationMember Member, User User)> ValidateInviteSecretAsync(
         Guid organizationId, Guid userId, string secret, CancellationToken ct)
     {
         var member = await db.OrganizationMembers.FirstOrDefaultAsync(
