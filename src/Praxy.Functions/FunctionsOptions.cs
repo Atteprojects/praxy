@@ -43,4 +43,12 @@ public sealed record FunctionsOptions(
     // the boundary, since a sync invocation holds its slot for at most MaxSyncTimeoutSeconds.
     int IsolatedContainerWaitSeconds = 5,
     int MaxResponseCaptureBytes = 65536,
-    long MaxSourceBytes = 26_214_400);
+    long MaxSourceBytes = 26_214_400,
+    // How many of a function's most recent successful builds keep their Docker image on disk.
+    // Every build produces an image and nothing ever removed one, so a function on push-to-deploy
+    // accumulated an image per commit, forever — found on the production droplet as every image
+    // ever built still present, the oldest two weeks old. An old image is not garbage, though: it
+    // is exactly what the console's "Activate" action rolls back to, which is why this is a bounded
+    // window rather than "keep only the active one." The active deployment's image is kept whatever
+    // its age, so rolling back to an old build and staying there never reclaims what is running.
+    int KeepDeploymentImages = 5);

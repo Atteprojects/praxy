@@ -320,6 +320,15 @@ public sealed partial class FunctionsService(
             throw new PraxyException(400, ErrorTypes.FunctionInvalidDeploymentState,
                 $"Only a 'ready' deployment can be activated (this one is '{deployment.Status}').");
 
+        // Unlike Sites, this method never checked ImageTag at all: activating an imageless
+        // deployment used to succeed, repointing ActiveDeploymentId at something that could only
+        // fail later, at invoke time, in FunctionExecutionService. Rejecting here keeps the
+        // function on its previous working deployment instead of breaking it on a bad rollback.
+        if (deployment.ImageTag is null)
+            throw new PraxyException(400, ErrorTypes.FunctionDeploymentImageReclaimed,
+                "This deployment's image has been reclaimed to bound disk usage and can no longer be "
+                + "activated. Redeploy to build a fresh image.");
+
         var previous = fn.ActiveDeploymentId;
         fn.ActiveDeploymentId = deployment.Id;
         fn.UpdatedAt = DateTimeOffset.UtcNow;

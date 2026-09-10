@@ -196,9 +196,17 @@ public sealed partial class SitesService(
     /// </summary>
     public async Task<SiteDeployment> ActivateAsync(Site site, SiteDeployment deployment, CancellationToken ct)
     {
-        if (deployment.Status != "ready" || deployment.ImageTag is null)
+        if (deployment.Status != "ready")
             throw new PraxyException(400, ErrorTypes.SiteInvalidDeploymentState,
                 $"Only a 'ready' deployment can be activated (this one is '{deployment.Status}').");
+
+        // A ready deployment with no image is one DeploymentImageSweeper has reclaimed. Folding it
+        // into the check above (as this did) produced the one message that cannot be acted on:
+        // "only a 'ready' deployment can be activated (this one is 'ready')".
+        if (deployment.ImageTag is null)
+            throw new PraxyException(400, ErrorTypes.SiteDeploymentImageReclaimed,
+                "This deployment's image has been reclaimed to bound disk usage and can no longer be "
+                + "activated or previewed. Redeploy to build a fresh image.");
 
         // If this exact deployment was already running as an on-demand preview container (Phase 2),
         // promote it directly instead of starting a second one for the same image — an optimization,

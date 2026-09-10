@@ -176,7 +176,10 @@ function DeploymentSheet({
   // superseded deployment keeps its own activatedAt timestamp forever, so that alone can't
   // distinguish "currently active" from "was active once" (this is exactly what makes rollback via
   // this button possible after a redeploy).
-  const canActivate = d.status === "ready" && !isActive;
+  // Same reclaimed-image case as SiteDeploymentsPage — see its comment. A function has no preview
+  // URL to lose, so here it only costs the rollback.
+  const imageReclaimed = d.status === "ready" && !d.imageTag;
+  const canActivate = d.status === "ready" && !isActive && !imageReclaimed;
 
   return (
     <Sheet
@@ -196,6 +199,7 @@ function DeploymentSheet({
       <div className="space-y-4 text-sm">
         <div className="flex items-center gap-2">
           <DeploymentStatusBadge status={d.status} />
+          {imageReclaimed ? <Badge tone="ink">image reclaimed</Badge> : null}
           {d.imageTag ? <span className="font-mono text-xs text-ink-400">{d.imageTag}</span> : null}
         </div>
         {d.source === "git" ? (
@@ -211,6 +215,12 @@ function DeploymentSheet({
           </div>
         ) : null}
         {d.error ? <ErrorNote message={d.error} /> : null}
+        {imageReclaimed ? (
+          <div className="rounded-lg border border-ink-800 bg-ink-900 px-3.5 py-2.5 text-xs text-ink-400">
+            This build's image has been reclaimed to bound disk usage, so it can no longer be
+            activated. Redeploy this commit to get a fresh image.
+          </div>
+        ) : null}
         <div>
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-500">
             Build log {d.status === "building" || d.status === "queued" ? "(live)" : ""}

@@ -447,6 +447,53 @@ public sealed class DockerExecutor : IDisposable
         }
     }
 
+    /// <summary>
+    /// Every function deployment image is tagged <c>praxy-fn-{deploymentId}:latest</c> — see
+    /// <c>Praxy.Sites.SiteDockerExecutor.ImageTagPrefix</c> for why the id lives in the tag rather
+    /// than in an image label.
+    /// </summary>
+    public const string ImageTagPrefix = "praxy-fn-";
+
+    /// <summary>The tags of every function deployment image on this daemon.</summary>
+    public async Task<IReadOnlyList<string>> ListDeploymentImageTagsAsync(CancellationToken ct)
+    {
+        var images = await _client.Images.ListImagesAsync(new ImagesListParameters
+        {
+            All = false,
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["reference"] = new Dictionary<string, bool> { [$"{ImageTagPrefix}*"] = true },
+            },
+        }, ct);
+
+        return images
+            .SelectMany(image => image.RepoTags ?? [])
+            .Where(tag => tag.StartsWith(ImageTagPrefix, StringComparison.Ordinal))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Removes one deployment image, returning whether it actually went. Same contract and same
+    /// two tolerated failures as <c>Praxy.Sites.SiteDockerExecutor.RemoveImageAsync</c>.
+    /// </summary>
+    public async Task<bool> RemoveImageAsync(string imageTag, CancellationToken ct)
+    {
+        try
+        {
+            await _client.Images.DeleteImageAsync(imageTag, new ImageDeleteParameters { Force = true }, ct);
+            return true;
+        }
+        catch (DockerImageNotFoundException)
+        {
+            return false;
+        }
+        catch (DockerApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            // A warm-pool container still holds it. The next sweep reconsiders it.
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         _http.Dispose();

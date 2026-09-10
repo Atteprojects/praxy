@@ -95,6 +95,8 @@ public static class ErrorTypes
     public const string FunctionEnvVarNotFound = "function_env_var_not_found";
     public const string FunctionDeploymentNotFound = "function_deployment_not_found";
     public const string FunctionInvalidDeploymentState = "function_invalid_deployment_state";
+    /// <summary>A build that succeeded, whose image <c>DeploymentImageSweeper</c> has since reclaimed — distinct from the state error above, which would otherwise have to say a 'ready' deployment isn't 'ready'.</summary>
+    public const string FunctionDeploymentImageReclaimed = "function_deployment_image_reclaimed";
     public const string FunctionInvalidSource = "function_invalid_source";
     public const string FunctionNoActiveDeployment = "function_no_active_deployment";
     public const string FunctionExecutionNotFound = "function_execution_not_found";
@@ -123,6 +125,8 @@ public static class ErrorTypes
     public const string SiteEnvVarNotFound = "site_env_var_not_found";
     public const string SiteDeploymentNotFound = "site_deployment_not_found";
     public const string SiteInvalidDeploymentState = "site_invalid_deployment_state";
+    /// <summary>See <see cref="FunctionDeploymentImageReclaimed"/>. For a site this also retires the deployment's preview URL, since the proxy cold-starts previews from this same image.</summary>
+    public const string SiteDeploymentImageReclaimed = "site_deployment_image_reclaimed";
     public const string SiteInvalidSource = "site_invalid_source";
     public const string SiteNoActiveDeployment = "site_no_active_deployment";
     public const string SiteDomainNotFound = "site_domain_not_found";
@@ -221,6 +225,7 @@ public static class ErrorTypes
         FunctionEnvVarNotFound,
         FunctionDeploymentNotFound,
         FunctionInvalidDeploymentState,
+        FunctionDeploymentImageReclaimed,
         FunctionInvalidSource,
         FunctionNoActiveDeployment,
         FunctionExecutionNotFound,
@@ -244,6 +249,7 @@ public static class ErrorTypes
         SiteEnvVarNotFound,
         SiteDeploymentNotFound,
         SiteInvalidDeploymentState,
+        SiteDeploymentImageReclaimed,
         SiteInvalidSource,
         SiteNoActiveDeployment,
         SiteDomainNotFound,

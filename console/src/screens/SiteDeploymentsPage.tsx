@@ -252,7 +252,13 @@ function DeploymentSheet({
   // superseded deployment keeps its own activatedAt timestamp forever, so that alone can't
   // distinguish "currently active" from "was active once" (this is exactly what makes rollback via
   // this button possible after a redeploy).
-  const canActivate = d.status === "ready" && !isActive;
+  // A successful build whose image the retention sweep has since reclaimed (see
+  // DeploymentImageSweeper): the row stays "ready" and keeps its build log and commit, but there is
+  // no image left to start, so neither rollback nor its preview URL can work any more. The server
+  // refuses activating it outright, so the UI says why up front rather than offering a button whose
+  // only outcome is an error.
+  const imageReclaimed = d.status === "ready" && !d.imageTag;
+  const canActivate = d.status === "ready" && !isActive && !imageReclaimed;
   // "ready" only means "buildable" — the site's container has to actually be the one running for
   // this specific deployment before it's truly live (see docs/handoff/sites-phase-1-report.md's
   // Known gaps).
@@ -290,6 +296,8 @@ function DeploymentSheet({
               activatedAt alone can't tell this apart (see the "active" column's own comment above). */}
           {isActive ? (
             <Badge tone="mint">active — production</Badge>
+          ) : imageReclaimed ? (
+            <Badge tone="ink">image reclaimed</Badge>
           ) : d.status === "ready" ? (
             <Badge tone="ink">previewable</Badge>
           ) : null}
@@ -309,7 +317,13 @@ function DeploymentSheet({
           </div>
         ) : null}
         {d.error ? <ErrorNote message={d.error} /> : null}
-        {!showSuccess && d.previewUrl ? (
+        {imageReclaimed ? (
+          <div className="rounded-lg border border-ink-800 bg-ink-900 px-3.5 py-2.5 text-xs text-ink-400">
+            This build's image has been reclaimed to bound disk usage, so it can no longer be
+            activated or previewed. Redeploy this commit to get a fresh image.
+          </div>
+        ) : null}
+        {!showSuccess && !imageReclaimed && d.previewUrl ? (
           <div className="rounded-lg border border-ink-800 bg-ink-900 px-3.5 py-2.5 text-xs text-ink-400">
             {canActivate ? "Not live yet — " : ""}
             <a
