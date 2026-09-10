@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using System.Text.Json.Nodes;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
@@ -25,8 +26,8 @@ public static class ConsoleRowEndpoints
         // `object` with the documented `$`-prefixed system fields, not a fixed record.
         admin.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow)
             .Produces<JsonObject>(StatusCodes.Status201Created);
-        admin.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows).Produces<RowListResponse>();
-        admin.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow).Produces<JsonObject>();
+        admin.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows).Produces<RowListResponse>().WithRowQueries();
+        admin.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow).Produces<JsonObject>().WithRowExpand();
         admin.MapPatch("/{databaseId}/tables/{tableId}/rows/{rowId}", UpdateRow).Produces<JsonObject>();
         admin.MapDelete("/{databaseId}/tables/{tableId}/rows/{rowId}", DeleteRow)
             .Produces(StatusCodes.Status204NoContent);

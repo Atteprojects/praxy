@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
 using Praxy.Core.Errors;
@@ -36,7 +37,8 @@ public static class VcsEndpoints
         console.MapGet("/install-url", GetInstallUrl).Produces<VcsInstallUrlResponse>();
 
         // Both public — GitHub calls these directly, no operator session exists on either request.
-        api.MapGet("/v1/vcs/github/callback", InstallCallback).Produces(StatusCodes.Status302Found);
+        api.MapGet("/v1/vcs/github/callback", InstallCallback).Produces(StatusCodes.Status302Found)
+            .WithQueryParameters(new QueryParameterDoc("installation_id", JsonSchemaType.String, "GitHub App installation id, supplied by GitHub on the post-install redirect."));
         api.MapPost("/v1/vcs/github/webhook", Webhook)
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status401Unauthorized);
     }

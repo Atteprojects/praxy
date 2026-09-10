@@ -58,7 +58,8 @@ public static class ConsoleAuthAdminEndpoints
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>();
 
-        admin.MapGet("/users", ListUsers).Produces<ConsoleUserListResponse>();
+        admin.MapGet("/users", ListUsers).Produces<ConsoleUserListResponse>().WithPagination()
+            .WithSearch("Case-sensitive substring match on email or name. Blank or whitespace is ignored.");
         admin.MapPost("/users", CreateUser).Produces<AppUserResponse>(StatusCodes.Status201Created);
         admin.MapGet("/users/{userId}", GetUser).Produces<ConsoleUserDetailResponse>();
         admin.MapDelete("/users/{userId}", DeleteUser).Produces(StatusCodes.Status204NoContent);

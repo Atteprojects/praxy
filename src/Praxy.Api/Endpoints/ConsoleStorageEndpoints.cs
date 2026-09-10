@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
 using Praxy.Persistence;
@@ -32,13 +33,14 @@ public static class ConsoleStorageEndpoints
         admin.MapPost("/buckets", CreateBucket).Produces<BucketResponse>(StatusCodes.Status201Created);
         admin.MapGet("/buckets/{bucketId}", GetBucket).Produces<BucketResponse>();
         admin.MapPatch("/buckets/{bucketId}", UpdateBucket).Produces<BucketResponse>();
-        admin.MapDelete("/buckets/{bucketId}", DeleteBucket).Produces(StatusCodes.Status204NoContent);
+        admin.MapDelete("/buckets/{bucketId}", DeleteBucket).Produces(StatusCodes.Status204NoContent).WithForce("Deletes the bucket and every file in it. Without it a non-empty bucket is a 409.");
 
         admin.MapGet("/buckets/{bucketId}/permissions", GetPermissions).Produces<BucketPermissionsResponse>();
         admin.MapPatch("/buckets/{bucketId}/permissions", UpdatePermissions).Produces<BucketPermissionsResponse>();
 
-        admin.MapGet("/buckets/{bucketId}/files", ListFiles).Produces<FileListResponse>();
+        admin.MapGet("/buckets/{bucketId}/files", ListFiles).Produces<FileListResponse>().WithPagination();
         admin.MapPost("/buckets/{bucketId}/files", CreateFile)
+            .WithQueryParameters(new QueryParameterDoc("permissions", JsonSchemaType.Array, "Per-file permission strings, repeated once each. Only meaningful when the bucket has file_security enabled."))
             .Produces<FileResponse>(StatusCodes.Status201Created)
             // See StorageEndpoints' remarks: `*/*`, because the Content-Type is the file's own.
             .Accepts<Stream>("*/*");

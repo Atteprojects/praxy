@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
 using Praxy.Persistence;
@@ -28,6 +29,7 @@ public static class ConsoleDatabaseEndpoints
         admin.MapPatch("/{databaseId}", UpdateDatabase)
             .Produces<DatabaseResponse>();
         admin.MapDelete("/{databaseId}", DeleteDatabase)
+            .WithForce("Drops the database and everything in it even when tables still exist. Without it a non-empty database is a 409.")
             .Produces(StatusCodes.Status204NoContent);
 
         admin.MapPost("/{databaseId}/tables", CreateTable)
@@ -39,6 +41,7 @@ public static class ConsoleDatabaseEndpoints
         admin.MapPatch("/{databaseId}/tables/{tableId}", UpdateTable)
             .Produces<TableResponse>();
         admin.MapDelete("/{databaseId}/tables/{tableId}", DeleteTable)
+            .WithForce("Drops the table even when other tables reference it, cascading those relationship columns. Without it a referenced table is a 409.")
             .Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/{databaseId}/tables/{tableId}/permissions", GetPermissions)
@@ -55,6 +58,7 @@ public static class ConsoleDatabaseEndpoints
         admin.MapPatch("/{databaseId}/tables/{tableId}/columns/{columnId}", UpdateColumn)
             .Produces<ColumnResponse>();
         admin.MapDelete("/{databaseId}/tables/{tableId}/columns/{columnId}", DeleteColumn)
+            .WithForce("Drops the column even when it is indexed or referenced. Without it a column still in use is a 409.")
             .Produces(StatusCodes.Status204NoContent);
 
         admin.MapPost("/{databaseId}/tables/{tableId}/indexes", CreateIndex)
@@ -67,6 +71,7 @@ public static class ConsoleDatabaseEndpoints
             .Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/{databaseId}/jobs", ListJobs)
+            .WithQueryParameters(new QueryParameterDoc("tableId", JsonSchemaType.String, "Only jobs for this table. Omit for every job in the database."))
             .Produces<SchemaJobListResponse>();
         admin.MapGet("/{databaseId}/jobs/{jobId}", GetJob)
             .Produces<SchemaJobResponse>();

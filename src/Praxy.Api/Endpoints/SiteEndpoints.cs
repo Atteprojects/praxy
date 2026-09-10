@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
@@ -106,13 +107,14 @@ public static class SiteEndpoints
         admin.MapGet("/{siteId}/deployments/{deploymentId}", GetDeployment).Produces<SiteDeploymentResponse>();
         admin.MapPost("/{siteId}/deployments/{deploymentId}/activate", ActivateDeployment).Produces<SiteDeploymentResponse>();
 
-        admin.MapGet("/{siteId}/requests", ListRequests).Produces<SiteRequestListResponse>();
+        admin.MapGet("/{siteId}/requests", ListRequests).Produces<SiteRequestListResponse>().WithPagination();
 
         // Unauthenticated: Caddy's on_demand_tls "ask" directive calls this before every cert
         // issuance. A permissive implementation here turns the box into an open cert-minting oracle
         // for anyone who points DNS at it, so this is a strict allow-list, not a formality — see
         // AskTls's own remarks.
-        api.MapGet("/v1/sites/_ask-tls", AskTls).Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound);
+        api.MapGet("/v1/sites/_ask-tls", AskTls).Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound)
+            .WithQueryParameters(new QueryParameterDoc("domain", JsonSchemaType.String, "The hostname Caddy is asking about, supplied by its on-demand TLS ask endpoint."));
     }
 
     // ---- sites ----------------------------------------------------------------------------------

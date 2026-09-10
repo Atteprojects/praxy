@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using System.Net.WebSockets;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,9 @@ public static class RealtimeEndpoints
         // there, so it has no response body to describe. Said out loud in the document rather than
         // left blank, so a reader can tell this apart from an endpoint nobody documented.
         api.MapGet("/v1/realtime", HandleSocket)
+            .WithQueryParameters(
+                new QueryParameterDoc("project", JsonSchemaType.String, "Project id. Required because a WebSocket upgrade carries no custom headers from a browser."),
+                new QueryParameterDoc("ticket", JsonSchemaType.String, "Single-use realtime ticket from `POST /v1/realtime/ticket`, authenticating the socket."))
             .WithSummary("WebSocket endpoint (upgrade required)")
             .WithDescription(
                 "Upgrades to a WebSocket carrying the message-mode protocol "

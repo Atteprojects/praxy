@@ -42,6 +42,15 @@ yarn-error.log*
 *.tsbuildinfo
 
 # ---------- Flutter / Dart ----------
+# `bin/` above is a .NET build-output rule, but it matches a directory of that name at *any*
+# depth — which silently swallowed every Dart package's CLI entry point. `dart run <pkg>` looks
+# for `bin/<pkg>.dart`, so an ignored bin/ means the tool works for whoever wrote it and is
+# missing for everyone who clones the repo. `praxy_codegen`'s entry point was in exactly that
+# state, uncommitted since the package was created, despite being the documented codegen command.
+# The directory itself has to be re-included, not just its contents: git does not descend into an
+# excluded directory, so a negation on the files inside would never be consulted.
+!sdk/flutter/*/bin/
+!sdk/flutter/*/bin/**
 .dart_tool/
 .packages
 .pub-cache/

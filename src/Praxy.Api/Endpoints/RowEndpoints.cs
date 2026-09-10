@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using System.Text.Json.Nodes;
 using Praxy.Api.Infrastructure;
 using Praxy.Auth;
@@ -28,8 +29,8 @@ public static class RowEndpoints
         // `object` with the documented `$`-prefixed system fields, not a fixed record.
         group.MapPost("/{databaseId}/tables/{tableId}/rows", CreateRow)
             .Produces<JsonObject>(StatusCodes.Status201Created);
-        group.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows).Produces<RowListResponse>();
-        group.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow).Produces<JsonObject>();
+        group.MapGet("/{databaseId}/tables/{tableId}/rows", ListRows).Produces<RowListResponse>().WithRowQueries();
+        group.MapGet("/{databaseId}/tables/{tableId}/rows/{rowId}", GetRow).Produces<JsonObject>().WithRowExpand();
         group.MapPatch("/{databaseId}/tables/{tableId}/rows/{rowId}", UpdateRow).Produces<JsonObject>();
         group.MapDelete("/{databaseId}/tables/{tableId}/rows/{rowId}", DeleteRow)
             .Produces(StatusCodes.Status204NoContent);

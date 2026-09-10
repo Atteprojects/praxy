@@ -37,7 +37,8 @@ public static class UsersServerEndpoints
             .AddEndpointFilter<DataPlaneEndpoints.ProjectGuardFilter>()
             .AddEndpointFilter<AppPrincipalFilter>();
 
-        users.MapGet("", List).Produces<AppUserListResponse>();
+        users.MapGet("", List).Produces<AppUserListResponse>().WithPagination()
+            .WithSearch("Case-sensitive substring match on email or name. Blank or whitespace is ignored.");
         users.MapPost("", Create).Produces<AppUserResponse>(StatusCodes.Status201Created);
         users.MapGet("/{userId}", Get).Produces<AppUserResponse>();
         users.MapDelete("/{userId}", Delete).Produces(StatusCodes.Status204NoContent);
@@ -52,6 +53,7 @@ public static class UsersServerEndpoints
         users.MapDelete("/{userId}/sessions/{sessionId}", DeleteSession).Produces(StatusCodes.Status204NoContent);
     }
 
+    /// <summary>Lists the project's app users, newest first.</summary>
     private static async Task<IResult> List(HttpContext http, PraxyDb db, CancellationToken ct)
     {
         var project = DataPlaneEndpoints.CurrentProject(http);
@@ -67,6 +69,7 @@ public static class UsersServerEndpoints
         return Results.Ok(new AppUserListResponse(total, [.. page.Select(AppUserResponse.From)]));
     }
 
+    /// <summary>Creates an app user directly, without the sign-up flow or an email verification step.</summary>
     private static async Task<IResult> Create(
         ServerCreateUserRequest req, HttpContext http, PraxyDb db, AppAuthService auth, CancellationToken ct)
     {
@@ -77,12 +80,14 @@ public static class UsersServerEndpoints
         return Results.Created($"/v1/users/{Ids.Wire(user.Id)}", AppUserResponse.From(user));
     }
 
+    /// <summary>Fetches one app user by id.</summary>
     private static async Task<IResult> Get(string userId, HttpContext http, PraxyDb db, CancellationToken ct)
     {
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersRead);
         return Results.Ok(AppUserResponse.From(await FindUserAsync(http, db, userId, ct)));
     }
 
+    /// <summary>Deletes an app user and everything scoped to them, including their sessions.</summary>
     private static async Task<IResult> Delete(
         string userId, HttpContext http, PraxyDb db, IEventBus bus, CancellationToken ct)
     {
@@ -98,6 +103,7 @@ public static class UsersServerEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>Enables or disables an app user. A disabled user keeps their data but cannot authenticate.</summary>
     private static async Task<IResult> UpdateStatus(
         string userId, UpdateUserStatusRequest req, HttpContext http, PraxyDb db, IEventBus bus, CancellationToken ct)
     {
@@ -114,6 +120,7 @@ public static class UsersServerEndpoints
         return Results.Ok(AppUserResponse.From(user));
     }
 
+    /// <summary>Replaces an app user's labels wholesale. Labels are the operator-assigned strings the permission engine can grant roles from.</summary>
     private static async Task<IResult> UpdateLabels(
         string userId, UpdateUserLabelsRequest req, HttpContext http, PraxyDb db, IEventBus bus, CancellationToken ct)
     {
@@ -135,6 +142,7 @@ public static class UsersServerEndpoints
     /// Mirrors the console's change-email: the address moves and verified-ness resets with it.
     /// A collision inside the project is the existing <c>user_already_exists</c>, not a 500.
     /// </summary>
+    /// <summary>Changes an app user's email address. Does not re-run verification: pair it with the verification endpoint if the new address should count as verified.</summary>
     private static async Task<IResult> UpdateEmail(
         string userId, UpdateUserEmailRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
         CancellationToken ct)
@@ -147,6 +155,7 @@ public static class UsersServerEndpoints
         return Results.Ok(AppUserResponse.From(updated));
     }
 
+    /// <summary>Changes an app user's display name.</summary>
     private static async Task<IResult> UpdateName(
         string userId, UpdateUserNameRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
         CancellationToken ct)
@@ -160,6 +169,7 @@ public static class UsersServerEndpoints
     }
 
     /// <summary>Sets a password without the old one — and revokes every session, as the console does.</summary>
+    /// <summary>Sets an app user's password directly. No current password is required, because an operator has none to give.</summary>
     private static async Task<IResult> UpdatePassword(
         string userId, UpdateUserPasswordRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
         CancellationToken ct)
@@ -172,6 +182,7 @@ public static class UsersServerEndpoints
         return Results.Ok(AppUserResponse.From(updated));
     }
 
+    /// <summary>Marks an app user's email verified or unverified without sending them anything.</summary>
     private static async Task<IResult> UpdateVerification(
         string userId, UpdateUserVerificationRequest req, HttpContext http, PraxyDb db, AppAuthService auth,
         CancellationToken ct)
@@ -185,6 +196,7 @@ public static class UsersServerEndpoints
         return Results.Ok(AppUserResponse.From(updated));
     }
 
+    /// <summary>Lists an app user's active sessions.</summary>
     private static async Task<IResult> ListSessions(string userId, HttpContext http, PraxyDb db, CancellationToken ct)
     {
         AppPrincipalFilter.RequireScope(http, ApiKeyScopes.UsersRead);
@@ -196,6 +208,7 @@ public static class UsersServerEndpoints
         return Results.Ok(new SessionListResponse(sessions.Count, [.. sessions.Select(s => SessionResponse.From(s))]));
     }
 
+    /// <summary>Revokes every session an app user holds, signing them out everywhere.</summary>
     private static async Task<IResult> DeleteAllSessions(
         string userId, HttpContext http, PraxyDb db, AppAuthService auth, CancellationToken ct)
     {
@@ -207,6 +220,7 @@ public static class UsersServerEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>Revokes one of an app user's sessions.</summary>
     private static async Task<IResult> DeleteSession(
         string userId, string sessionId, HttpContext http, PraxyDb db, AppAuthService auth, CancellationToken ct)
     {

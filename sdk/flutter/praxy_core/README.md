@@ -119,7 +119,19 @@ final px = Praxy(
 );
 
 final rows = await px.tables.list(todos);   // no sign-in, no session
+await px.users.create(email: 'new@user.com', password: 'hunter2');
 ```
+
+`px.users` is the server-side app-user administration surface (`/v1/users`): create, inspect,
+update and delete a project's users, and revoke their sessions. It is **generated** from the API's
+OpenAPI document by
+[`praxy_sdk_gen`](https://github.com/<your-fork-or-org>/praxy/tree/main/sdk/flutter/praxy_sdk_gen) —
+the only generated service here; everything else is hand-written because it carries design a
+generator would flatten.
+
+It is present on every client rather than only server ones, the same way `teams`' owner-only methods
+always are: authorization is the server's answer to give, and a second copy here would be one more
+thing to get wrong. Calling it with a session gets a `401`, surfacing as `PraxyAuthException`.
 
 A client constructed with an `apiKey` **never reads or writes the session store at all** — not
 "prefers the key over a session". The distinction matters: falling back would make a background
