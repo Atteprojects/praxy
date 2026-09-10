@@ -51,6 +51,10 @@ jobs:
               - '.github/workflows/ci.yml'
             flutter:
               - 'sdk/flutter/**'
+              # praxy_core's generated server surface is derived from this snapshot, exactly like
+              # the console's types above — a backend PR that changes it must run the staleness
+              # check even when it touches nothing under sdk/flutter/.
+              - 'docs/openapi/v1.json'
               - '.github/workflows/ci.yml'
             nextjs:
               - 'sdk/js/**'
@@ -145,7 +149,21 @@ jobs:
 
       - name: Test pure-Dart packages
         if: needs.changes.outputs.flutter == 'true'
-        run: dart test praxy_core praxy_codegen
+        run: dart test praxy_core praxy_codegen praxy_sdk_gen
+        working-directory: sdk/flutter
+
+      # Same gate, same reasoning as the console's `check:api-types`: regenerate into the working
+      # tree and diff, so the check can never disagree with what a real regeneration would write.
+      - name: Check the generated SDK surface is current
+        if: needs.changes.outputs.flutter == 'true'
+        run: |
+          dart run praxy_sdk_gen
+          # --intent-to-add first: `git diff` does not report untracked files, so without it a
+          # newly registered service whose generated file was never committed would regenerate
+          # here and sail through the check while missing from the repo entirely.
+          git add --intent-to-add praxy_core/lib/src/services/generated
+          git diff --exit-code -- praxy_core/lib/src/services/generated \
+            || { echo "::error::praxy_core's generated services are stale. Run 'dart run praxy_sdk_gen' from sdk/flutter/ and commit."; exit 1; }
         working-directory: sdk/flutter
 
       - name: Test Flutter packages

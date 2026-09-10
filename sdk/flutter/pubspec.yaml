@@ -11,4 +11,5 @@ workspace:
   - praxy_core
   - praxy_flutter
   - praxy_codegen
+  - praxy_sdk_gen
   - example

@@ -7,6 +7,7 @@ import 'json_utils.dart';
 import 'models.dart';
 import 'services/account_service.dart';
 import 'services/functions_service.dart';
+import 'services/generated/users_service.dart';
 import 'services/storage_service.dart';
 import 'services/tables_service.dart';
 import 'services/teams_service.dart';
@@ -46,6 +47,7 @@ final class Praxy {
     teams = TeamsService(this);
     functions = FunctionsService(this);
     storage = StorageService(this);
+    users = UsersService(this);
   }
 
   final Uri endpoint;
@@ -64,6 +66,17 @@ final class Praxy {
   late final TeamsService teams;
   late final FunctionsService functions;
   late final StorageService storage;
+
+  /// Server-side app-user administration. Needs a client constructed with an
+  /// `apiKey` — an end-user session gets a `401` from the server, which surfaces as
+  /// a [PraxyAuthException] like any other. This service is exposed on every client
+  /// rather than only on server ones, the same way [teams]' owner-only methods are
+  /// always present: authorization is the server's answer to give, and duplicating
+  /// it here would be a second copy to get wrong.
+  ///
+  /// Unlike every other service on this class, it is generated — see
+  /// `sdk/flutter/praxy_sdk_gen`.
+  late final UsersService users;
 
   /// Sends one API call and returns the decoded JSON body (`null` for a 204 or an
   /// empty body). Every header/error-mapping rule lives here so service methods stay

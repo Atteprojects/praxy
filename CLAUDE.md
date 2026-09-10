@@ -362,6 +362,29 @@ Filled in as phases land — keep this section current.
   build and the row update recording its `ImageTag` leaves an image on a row stuck in `building` —
   matched by neither rule, bounded by crash frequency rather than deploy volume; reclaiming it would
   need exactly the age guard the two rules are shaped to avoid.
+- SDK generation (2026-09-09/10, `docs/research/sdk-generation.md`): **Phase 1** gave all 290
+  operations a stable `operationId` derived from the handler `MethodInfo` (`OpenApiOperationIds`) —
+  from the *method*, not the route, so renaming a route never renames a public SDK method. **Phase 2**
+  added API-key auth to `praxy_core` and `sdk/flutter/praxy_sdk_gen`, which generates
+  `praxy_core/lib/src/services/generated/users_service.dart` from `docs/openapi/v1.json`.
+  Regenerate with `dart run praxy_sdk_gen` from `sdk/flutter/`; CI regenerates and
+  `git diff --exit-code`s, mirroring the console's `check:api-types` — and the Flutter path filter now
+  watches `docs/openapi/v1.json` for the same reason the console's does. The CI step runs
+  `git add --intent-to-add` first: `git diff` doesn't report untracked files, so a newly registered
+  service whose output was never committed would otherwise pass while missing from the repo.
+  **The Dart SDK is one dual-mode package** (owner's call), not Appwrite's `appwrite`/`node-appwrite`
+  split — so the guard is that `PraxyFlutter` offers no way to pass an `apiKey`, and a server client
+  **never reads the session store at all** rather than preferring the key, or a background job would
+  inherit whatever session happened to be persisted. **Generate the mechanical surface only**: a
+  schema in neither `modelTypes` nor `generateModels` is a hard error, never a guessed type, because
+  `praxy_core` already hand-writes `AppUser`/`AppSession`/`SessionList` and a generated duplicate
+  would silently diverge. **The live landmine for Phase 3: `docs/openapi/v1.json` documents no query
+  parameters at all** — only path ones. 37 reads across 16 endpoint files take `limit`/`offset`/
+  `search`/`expand`/`queries` from `HttpContext`, which .NET's OpenAPI generation cannot see, so
+  `users.list` is documented as taking nothing and the generated method cannot paginate. That is
+  declared in the generator's `documentGaps` and lands in the generated doc comment rather than being
+  emitted silently; a note that outlives its operation is a hard error. Operation summaries are still
+  1 of 290 (XML docs reached schemas, not operations), so generated methods have no prose docs yet.
 
 ## Session end — handoff protocol
 

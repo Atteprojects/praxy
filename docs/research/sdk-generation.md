@@ -78,9 +78,14 @@ is:
 
 Note the packaging question `@praxy/core` already raises: one dual-mode package makes it *possible*
 to construct an API-key client in a browser bundle, where Appwrite's split (`appwrite` versus
-`node-appwrite`) makes it impossible. `@praxy/react` correctly has no `apiKey` anywhere. Decide
-deliberately whether Dart follows the dual-mode core or splits, rather than inheriting the JS answer
-by default.
+`node-appwrite`) makes it impossible. `@praxy/react` correctly has no `apiKey` anywhere.
+
+**Decided (2026-09-10): one dual-mode package**, matching `@praxy/core` rather than splitting. With
+one package the split can't be the guard, so the guard moves up a layer: `PraxyFlutter` constructs
+its own core and offers no way to pass an `apiKey`, so a shipped app cannot reach for one by
+accident, and the warning lives on `Praxy` itself — the one place it still could. Same shape as
+`@praxy/core` being dual-mode while `@praxy/react` has none. A real split stays available later if
+that proves insufficient.
 
 ## Landmines
 
@@ -105,8 +110,25 @@ by default.
   across ~290 operations; an explicit audience marker rather than the tag-prefix convention; a ratchet
   test asserting every operation has an `operationId` and a summary. Mechanical, and it improves
   `docs/api-reference.md` for humans on its own merits, independent of any generator.
-- **Phase 2 — the generator, and the Dart server SDK as its first consumer.** API-key auth in
-  `praxy_core`, generated server services, the packaging decision above.
+- **Phase 2 — the generator, and the Dart server SDK as its first consumer.** **Shipped 2026-09-10.**
+  API-key auth in `praxy_core` (`X-Praxy-Key`, and a server client never reads the session store —
+  falling back would let a background job inherit whatever session was persisted), `praxy_sdk_gen`,
+  and `UsersService` as its first generated output. The packaging decision above is settled.
+
+  **What Phase 2 found, and Phase 3 has to deal with: the document describes no query parameters at
+  all.** Only path parameters survive. 37 reads across 16 endpoint files pull `limit`, `offset`,
+  `search`, `expand`, `force` and the row DSL's `queries` straight out of `HttpContext`, and .NET's
+  OpenAPI generation can only see parameters that are actually bound — so `users.list` is documented
+  as taking nothing, and the generated method cannot paginate. Phase 1 fixed naming and did not
+  touch this; the two gaps are independent. Rather than emit a method that looks complete and
+  quietly can't page, the generator declares known gaps and puts them in the generated doc comment,
+  and errors if such a note outlives the operation it describes. Fixing it properly means declaring
+  those parameters to OpenAPI (a marker plus a transformer keeps the handlers reading from
+  `HttpContext` exactly as now, so runtime behaviour doesn't move).
+
+  Operation summaries are still 1 of 290, so generated methods carry no prose docs beyond the
+  service-level one. Same cause: `.WithSummary()` was in Phase 1's scope on paper and the XML docs
+  that shipped reached schemas, not operations.
 - **Phase 3 — apply it to the surfaces that already exist**, incrementally and only where it removes
   hand-maintenance without costing ergonomics. Not a rewrite of the JS or Flutter SDKs.
 
