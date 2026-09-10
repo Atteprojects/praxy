@@ -152,8 +152,19 @@ jobs:
         run: dart test praxy_core praxy_codegen praxy_sdk_gen
         working-directory: sdk/flutter
 
+      # `dart test` only ever loads `lib/`, so a package's CLI entry point can be missing from the
+      # repo entirely and every test still passes — which is exactly what happened: the root
+      # .gitignore's .NET `bin/` rule swallowed `praxy_codegen/bin/praxy_codegen.dart`, and the
+      # documented `dart run praxy_codegen` had never worked in a fresh clone. Running each CLI is
+      # the only check that actually loads `bin/`.
+      - name: Smoke-test the Dart CLIs
+        if: needs.changes.outputs.flutter == 'true'
+        run: dart run praxy_codegen --help
+        working-directory: sdk/flutter
+
       # Same gate, same reasoning as the console's `check:api-types`: regenerate into the working
       # tree and diff, so the check can never disagree with what a real regeneration would write.
+      # This one also covers praxy_sdk_gen's own entry point, since it runs the CLI.
       - name: Check the generated SDK surface is current
         if: needs.changes.outputs.flutter == 'true'
         run: |
