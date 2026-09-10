@@ -1,6 +1,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Praxy.Core;
 using Praxy.Sites;
 using Praxy.Tests.Integration.Infrastructure;
@@ -27,6 +28,31 @@ public class DeploymentImageSweepDockerTests(PostgresContainerFixture pg) : Auth
 {
     /// <summary>Already present — the Postgres fixture pulls it before any test runs.</summary>
     private const string SourceImage = "postgis/postgis:17-3.6-alpine";
+
+    /// <summary>
+    /// Removes <c>DeploymentImageSweeper</c> from this test host.
+    ///
+    /// <para>Without this the test races the very service it supports: it tags an image
+    /// <c>praxy-site-&lt;random guid&gt;</c>, which has no deployment row and is therefore
+    /// precisely what the sweeper's orphan rule is built to reclaim. The sweep runs once at
+    /// startup, so whether the image still exists a few milliseconds later is a matter of which
+    /// won — it passed locally for exactly that reason and failed on CI's slower startup.</para>
+    ///
+    /// <para>Removing the service rather than slowing it down is the honest fix: these two tests
+    /// are about <c>SiteDockerExecutor</c>'s listing and removal, and the policy that decides what
+    /// to remove is unit-tested separately in <c>DeploymentImageRetentionTests</c>.</para>
+    /// </summary>
+    protected override Action<IServiceCollection>? TestServices => services =>
+    {
+        base.TestServices?.Invoke(services);
+        foreach (var descriptor in services
+                     .Where(d => d.ServiceType == typeof(IHostedService)
+                         && d.ImplementationType == typeof(Praxy.Api.Infrastructure.DeploymentImageSweeper))
+                     .ToList())
+        {
+            services.Remove(descriptor);
+        }
+    };
 
     [Fact]
     public async Task Finds_and_removes_this_products_deployment_images_and_leaves_everything_else_alone()
