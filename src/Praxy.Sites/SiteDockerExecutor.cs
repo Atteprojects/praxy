@@ -437,6 +437,67 @@ public sealed class SiteDockerExecutor : IDisposable
         return new RunningSiteContainer(containerId, host, port);
     }
 
+    /// <summary>
+    /// Every site deployment image is tagged <c>praxy-site-{deploymentId}:latest</c>. The id is in
+    /// the tag on purpose: it is what lets <c>DeploymentImageSweeper</c> decide an image's fate from
+    /// the tag alone, without a label (labels would only be on images built after the upgrade that
+    /// added them, and the backlog this reclaims predates it).
+    /// </summary>
+    public const string ImageTagPrefix = "praxy-site-";
+
+    /// <summary>
+    /// The tags of every site deployment image on this daemon. Mirrors
+    /// <c>Praxy.Functions.DockerExecutor.ListDeploymentImageTagsAsync</c> — near-identical by
+    /// necessity, kept duplicated for the reason this class's own summary gives.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ListDeploymentImageTagsAsync(CancellationToken ct)
+    {
+        var images = await _client.Images.ListImagesAsync(new ImagesListParameters
+        {
+            All = false,
+            Filters = new Dictionary<string, IDictionary<string, bool>>
+            {
+                ["reference"] = new Dictionary<string, bool> { [$"{ImageTagPrefix}*"] = true },
+            },
+        }, ct);
+
+        // An image carries a list of tags, not one: filtering by reference selects the image, so a
+        // matching image could in principle also carry an unrelated tag. Only the tags this product
+        // generates are ours to remove.
+        return images
+            .SelectMany(image => image.RepoTags ?? [])
+            .Where(tag => tag.StartsWith(ImageTagPrefix, StringComparison.Ordinal))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Removes one deployment image. Returns false rather than throwing when the image is already
+    /// gone or a container still holds it — both are ordinary states for a sweep that runs on a
+    /// timer, and the caller reports how many it actually reclaimed, so a "removed" count has to
+    /// mean removed.
+    /// </summary>
+    public async Task<bool> RemoveImageAsync(string imageTag, CancellationToken ct)
+    {
+        try
+        {
+            // Force covers an image carrying more than one tag. It deliberately does not override
+            // Docker's own refusal to delete an image a *running* container is using — that 409 is
+            // the backstop under this whole policy: even if the retention rules were wrong about an
+            // image, the daemon will not pull a running site out from under itself.
+            await _client.Images.DeleteImageAsync(imageTag, new ImageDeleteParameters { Force = true }, ct);
+            return true;
+        }
+        catch (DockerImageNotFoundException)
+        {
+            return false;
+        }
+        catch (DockerApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            // In use by a container. Leave it; the next sweep reconsiders it.
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         _http.Dispose();

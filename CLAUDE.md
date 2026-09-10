@@ -333,6 +333,35 @@ Filled in as phases land — keep this section current.
   degrades. `StatementTimeoutTests` asserts both that the opt-out works and that Npgsql's pool reset
   keeps it from leaking to the next borrower, since a leak's only symptom is a timeout that stops
   firing.
+- Deployment image reclamation (2026-09-09): every site/function build produced a Docker image and
+  **nothing ever removed one** — found on the production droplet as every image ever built still
+  present, oldest two weeks old, alongside a build cache that had previously reached 42 GB of a
+  77 GB disk. Two different defects with two different owners, and worth keeping apart: the
+  **images** are the product's to bound (now `DeploymentImageSweeper`, in `Praxy.Api/Infrastructure`,
+  on the retention interval), the **build cache** is the operator's — it is generated almost entirely
+  by `docker compose up -d --build` building `api` itself (verified: on production every single cache
+  entry dated from the last deploy, none from a site or function build), and `Docker.DotNet.Enhanced`
+  4.3.3 exposes **no build-cache prune API at all** (only the read-only
+  `SystemDataUsageInfoResponse.BuildCacheUsage`; there is no raw-request escape hatch on
+  `DockerClient` either — checked by reflection), so it is a documented
+  `docker builder prune --keep-storage` line in `docs/self-host.md`, not code. New knobs:
+  `Praxy:Sites:KeepDeploymentImages` / `Praxy:Functions:KeepDeploymentImages` (5 each). **Bounded
+  retention, not a prune** — an old deployment image is exactly what the console's Activate button
+  rolls back to, so the policy keeps the N most recent `ready` builds *per resource* plus the active
+  deployment whatever its age (roll back and stay there and the running image is never a candidate).
+  The rule that makes this safe without an age guard: the image tag *contains the deployment id*, and
+  a row exists from `queued` onward, so "no row at all" cannot mean "build in flight" — the inverse
+  of `SitePreviewSweeper`'s container reclaim, which does need an age guard because a container id is
+  written *after* the container exists. Don't "fix" that asymmetry. Reclaiming nulls `image_tag`, so
+  a reclaimed deployment keeps its build log and commit but can no longer be activated
+  (`site_deployment_image_reclaimed` / `function_deployment_image_reclaimed`, two new error types) and
+  — for a site — loses its preview URL, since previews cold-start from that same image. Also fixed
+  here: **`FunctionsService.ActivateAsync` never checked `ImageTag` at all** (Sites' did), so
+  activating an imageless deployment used to succeed and repoint `ActiveDeploymentId` at something
+  that could only fail later at invoke time. **Known residual**: a process killed between a successful
+  build and the row update recording its `ImageTag` leaves an image on a row stuck in `building` —
+  matched by neither rule, bounded by crash frequency rather than deploy volume; reclaiming it would
+  need exactly the age guard the two rules are shaped to avoid.
 
 ## Session end — handoff protocol
 

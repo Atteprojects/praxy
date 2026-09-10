@@ -197,7 +197,8 @@ try
         MaxConcurrentIsolatedContainers: builder.Configuration.GetValue("Praxy:Functions:MaxConcurrentIsolatedContainers", 16),
         IsolatedContainerWaitSeconds: builder.Configuration.GetValue("Praxy:Functions:IsolatedContainerWaitSeconds", 5),
         MaxResponseCaptureBytes: builder.Configuration.GetValue("Praxy:Functions:MaxResponseCaptureBytes", 65536),
-        MaxSourceBytes: builder.Configuration.GetValue("Praxy:Functions:MaxSourceBytes", 26_214_400L));
+        MaxSourceBytes: builder.Configuration.GetValue("Praxy:Functions:MaxSourceBytes", 26_214_400L),
+        KeepDeploymentImages: builder.Configuration.GetValue("Praxy:Functions:KeepDeploymentImages", 5));
     builder.Services.AddSingleton(functionsOptions);
     builder.Services.AddSingleton<DockerExecutor>();
     builder.Services.AddSingleton<WarmPool>();
@@ -269,7 +270,8 @@ try
         MaxSourceBytes: builder.Configuration.GetValue("Praxy:Sites:MaxSourceBytes", 26_214_400L),
         PreviewIdleSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewIdleSeconds", 600),
         PreviewSweepIntervalSeconds: builder.Configuration.GetValue("Praxy:Sites:PreviewSweepIntervalSeconds", 60),
-        RequestLogChannelCapacity: builder.Configuration.GetValue("Praxy:Sites:RequestLogChannelCapacity", 10_000));
+        RequestLogChannelCapacity: builder.Configuration.GetValue("Praxy:Sites:RequestLogChannelCapacity", 10_000),
+        KeepDeploymentImages: builder.Configuration.GetValue("Praxy:Sites:KeepDeploymentImages", 5));
     builder.Services.AddSingleton(sitesOptions);
     builder.Services.AddSingleton<SiteDockerExecutor>();
     builder.Services.AddSingleton<SiteContainerRegistry>();
@@ -314,6 +316,10 @@ try
         AuditLogMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:AuditLogMaxAgeDays", 90),
         SiteRequestsMaxAgeDays: builder.Configuration.GetValue("Praxy:Retention:SiteRequestsMaxAgeDays", 7)));
     builder.Services.AddHostedService<RetentionSweeper>();
+    // Row retention's disk-shaped sibling, on the same interval and registered beside it for that
+    // reason — but reclaiming Docker images rather than table rows, and bounded by a per-resource
+    // count rather than an age, since what it deletes are rollback targets and not history.
+    builder.Services.AddHostedService<DeploymentImageSweeper>();
 
     // Tight buckets on auth endpoints, looser but real ceilings on the rest of the data plane,
     // partitioned on project + caller identity (key or session) before IP — a spoofable source

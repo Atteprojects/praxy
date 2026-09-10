@@ -56,4 +56,13 @@ public sealed record SitesOptions(
     // logging pressure." 10,000 in-flight log entries is a generous burst allowance at a few hundred
     // bytes each; a self-hoster whose sustained request rate outpaces SiteRequestLogWorker's drain
     // loop by this much has a bigger problem than dropped log rows.
-    int RequestLogChannelCapacity = 10_000);
+    int RequestLogChannelCapacity = 10_000,
+    // How many of a site's most recent successful builds keep their Docker image on disk — see
+    // FunctionsOptions.KeepDeploymentImages for why this is a bounded window and not a blanket
+    // prune. Sites images are the bigger of the two in practice (a built Next.js app plus its
+    // node_modules runs ~300 MB against a function's ~235 MB), and a site is the likelier of the
+    // two to be wired to push-to-deploy, so this is the knob that actually holds a droplet's disk.
+    // Reclaiming a site deployment's image also retires its Phase 2 preview URL: the proxy
+    // cold-starts a preview from this exact image tag, so a preview older than this window stops
+    // resolving. That is the intended tradeoff — an unbounded preview history is an unbounded disk.
+    int KeepDeploymentImages = 5);

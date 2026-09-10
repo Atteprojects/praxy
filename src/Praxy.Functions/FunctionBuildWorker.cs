@@ -159,7 +159,7 @@ public sealed class FunctionBuildWorker(
         var flushTask = FlushLoopAsync(deployment.Id, logBuffer, logLock, flushCts.Token);
 
         var baseImage = fn.Runtime == FunctionRuntimes.Dart ? options.DartBaseImage : options.NodeBaseImage;
-        var imageTag = $"praxy-fn-{Ids.Wire(deployment.Id)}:latest";
+        var imageTag = $"{DockerExecutor.ImageTagPrefix}{Ids.Wire(deployment.Id)}:latest";
 
         DockerExecutor.BuildResult result;
         try

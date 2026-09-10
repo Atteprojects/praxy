@@ -156,7 +156,7 @@ public sealed class SiteBuildWorker(
         var flushTask = FlushLoopAsync(deployment.Id, logBuffer, logLock, flushCts.Token);
 
         var envVars = await loadSites.DecryptedEnvVarsAsync(site.Id, ct);
-        var imageTag = $"praxy-site-{Ids.Wire(deployment.Id)}:latest";
+        var imageTag = $"{SiteDockerExecutor.ImageTagPrefix}{Ids.Wire(deployment.Id)}:latest";
 
         SiteDockerExecutor.BuildResult result;
         try
