@@ -18,10 +18,29 @@ import 'transport.dart';
 /// mapping from the server's `{message, code, type, version, requestId, fields?}`
 /// envelope to the [PraxyException] hierarchy.
 final class Praxy {
-  Praxy({required String endpoint, required this.projectId, Transport? transport, SessionStore? sessionStore})
-    : endpoint = Uri.parse(endpoint),
-      sessionStore = sessionStore ?? MemorySessionStore(),
-      _transport = transport ?? HttpTransport(endpoint: Uri.parse(endpoint)) {
+  /// [apiKey] makes this a **server** client: it authenticates every request with a
+  /// project API key (`X-Praxy-Key`) and never reads or writes [sessionStore] at all.
+  ///
+  /// > **Never construct a client with an `apiKey` inside an app you ship.** A key in a
+  /// > Flutter binary or a browser bundle is extractable, and a project API key is not
+  /// > scoped to one end user the way a session is. `PraxyFlutter` deliberately offers no
+  /// > way to pass one, which is the reason this warning lives here rather than there —
+  /// > this class is the one place a shipped app could still reach for it.
+  ///
+  /// The same package serves both audiences, matching `@praxy/core`'s dual-mode client,
+  /// rather than splitting into separate client and server packages the way Appwrite's
+  /// `appwrite`/`node-appwrite` do. That split is still available later if this warning
+  /// turns out not to be enough.
+  Praxy({
+    required String endpoint,
+    required this.projectId,
+    String? apiKey,
+    Transport? transport,
+    SessionStore? sessionStore,
+  }) : endpoint = Uri.parse(endpoint),
+       _apiKey = apiKey,
+       sessionStore = sessionStore ?? MemorySessionStore(),
+       _transport = transport ?? HttpTransport(endpoint: Uri.parse(endpoint)) {
     account = AccountService(this);
     tables = TablesService(this);
     teams = TeamsService(this);
@@ -33,6 +52,12 @@ final class Praxy {
   final String projectId;
   final SessionStore sessionStore;
   final Transport _transport;
+  final String? _apiKey;
+
+  /// Whether this client authenticates as a server (an API key) rather than as an end
+  /// user (a session). Callers that behave differently for the two — minting a realtime
+  /// ticket, for instance — branch on this rather than inspecting the key itself.
+  bool get isServerClient => _apiKey != null;
 
   late final AccountService account;
   late final TablesService tables;
@@ -100,10 +125,15 @@ final class Praxy {
     List<int>? bodyBytes,
     String? contentType,
   }) async {
-    final session = await sessionStore.read();
+    // An API-key client never touches the session store — not "prefers the key over a
+    // session", but never reads one. Falling back to a session would make a server
+    // client's identity depend on whatever happened to be persisted, which is how a
+    // background job silently starts acting as the last user who signed in.
+    final session = _apiKey == null ? await sessionStore.read() : null;
     final headers = <String, String>{
       'accept': 'application/json',
       'x-praxy-project': projectId,
+      'x-praxy-key': ?_apiKey,
       if (session != null) 'x-praxy-session': session.secret,
     };
 

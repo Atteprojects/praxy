@@ -105,6 +105,36 @@ Errors are a sealed hierarchy rooted at `PraxyException` — `PraxyAuthException
 `fields`), and `PraxyNetworkException`/`PraxyDecodeException` for transport-level failures — so
 `catch (PraxyRateLimitException e)` etc. works without string-matching a message.
 
+## Server usage (API keys)
+
+This package is the **Dart server SDK** as well as the core of the Flutter one. Pass an `apiKey`
+instead of signing a user in, and every call authenticates as the project rather than as an end
+user:
+
+```dart
+final px = Praxy(
+  endpoint: 'https://api.example.com',
+  projectId: 'your-project-id',
+  apiKey: '<keyId>.<secret>',   // created in the console, under the project's API keys
+);
+
+final rows = await px.tables.list(todos);   // no sign-in, no session
+```
+
+A client constructed with an `apiKey` **never reads or writes the session store at all** — not
+"prefers the key over a session". The distinction matters: falling back would make a background
+job's identity depend on whatever session happened to be persisted, so a scheduled task could
+silently start acting as the last user who signed in. `px.isServerClient` tells the two modes apart.
+
+> **Never ship an `apiKey` inside an app your users install.** A key in a Flutter binary or a
+> browser bundle is extractable, and unlike a session it is not scoped to one end user.
+> [`praxy_flutter`](https://github.com/<your-fork-or-org>/praxy/tree/main/sdk/flutter/praxy_flutter)
+> deliberately offers no way to pass one — a client app should authenticate as its user.
+
+One package serves both audiences, matching `@praxy/core`'s dual-mode client, rather than splitting
+into separate client and server packages the way Appwrite's `appwrite`/`node-appwrite` do. That
+split stays available later if the warning above proves not to be enough.
+
 ## What's not here
 
 - **Realtime.** `praxy_core` has no WebSocket dependency; `Praxy.mintRealtimeTicket()` exists so a
