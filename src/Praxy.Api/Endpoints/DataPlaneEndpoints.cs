@@ -34,7 +34,7 @@ public static class DataPlaneEndpoints
             await db.Projects.Where(p => p.Id == project.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(p => p.LastPingAt, now), ct);
             return Results.Ok(new PingResponse("pong", project.Id, now));
-        }).Produces<PingResponse>();
+        }).WithName("ping.send").Produces<PingResponse>();
     }
 
     public static Project CurrentProject(HttpContext http) =>

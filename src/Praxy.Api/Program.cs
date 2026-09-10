@@ -399,6 +399,7 @@ try
 
     builder.Services.AddOpenApi(o =>
     {
+        o.AddOperationTransformer<OpenApiOperationIds>();
         o.AddOperationTransformer<OpenApiErrorResponses>();
         o.AddDocumentTransformer<OpenApiErrorResponses>();
         o.AddDocumentTransformer<OpenApiServers>();
@@ -489,6 +490,7 @@ try
     }
 
     app.MapGet("/v1/health", () => Results.Ok(new HealthResponse("ok", Praxy.Core.PraxyVersion.Current)))
+        .WithName("health.get")
         .Produces<HealthResponse>();
 
     CapabilitiesEndpoints.Map(app);
@@ -515,8 +517,9 @@ try
     VcsEndpoints.Map(app);
 
     // The console used to live under /console; keep old bookmarks/docs working.
-    app.MapGet("/console", () => Results.Redirect("/")).Produces(StatusCodes.Status302Found);
-    app.MapGet("/console/{*path}", (string path) => Results.Redirect($"/{path}"))
+    app.MapGet("/console", () => Results.Redirect("/")).WithName("console.redirect")
+        .Produces(StatusCodes.Status302Found);
+    app.MapGet("/console/{*path}", (string path) => Results.Redirect($"/{path}")).WithName("console.redirectPath")
         .Produces(StatusCodes.Status302Found);
 
     // Unmatched /v1/* still gets the public JSON 404 envelope, not the console shell.

@@ -185,6 +185,50 @@ public class OpenApiDocumentTests(PostgresContainerFixture pg) : AuthTestBase(pg
         };
 
     /// <summary>
+    /// Every operation needs a stable, unique <c>operationId</c>, because an SDK generator names its
+    /// methods from it. Two failures matter and they fail differently.
+    ///
+    /// <b>Missing</b> means a lambda was mapped inline: <see cref="Praxy.Api.Infrastructure.OpenApiOperationIds"/>
+    /// deliberately refuses to derive a name from a compiler-generated one like <c>&lt;Map&gt;b__0_0</c>,
+    /// which is meaningless in an SDK and changes when surrounding code is reordered. Add
+    /// <c>.WithName("resource.action")</c> to that endpoint.
+    ///
+    /// <b>Duplicated</b> is worse and quieter: two endpoints resolving to one id collapse into a
+    /// single SDK method, and whichever the generator emits second wins. That is invisible in the
+    /// document and obvious only when someone calls the wrong endpoint.
+    /// </summary>
+    [Fact]
+    public async Task Every_operation_has_a_unique_operation_id()
+    {
+        var doc = await DocumentAsync();
+        var missing = new List<string>();
+        var seen = new Dictionary<string, string>();
+        var duplicated = new List<string>();
+
+        foreach (var (method, path, op) in Operations(doc))
+        {
+            if (!op.TryGetProperty("operationId", out var idElement) ||
+                idElement.GetString() is not { Length: > 0 } id)
+            {
+                missing.Add($"{method} {path}");
+                continue;
+            }
+
+            if (seen.TryGetValue(id, out var firstSeenOn))
+                duplicated.Add($"'{id}' on both {firstSeenOn} and {method} {path}");
+            else
+                seen[id] = $"{method} {path}";
+        }
+
+        Assert.True(missing.Count == 0,
+            "These operations have no operationId — an inline lambda cannot supply one. Add "
+            + ".WithName(\"resource.action\") where they are mapped:\n  " + string.Join("\n  ", missing));
+        Assert.True(duplicated.Count == 0,
+            "These operationIds are not unique, so an SDK generator would emit one method for two "
+            + "endpoints:\n  " + string.Join("\n  ", duplicated));
+    }
+
+    /// <summary>
     /// The committed snapshot is what everyone not running a dev instance reads. If it drifts from
     /// what the code generates, the published reference is a lie — this catches "forgot to
     /// regenerate" at test time rather than at the next release.

@@ -33,6 +33,7 @@ public static class CapabilitiesEndpoints
                     Webhooks: true,
                     Sites: true,
                     Storage: true))))
+            .WithName("capabilities.get")
             .Produces<CapabilitiesResponse>();
     }
 }

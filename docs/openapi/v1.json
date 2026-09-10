@@ -16,6 +16,7 @@
         "tags": [
           "Praxy.Api"
         ],
+        "operationId": "health.get",
         "responses": {
           "200": {
             "description": "OK",
@@ -35,6 +36,7 @@
         "tags": [
           "Praxy.Api"
         ],
+        "operationId": "capabilities.get",
         "responses": {
           "200": {
             "description": "OK",
@@ -64,6 +66,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.acceptInvite",
         "parameters": [
           {
             "name": "organizationId",
@@ -157,6 +160,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.oAuthStart",
         "parameters": [
           {
             "name": "provider",
@@ -225,6 +229,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.oAuthCallback",
         "parameters": [
           {
             "name": "provider",
@@ -265,6 +270,7 @@
         "tags": [
           "AuditEndpoints"
         ],
+        "operationId": "audit.listProjectAudit",
         "responses": {
           "200": {
             "description": "OK",
@@ -294,6 +300,7 @@
         "tags": [
           "AuditEndpoints"
         ],
+        "operationId": "audit.listInstanceAudit",
         "responses": {
           "200": {
             "description": "OK",
@@ -325,6 +332,7 @@
         ],
         "summary": "WebSocket endpoint (upgrade required)",
         "description": "Upgrades to a WebSocket carrying the message-mode protocol (connected/subscribe/unsubscribe/ping/event). Authenticate with a session token, an API key, or a single-use ticket from POST /v1/realtime/ticket. A plain GET without an upgrade header is rejected.",
+        "operationId": "realtime.handleSocket",
         "responses": {
           "101": {
             "description": "Switching Protocols"
@@ -347,6 +355,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listFunctionTemplates",
         "responses": {
           "200": {
             "description": "OK",
@@ -376,6 +385,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.askTls",
         "responses": {
           "204": {
             "description": "No Content"
@@ -401,6 +411,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "operationId": "vcs.installCallback",
         "responses": {
           "302": {
             "description": "Found"
@@ -423,6 +434,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "operationId": "vcs.webhook",
         "responses": {
           "204": {
             "description": "No Content"
@@ -448,6 +460,7 @@
         "tags": [
           "Praxy.Api"
         ],
+        "operationId": "console.redirect",
         "responses": {
           "302": {
             "description": "Found"
@@ -470,6 +483,7 @@
         "tags": [
           "Praxy.Api"
         ],
+        "operationId": "console.redirectPath",
         "parameters": [
           {
             "name": "path",
@@ -502,6 +516,7 @@
         "tags": [
           "ConsoleAuthEndpoints"
         ],
+        "operationId": "consoleAuth.claim",
         "requestBody": {
           "content": {
             "application/json": {
@@ -541,6 +556,7 @@
         "tags": [
           "ConsoleAuthEndpoints"
         ],
+        "operationId": "consoleAuth.login",
         "requestBody": {
           "content": {
             "application/json": {
@@ -580,6 +596,7 @@
         "tags": [
           "ConsoleAuthEndpoints"
         ],
+        "operationId": "consoleAuth.account",
         "responses": {
           "200": {
             "description": "OK",
@@ -609,6 +626,7 @@
         "tags": [
           "ConsoleAuthEndpoints"
         ],
+        "operationId": "consoleAuth.logout",
         "responses": {
           "204": {
             "description": "No Content"
@@ -631,6 +649,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.list",
         "responses": {
           "200": {
             "description": "OK",
@@ -658,6 +677,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -697,6 +717,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.get",
         "parameters": [
           {
             "name": "organizationId",
@@ -734,6 +755,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.update",
         "parameters": [
           {
             "name": "organizationId",
@@ -781,6 +803,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.delete",
         "parameters": [
           {
             "name": "organizationId",
@@ -813,6 +836,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.listMembers",
         "parameters": [
           {
             "name": "organizationId",
@@ -850,6 +874,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.inviteMember",
         "parameters": [
           {
             "name": "organizationId",
@@ -935,6 +960,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.updateMemberRole",
         "parameters": [
           {
             "name": "organizationId",
@@ -990,6 +1016,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "operationId": "consoleOrganizations.removeMember",
         "parameters": [
           {
             "name": "organizationId",
@@ -1030,6 +1057,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.list",
         "responses": {
           "200": {
             "description": "OK",
@@ -1057,6 +1085,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1096,6 +1125,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.get",
         "parameters": [
           {
             "name": "projectId",
@@ -1133,6 +1163,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.update",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1170,6 +1201,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.delete",
         "responses": {
           "204": {
             "description": "No Content"
@@ -1192,6 +1224,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.getQuotas",
         "responses": {
           "200": {
             "description": "OK",
@@ -1221,6 +1254,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "operationId": "projects.getOverview",
         "responses": {
           "200": {
             "description": "OK",
@@ -1250,6 +1284,7 @@
         "tags": [
           "Praxy.Api"
         ],
+        "operationId": "ping.send",
         "responses": {
           "200": {
             "description": "OK",
@@ -1279,6 +1314,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.signup",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1352,6 +1388,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.get",
         "responses": {
           "200": {
             "description": "OK",
@@ -1381,6 +1418,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.updateName",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1420,6 +1458,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.updatePassword",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1459,6 +1498,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.updatePrefs",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1498,6 +1538,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.login",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1573,6 +1614,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.exchangeToken",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1648,6 +1690,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.listSessions",
         "responses": {
           "200": {
             "description": "OK",
@@ -1677,6 +1720,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.deleteCurrentSession",
         "responses": {
           "204": {
             "description": "No Content"
@@ -1699,6 +1743,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.deleteSession",
         "parameters": [
           {
             "name": "sessionId",
@@ -1731,6 +1776,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.roles",
         "responses": {
           "200": {
             "description": "OK",
@@ -1760,6 +1806,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.createJwt",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1799,6 +1846,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.sendVerification",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1865,6 +1913,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.confirmVerification",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1940,6 +1989,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.sendRecovery",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2006,6 +2056,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "operationId": "accounts.confirmRecovery",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2074,6 +2125,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2111,6 +2163,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.list",
         "responses": {
           "200": {
             "description": "OK",
@@ -2140,6 +2193,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.get",
         "parameters": [
           {
             "name": "teamId",
@@ -2177,6 +2231,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.update",
         "parameters": [
           {
             "name": "teamId",
@@ -2224,6 +2279,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.delete",
         "parameters": [
           {
             "name": "teamId",
@@ -2256,6 +2312,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.createMembership",
         "parameters": [
           {
             "name": "teamId",
@@ -2303,6 +2360,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.listMemberships",
         "parameters": [
           {
             "name": "teamId",
@@ -2342,6 +2400,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.updateMembershipRoles",
         "parameters": [
           {
             "name": "teamId",
@@ -2397,6 +2456,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.deleteMembership",
         "parameters": [
           {
             "name": "teamId",
@@ -2437,6 +2497,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "operationId": "teams.acceptMembership",
         "parameters": [
           {
             "name": "teamId",
@@ -2530,6 +2591,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.list",
         "responses": {
           "200": {
             "description": "OK",
@@ -2557,6 +2619,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2596,6 +2659,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.get",
         "parameters": [
           {
             "name": "userId",
@@ -2633,6 +2697,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.delete",
         "parameters": [
           {
             "name": "userId",
@@ -2665,6 +2730,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.updateStatus",
         "parameters": [
           {
             "name": "userId",
@@ -2714,6 +2780,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.updateLabels",
         "parameters": [
           {
             "name": "userId",
@@ -2763,6 +2830,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.updateEmail",
         "parameters": [
           {
             "name": "userId",
@@ -2812,6 +2880,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.updateName",
         "parameters": [
           {
             "name": "userId",
@@ -2861,6 +2930,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.updatePassword",
         "parameters": [
           {
             "name": "userId",
@@ -2910,6 +2980,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.updateVerification",
         "parameters": [
           {
             "name": "userId",
@@ -2959,6 +3030,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.listSessions",
         "parameters": [
           {
             "name": "userId",
@@ -2996,6 +3068,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.deleteAllSessions",
         "parameters": [
           {
             "name": "userId",
@@ -3028,6 +3101,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "operationId": "users.deleteSession",
         "parameters": [
           {
             "name": "userId",
@@ -3068,6 +3142,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listUsers",
         "responses": {
           "200": {
             "description": "OK",
@@ -3095,6 +3170,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.createUser",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3134,6 +3210,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.getUser",
         "parameters": [
           {
             "name": "userId",
@@ -3171,6 +3248,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deleteUser",
         "parameters": [
           {
             "name": "userId",
@@ -3203,6 +3281,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateUserStatus",
         "parameters": [
           {
             "name": "userId",
@@ -3252,6 +3331,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateUserLabels",
         "parameters": [
           {
             "name": "userId",
@@ -3301,6 +3381,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateUserEmail",
         "parameters": [
           {
             "name": "userId",
@@ -3350,6 +3431,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateUserName",
         "parameters": [
           {
             "name": "userId",
@@ -3399,6 +3481,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateUserPassword",
         "parameters": [
           {
             "name": "userId",
@@ -3448,6 +3531,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateUserVerification",
         "parameters": [
           {
             "name": "userId",
@@ -3495,6 +3579,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.sendUserVerification",
         "parameters": [
           {
             "name": "userId",
@@ -3537,6 +3622,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listUserSessions",
         "parameters": [
           {
             "name": "userId",
@@ -3574,6 +3660,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deleteUserSessions",
         "parameters": [
           {
             "name": "userId",
@@ -3606,6 +3693,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deleteUserSession",
         "parameters": [
           {
             "name": "userId",
@@ -3646,6 +3734,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listUserMemberships",
         "parameters": [
           {
             "name": "userId",
@@ -3685,6 +3774,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listTeams",
         "responses": {
           "200": {
             "description": "OK",
@@ -3712,6 +3802,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.createTeam",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3751,6 +3842,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.getTeam",
         "parameters": [
           {
             "name": "teamId",
@@ -3788,6 +3880,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deleteTeam",
         "parameters": [
           {
             "name": "teamId",
@@ -3820,6 +3913,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listTeamMemberships",
         "parameters": [
           {
             "name": "teamId",
@@ -3857,6 +3951,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.addTeamMember",
         "parameters": [
           {
             "name": "teamId",
@@ -3906,6 +4001,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateTeamMembershipRoles",
         "parameters": [
           {
             "name": "teamId",
@@ -3961,6 +4057,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deleteTeamMembership",
         "parameters": [
           {
             "name": "teamId",
@@ -4001,6 +4098,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.getAuthSettings",
         "responses": {
           "200": {
             "description": "OK",
@@ -4028,6 +4126,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.updateAuthSettings",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4067,6 +4166,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listKeys",
         "responses": {
           "200": {
             "description": "OK",
@@ -4094,6 +4194,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.createKey",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4133,6 +4234,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deleteKey",
         "parameters": [
           {
             "name": "keyId",
@@ -4165,6 +4267,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.listPlatforms",
         "responses": {
           "200": {
             "description": "OK",
@@ -4192,6 +4295,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.createPlatform",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4231,6 +4335,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "operationId": "consoleAuthAdmin.deletePlatform",
         "parameters": [
           {
             "name": "platformId",
@@ -4263,6 +4368,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.createDatabase",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4300,6 +4406,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.listDatabases",
         "responses": {
           "200": {
             "description": "OK",
@@ -4329,6 +4436,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.getDatabase",
         "parameters": [
           {
             "name": "databaseId",
@@ -4366,6 +4474,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.updateDatabase",
         "parameters": [
           {
             "name": "databaseId",
@@ -4413,6 +4522,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.deleteDatabase",
         "parameters": [
           {
             "name": "databaseId",
@@ -4445,6 +4555,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.createTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -4492,6 +4603,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.listTables",
         "parameters": [
           {
             "name": "databaseId",
@@ -4531,6 +4643,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.getTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -4576,6 +4689,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.updateTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -4631,6 +4745,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.deleteTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -4671,6 +4786,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.getPermissions",
         "parameters": [
           {
             "name": "databaseId",
@@ -4716,6 +4832,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.updatePermissions",
         "parameters": [
           {
             "name": "databaseId",
@@ -4773,6 +4890,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.createColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -4838,6 +4956,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.listColumns",
         "parameters": [
           {
             "name": "databaseId",
@@ -4885,6 +5004,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.getColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -4938,6 +5058,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.updateColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -5001,6 +5122,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.deleteColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -5049,6 +5171,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.createIndex",
         "parameters": [
           {
             "name": "databaseId",
@@ -5104,6 +5227,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.listIndexes",
         "parameters": [
           {
             "name": "databaseId",
@@ -5151,6 +5275,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.getIndex",
         "parameters": [
           {
             "name": "databaseId",
@@ -5204,6 +5329,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.deleteIndex",
         "parameters": [
           {
             "name": "databaseId",
@@ -5252,6 +5378,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.listJobs",
         "parameters": [
           {
             "name": "databaseId",
@@ -5291,6 +5418,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.getJob",
         "parameters": [
           {
             "name": "databaseId",
@@ -5338,6 +5466,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.cancelJob",
         "parameters": [
           {
             "name": "databaseId",
@@ -5385,6 +5514,7 @@
         "tags": [
           "DatabaseEndpoints"
         ],
+        "operationId": "databases.retryJob",
         "parameters": [
           {
             "name": "databaseId",
@@ -5432,6 +5562,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.createDatabase",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5469,6 +5600,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.listDatabases",
         "responses": {
           "200": {
             "description": "OK",
@@ -5498,6 +5630,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.getDatabase",
         "parameters": [
           {
             "name": "databaseId",
@@ -5535,6 +5668,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.updateDatabase",
         "parameters": [
           {
             "name": "databaseId",
@@ -5582,6 +5716,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.deleteDatabase",
         "parameters": [
           {
             "name": "databaseId",
@@ -5614,6 +5749,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.createTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -5661,6 +5797,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.listTables",
         "parameters": [
           {
             "name": "databaseId",
@@ -5700,6 +5837,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.getTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -5745,6 +5883,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.updateTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -5800,6 +5939,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.deleteTable",
         "parameters": [
           {
             "name": "databaseId",
@@ -5840,6 +5980,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.getPermissions",
         "parameters": [
           {
             "name": "databaseId",
@@ -5885,6 +6026,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.updatePermissions",
         "parameters": [
           {
             "name": "databaseId",
@@ -5942,6 +6084,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.createColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -6007,6 +6150,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.listColumns",
         "parameters": [
           {
             "name": "databaseId",
@@ -6054,6 +6198,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.getColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -6107,6 +6252,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.updateColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -6170,6 +6316,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.deleteColumn",
         "parameters": [
           {
             "name": "databaseId",
@@ -6218,6 +6365,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.createIndex",
         "parameters": [
           {
             "name": "databaseId",
@@ -6273,6 +6421,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.listIndexes",
         "parameters": [
           {
             "name": "databaseId",
@@ -6320,6 +6469,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.getIndex",
         "parameters": [
           {
             "name": "databaseId",
@@ -6373,6 +6523,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.deleteIndex",
         "parameters": [
           {
             "name": "databaseId",
@@ -6421,6 +6572,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.listJobs",
         "parameters": [
           {
             "name": "databaseId",
@@ -6460,6 +6612,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.getJob",
         "parameters": [
           {
             "name": "databaseId",
@@ -6507,6 +6660,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.cancelJob",
         "parameters": [
           {
             "name": "databaseId",
@@ -6554,6 +6708,7 @@
         "tags": [
           "ConsoleDatabaseEndpoints"
         ],
+        "operationId": "consoleDatabases.retryJob",
         "parameters": [
           {
             "name": "databaseId",
@@ -6601,6 +6756,7 @@
         "tags": [
           "RowEndpoints"
         ],
+        "operationId": "rows.createRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -6692,6 +6848,7 @@
         "tags": [
           "RowEndpoints"
         ],
+        "operationId": "rows.listRows",
         "parameters": [
           {
             "name": "databaseId",
@@ -6775,6 +6932,7 @@
         "tags": [
           "RowEndpoints"
         ],
+        "operationId": "rows.getRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -6864,6 +7022,7 @@
         "tags": [
           "RowEndpoints"
         ],
+        "operationId": "rows.updateRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -6963,6 +7122,7 @@
         "tags": [
           "RowEndpoints"
         ],
+        "operationId": "rows.deleteRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -7047,6 +7207,7 @@
         "tags": [
           "ConsoleRowEndpoints"
         ],
+        "operationId": "consoleRows.createRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -7102,6 +7263,7 @@
         "tags": [
           "ConsoleRowEndpoints"
         ],
+        "operationId": "consoleRows.listRows",
         "parameters": [
           {
             "name": "databaseId",
@@ -7149,6 +7311,7 @@
         "tags": [
           "ConsoleRowEndpoints"
         ],
+        "operationId": "consoleRows.getRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -7202,6 +7365,7 @@
         "tags": [
           "ConsoleRowEndpoints"
         ],
+        "operationId": "consoleRows.updateRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -7265,6 +7429,7 @@
         "tags": [
           "ConsoleRowEndpoints"
         ],
+        "operationId": "consoleRows.deleteRow",
         "parameters": [
           {
             "name": "databaseId",
@@ -7313,6 +7478,7 @@
         "tags": [
           "RealtimeEndpoints"
         ],
+        "operationId": "realtime.createTicket",
         "responses": {
           "200": {
             "description": "OK",
@@ -7378,6 +7544,7 @@
         "tags": [
           "RealtimeEndpoints"
         ],
+        "operationId": "realtime.getConnectionCount",
         "responses": {
           "200": {
             "description": "OK",
@@ -7407,6 +7574,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.listWebhooks",
         "responses": {
           "200": {
             "description": "OK",
@@ -7434,6 +7602,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.createWebhook",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7473,6 +7642,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.getWebhook",
         "parameters": [
           {
             "name": "webhookId",
@@ -7510,6 +7680,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.updateWebhook",
         "parameters": [
           {
             "name": "webhookId",
@@ -7557,6 +7728,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.deleteWebhook",
         "parameters": [
           {
             "name": "webhookId",
@@ -7589,6 +7761,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.listDeliveries",
         "parameters": [
           {
             "name": "webhookId",
@@ -7628,6 +7801,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.getDelivery",
         "parameters": [
           {
             "name": "webhookId",
@@ -7675,6 +7849,7 @@
         "tags": [
           "WebhookEndpoints"
         ],
+        "operationId": "webhooks.redeliver",
         "parameters": [
           {
             "name": "webhookId",
@@ -7722,6 +7897,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listFunctions",
         "responses": {
           "200": {
             "description": "OK",
@@ -7749,6 +7925,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.createFunction",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7788,6 +7965,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listRuntimes",
         "responses": {
           "200": {
             "description": "OK",
@@ -7817,6 +7995,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.createFunctionFromTemplate",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7856,6 +8035,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.getFunction",
         "parameters": [
           {
             "name": "functionId",
@@ -7893,6 +8073,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.updateFunction",
         "parameters": [
           {
             "name": "functionId",
@@ -7940,6 +8121,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.deleteFunction",
         "parameters": [
           {
             "name": "functionId",
@@ -7972,6 +8154,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listEnvVars",
         "parameters": [
           {
             "name": "functionId",
@@ -8011,6 +8194,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.setEnvVar",
         "parameters": [
           {
             "name": "functionId",
@@ -8066,6 +8250,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.deleteEnvVar",
         "parameters": [
           {
             "name": "functionId",
@@ -8106,6 +8291,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listGitBranches",
         "parameters": [
           {
             "name": "functionId",
@@ -8153,6 +8339,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.connectGit",
         "parameters": [
           {
             "name": "functionId",
@@ -8200,6 +8387,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.disconnectGit",
         "parameters": [
           {
             "name": "functionId",
@@ -8239,6 +8427,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listDeployments",
         "parameters": [
           {
             "name": "functionId",
@@ -8276,6 +8465,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.createDeployment",
         "parameters": [
           {
             "name": "functionId",
@@ -8315,6 +8505,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.getDeployment",
         "parameters": [
           {
             "name": "functionId",
@@ -8362,6 +8553,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.activateDeployment",
         "parameters": [
           {
             "name": "functionId",
@@ -8409,6 +8601,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listExecutions",
         "parameters": [
           {
             "name": "functionId",
@@ -8446,6 +8639,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.consoleInvoke",
         "parameters": [
           {
             "name": "functionId",
@@ -8495,6 +8689,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.getExecution",
         "parameters": [
           {
             "name": "functionId",
@@ -8542,6 +8737,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.invoke",
         "parameters": [
           {
             "name": "functionId",
@@ -8635,6 +8831,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.listDataPlaneExecutions",
         "parameters": [
           {
             "name": "functionId",
@@ -8710,6 +8907,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.getDataPlaneExecution",
         "parameters": [
           {
             "name": "functionId",
@@ -8793,6 +8991,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverListFunctions",
         "responses": {
           "200": {
             "description": "OK",
@@ -8856,6 +9055,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverCreateFunction",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8931,6 +9131,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverListRuntimes",
         "responses": {
           "200": {
             "description": "OK",
@@ -8996,6 +9197,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverGetFunction",
         "parameters": [
           {
             "name": "functionId",
@@ -9069,6 +9271,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverUpdateFunction",
         "parameters": [
           {
             "name": "functionId",
@@ -9152,6 +9355,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverDeleteFunction",
         "parameters": [
           {
             "name": "functionId",
@@ -9220,6 +9424,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverListEnvVars",
         "parameters": [
           {
             "name": "functionId",
@@ -9295,6 +9500,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverSetEnvVar",
         "parameters": [
           {
             "name": "functionId",
@@ -9386,6 +9592,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverDeleteEnvVar",
         "parameters": [
           {
             "name": "functionId",
@@ -9462,6 +9669,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverListDeployments",
         "parameters": [
           {
             "name": "functionId",
@@ -9535,6 +9743,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverCreateDeployment",
         "parameters": [
           {
             "name": "functionId",
@@ -9610,6 +9819,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverGetDeployment",
         "parameters": [
           {
             "name": "functionId",
@@ -9693,6 +9903,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "operationId": "functions.serverActivateDeployment",
         "parameters": [
           {
             "name": "functionId",
@@ -9776,6 +9987,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.listProviders",
         "responses": {
           "200": {
             "description": "OK",
@@ -9803,6 +10015,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.createProvider",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9842,6 +10055,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.getProvider",
         "parameters": [
           {
             "name": "providerId",
@@ -9879,6 +10093,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.updateProvider",
         "parameters": [
           {
             "name": "providerId",
@@ -9926,6 +10141,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.deleteProvider",
         "parameters": [
           {
             "name": "providerId",
@@ -9958,6 +10174,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.listTopics",
         "responses": {
           "200": {
             "description": "OK",
@@ -9985,6 +10202,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.createTopic",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10024,6 +10242,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.getTopic",
         "parameters": [
           {
             "name": "topicId",
@@ -10061,6 +10280,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.updateTopic",
         "parameters": [
           {
             "name": "topicId",
@@ -10108,6 +10328,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.deleteTopic",
         "parameters": [
           {
             "name": "topicId",
@@ -10140,6 +10361,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.listSubscribers",
         "parameters": [
           {
             "name": "topicId",
@@ -10177,6 +10399,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.subscribe",
         "parameters": [
           {
             "name": "topicId",
@@ -10226,6 +10449,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.unsubscribe",
         "parameters": [
           {
             "name": "topicId",
@@ -10266,6 +10490,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.listTemplates",
         "responses": {
           "200": {
             "description": "OK",
@@ -10295,6 +10520,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.getTemplate",
         "parameters": [
           {
             "name": "key",
@@ -10332,6 +10558,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.setTemplate",
         "parameters": [
           {
             "name": "key",
@@ -10379,6 +10606,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.resetTemplate",
         "parameters": [
           {
             "name": "key",
@@ -10411,6 +10639,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.listMessages",
         "responses": {
           "200": {
             "description": "OK",
@@ -10438,6 +10667,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.createMessage",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10477,6 +10707,7 @@
         "tags": [
           "MessagingEndpoints"
         ],
+        "operationId": "messaging.getMessage",
         "parameters": [
           {
             "name": "messageId",
@@ -10516,6 +10747,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.listSites",
         "responses": {
           "200": {
             "description": "OK",
@@ -10543,6 +10775,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.createSite",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10582,6 +10815,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.getSite",
         "parameters": [
           {
             "name": "siteId",
@@ -10619,6 +10853,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.updateSite",
         "parameters": [
           {
             "name": "siteId",
@@ -10666,6 +10901,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.deleteSite",
         "parameters": [
           {
             "name": "siteId",
@@ -10698,6 +10934,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.listEnvVars",
         "parameters": [
           {
             "name": "siteId",
@@ -10737,6 +10974,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.setEnvVar",
         "parameters": [
           {
             "name": "siteId",
@@ -10792,6 +11030,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.deleteEnvVar",
         "parameters": [
           {
             "name": "siteId",
@@ -10832,6 +11071,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.listDomains",
         "parameters": [
           {
             "name": "siteId",
@@ -10869,6 +11109,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.addDomain",
         "parameters": [
           {
             "name": "siteId",
@@ -10918,6 +11159,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.deleteDomain",
         "parameters": [
           {
             "name": "siteId",
@@ -10958,6 +11200,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.listGitBranches",
         "parameters": [
           {
             "name": "siteId",
@@ -11005,6 +11248,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.connectGit",
         "parameters": [
           {
             "name": "siteId",
@@ -11052,6 +11296,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.disconnectGit",
         "parameters": [
           {
             "name": "siteId",
@@ -11091,6 +11336,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.listDeployments",
         "parameters": [
           {
             "name": "siteId",
@@ -11128,6 +11374,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.createDeployment",
         "parameters": [
           {
             "name": "siteId",
@@ -11167,6 +11414,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.createDeploymentFromStarterTemplate",
         "parameters": [
           {
             "name": "siteId",
@@ -11206,6 +11454,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.getDeployment",
         "parameters": [
           {
             "name": "siteId",
@@ -11253,6 +11502,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.activateDeployment",
         "parameters": [
           {
             "name": "siteId",
@@ -11300,6 +11550,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "operationId": "sites.listRequests",
         "parameters": [
           {
             "name": "siteId",
@@ -11339,6 +11590,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.createBucket",
         "requestBody": {
           "content": {
             "application/json": {
@@ -11412,6 +11664,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.listBuckets",
         "responses": {
           "200": {
             "description": "OK",
@@ -11477,6 +11730,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.getBucket",
         "parameters": [
           {
             "name": "bucketId",
@@ -11550,6 +11804,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.updateBucket",
         "parameters": [
           {
             "name": "bucketId",
@@ -11633,6 +11888,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.deleteBucket",
         "parameters": [
           {
             "name": "bucketId",
@@ -11701,6 +11957,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.getPermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -11774,6 +12031,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.updatePermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -11859,6 +12117,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.createFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -11942,6 +12201,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.listFiles",
         "parameters": [
           {
             "name": "bucketId",
@@ -12017,6 +12277,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.getFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -12098,6 +12359,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.updateFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -12189,6 +12451,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.replaceFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -12280,6 +12543,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.deleteFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -12356,6 +12620,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.downloadFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -12449,6 +12714,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.getFilePermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -12530,6 +12796,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "operationId": "storage.updateFilePermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -12623,6 +12890,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.getUsage",
         "responses": {
           "200": {
             "description": "OK",
@@ -12652,6 +12920,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.listInlineTypes",
         "responses": {
           "200": {
             "description": "OK",
@@ -12681,6 +12950,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.listBuckets",
         "responses": {
           "200": {
             "description": "OK",
@@ -12708,6 +12978,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.createBucket",
         "requestBody": {
           "content": {
             "application/json": {
@@ -12747,6 +13018,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.getBucket",
         "parameters": [
           {
             "name": "bucketId",
@@ -12784,6 +13056,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.updateBucket",
         "parameters": [
           {
             "name": "bucketId",
@@ -12831,6 +13104,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.deleteBucket",
         "parameters": [
           {
             "name": "bucketId",
@@ -12863,6 +13137,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.getPermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -12900,6 +13175,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.updatePermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -12949,6 +13225,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.listFiles",
         "parameters": [
           {
             "name": "bucketId",
@@ -12986,6 +13263,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.createFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -13035,6 +13313,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.getFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -13080,6 +13359,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.updateFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -13135,6 +13415,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.replaceFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -13190,6 +13471,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.deleteFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -13230,6 +13512,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.downloadFile",
         "parameters": [
           {
             "name": "bucketId",
@@ -13287,6 +13570,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.getFilePermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -13332,6 +13616,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.updateFilePermissions",
         "parameters": [
           {
             "name": "bucketId",
@@ -13389,6 +13674,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.listDerivatives",
         "parameters": [
           {
             "name": "bucketId",
@@ -13434,6 +13720,7 @@
         "tags": [
           "ConsoleStorageEndpoints"
         ],
+        "operationId": "consoleStorage.purgeDerivatives",
         "parameters": [
           {
             "name": "bucketId",
@@ -13474,6 +13761,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "operationId": "vcs.listInstallations",
         "responses": {
           "200": {
             "description": "OK",
@@ -13503,6 +13791,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "operationId": "vcs.removeInstallation",
         "parameters": [
           {
             "name": "id",
@@ -13535,6 +13824,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "operationId": "vcs.getInstallUrl",
         "responses": {
           "200": {
             "description": "OK",
@@ -13575,7 +13865,8 @@
           "session": {
             "$ref": "#/components/schemas/CreatedSessionResponse"
           }
-        }
+        },
+        "description": "Accepting an invitation both joins the team and signs the user in."
       },
       "AcceptedOrganizationInviteResponse": {
         "required": [
@@ -13771,7 +14062,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "App-user wire shape. Ids are 32-hex-char uuids — the same form permission roles use."
       },
       "AuditLogEntryResponse": {
         "required": [
@@ -13868,7 +14160,8 @@
             ],
             "format": "int32"
           }
-        }
+        },
+        "description": "Auth settings as the console sees them. The Google client secret is write-only — never echoed."
       },
       "BucketListResponse": {
         "required": [
@@ -14026,7 +14319,8 @@
           "storage": {
             "type": "boolean"
           }
-        }
+        },
+        "description": "Which features this build serves. The console gates whole screens on these."
       },
       "ClaimRequest": {
         "required": [
@@ -14319,7 +14613,8 @@
           "teamName": {
             "type": "string"
           }
-        }
+        },
+        "description": "A membership plus its team's name, so the user-detail screen needs one request, not N."
       },
       "ConsoleSessionResponse": {
         "required": [
@@ -14335,7 +14630,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "The session token is returned in the body as well as the cookie — SDKs use the header form."
       },
       "ConsoleSignInResponse": {
         "required": [
@@ -14406,7 +14702,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "A user row on the console's users table, with the activity column that list needs."
       },
       "CreateApiKeyRequest": {
         "required": [
@@ -14521,7 +14818,8 @@
           "secret": {
             "type": "string"
           }
-        }
+        },
+        "description": "The secret appears exactly once, here — only its hash survives."
       },
       "CreateDatabaseRequest": {
         "required": [
@@ -14555,7 +14853,8 @@
           "token": {
             "type": "string"
           }
-        }
+        },
+        "description": "Login/signup/exchange responses carry the opaque token once; storage is the SDK's job."
       },
       "CreatedWebhookResponse": {
         "required": [
@@ -14570,7 +14869,8 @@
           "secret": {
             "type": "string"
           }
-        }
+        },
+        "description": "The signing secret appears exactly once, on creation — no GET ever echoes it back. Named so the\nOpenAPI document can say so: the endpoint used to return an anonymous `new { webhook, secret }`\ndocumented as a bare WebhookResponse, which was simply wrong — a generator reading\nthe document would never learn `secret` exists. Same JSON either way; this only names the shape."
       },
       "CreateFunctionFromTemplateRequest": {
         "required": [
@@ -15023,7 +15323,8 @@
               }
             }
           }
-        }
+        },
+        "description": "The public error shape: `{message, code, type, version, requestId, fields?}`.\n`type` strings are stable public API (see ErrorTypes)."
       },
       "FileDerivativeListResponse": {
         "required": [
@@ -15055,7 +15356,8 @@
               "$ref": "#/components/schemas/FileDerivativeResponse"
             }
           }
-        }
+        },
+        "description": "The file sheet's \"which sizes exist, total bytes\" — `totalBytes` saves the console recomputing the sum client-side."
       },
       "FileDerivativeResponse": {
         "required": [
@@ -15118,7 +15420,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "Storage Phase 3: one cached transform of a file. `quality` is reported as the public API's\nnatural `null` for the lossless-png sentinel (the entity's `0`, which exists only to\nkeep Postgres's per-NULL-is-distinct unique index behaving — see `FileDerivative`'s remarks)\nrather than leaking that storage detail into the wire shape. `gravity` is always present\n(never absent or null) — `\"center\"` for an uncropped derivative isn't a missing value, it's\nthe real, normalized one."
       },
       "FileListResponse": {
         "required": [
@@ -15224,9 +15527,11 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The file's own grants, named `$permissions` to match a row's — same grammar, same meaning,\nand empty whenever the bucket has `file_security` off, because nothing consults them then."
           }
-        }
+        },
+        "description": "File metadata. `chunkSizeBytes`/`chunkCount` are reported because they are what the\nfile was actually written with, not what config currently says — the distinction matters the\nfirst time an operator changes `Praxy:Storage:ChunkSizeBytes`."
       },
       "FunctionCreatedFromTemplateResponse": {
         "required": [
@@ -15241,7 +15546,8 @@
           "deployment": {
             "$ref": "#/components/schemas/FunctionDeploymentResponse"
           }
-        }
+        },
+        "description": "The combined result of creating a function from a template and deploying its tar in the same call — lets the console jump straight to watching the build without a second round trip to discover the deployment id."
       },
       "FunctionDeploymentListResponse": {
         "required": [
@@ -15681,7 +15987,8 @@
           "version": {
             "type": "string"
           }
-        }
+        },
+        "description": "Liveness. Deliberately free of the error envelope — load balancers poll it."
       },
       "IdentityResponse": {
         "required": [
@@ -15708,7 +16015,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "Operator-facing project administration: app users, teams, auth settings, API keys, and\nplatforms — everything the Phase 1 console screens sit on. Operator session + project\nownership enforced by the filter chain; the reserved console project can never appear here."
       },
       "IndexListResponse": {
         "required": [
@@ -15799,7 +16107,8 @@
               "type": "string"
             }
           }
-        }
+        },
+        "description": "The types this build will serve `inline` — the console's picker for a bucket's\n`inlineTypes`, fetched rather than hard-coded a second time in TypeScript so the two can't\ndrift. Same shape as the functions surface's `/runtimes`."
       },
       "InviteOrganizationMemberRequest": {
         "required": [
@@ -15949,7 +16258,8 @@
               "$ref": "#/components/schemas/MessageTargetResponse"
             }
           }
-        }
+        },
+        "description": "A message with its per-target delivery outcomes — the composer's detail view."
       },
       "MessageListResponse": {
         "required": [
@@ -16076,7 +16386,8 @@
               "$ref": "#/components/schemas/MessagingProviderResponse"
             }
           }
-        }
+        },
+        "description": "Operator-facing surface for Messaging (Phase 8): providers, topics + subscribers, templates,\nmessages + per-target delivery status. Same operator-filter chain and audit-log convention as\nWebhookEndpoints/FunctionEndpoints; entirely console-admin — no\ndata-plane endpoints this phase, same boundary Webhooks drew (sending is an operator action, not\nsomething app users or API keys trigger)."
       },
       "MessagingProviderResponse": {
         "required": [
@@ -16202,7 +16513,8 @@
               "$ref": "#/components/schemas/MessagingTemplateResponse"
             }
           }
-        }
+        },
+        "description": "Templates are a fixed keyed set, so there is no total to report."
       },
       "MessagingTemplateResponse": {
         "required": [
@@ -16396,7 +16708,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "`Role` is the caller's own role in this organization — not a property of the organization itself."
       },
       "PingResponse": {
         "required": [
@@ -16613,7 +16926,8 @@
             ],
             "format": "int32"
           }
-        }
+        },
+        "description": "What the project's overview screen shows at a glance: how much of each resource exists, and how\nmuch traffic the two things Praxy actually serves have handled recently.\n\nOne endpoint rather than the console fetching a dozen list endpoints for their `total` — the\noverview is the first screen after opening a project, and a dozen round trips to render counts\nis the wrong trade when a dozen indexed COUNTs on one connection cost a single request.\n\n**There is deliberately no bandwidth or request-count metric for the API itself.** Praxy does\nnot meter data-plane traffic, so the two windows below are exactly what is measurable: proxied\nsite requests (`site_requests`) and function executions. Both are windowed to 7 days\nbecause that is `Praxy:Retention:SiteRequestsMaxAgeDays`' default — a longer window would\nsilently under-report as rows age out, which is worse than not offering it."
       },
       "ProjectResponse": {
         "required": [
@@ -16807,7 +17121,8 @@
             ],
             "format": "int32"
           }
-        }
+        },
+        "description": "`GET /v1/realtime?project=&lt;id&gt;(&amp;ticket=&lt;t&gt;)` — the WebSocket endpoint\n(architecture.md §6), and `POST /v1/realtime/ticket` — the single-use ticket mint for\nnon-browser clients. The caller's principal and roles are fully resolved *before* the socket\nis accepted (every input — cookie, ticket, key header — is already on the HTTP request), which\nis what makes research/appwrite-api.md's \"early subscribe before auth settles\" race structural-\nly impossible here rather than something to detect and queue around."
       },
       "RealtimeTicketResponse": {
         "required": [
@@ -16823,7 +17138,8 @@
             "type": "string",
             "format": "date-time"
           }
-        }
+        },
+        "description": "Single-use, short-lived credential a non-browser client swaps for a socket."
       },
       "ResolvedRolesResponse": {
         "required": [
@@ -16847,7 +17163,8 @@
               "type": "string"
             }
           }
-        }
+        },
+        "description": "What the caller resolves to. The debug view behind `GET /v1/account/roles`."
       },
       "RowListResponse": {
         "required": [
@@ -17480,7 +17797,8 @@
             ],
             "format": "int64"
           }
-        }
+        },
+        "description": "What a project has stored versus its `MaxStorageBytesPerProject` quota — the console's usage bar."
       },
       "Stream": {
         "type": "string",
@@ -18057,7 +18375,8 @@
           "password": {
             "type": "string"
           }
-        }
+        },
+        "description": "Operator-set password: no old password, because an operator has none to give."
       },
       "UpdateUserStatusRequest": {
         "required": [
@@ -18231,7 +18550,8 @@
               "$ref": "#/components/schemas/WebhookDeliveryAttemptResponse"
             }
           }
-        }
+        },
+        "description": "One delivery's full detail: the delivery itself, its raw event payload, and every attempt so far.\nNamed for the same reason as CreatedWebhookResponse — the endpoint returned this\nanonymously while `.Produces&lt;WebhookDeliveryResponse&gt;()` claimed a bare delivery."
       },
       "WebhookDeliveryListResponse": {
         "required": [
@@ -18337,7 +18657,8 @@
               "$ref": "#/components/schemas/WebhookResponse"
             }
           }
-        }
+        },
+        "description": "Operator-facing webhook subscriptions + their delivery log — everything the Phase 6 console\nscreens sit on. Same filter chain and audit-log convention as ConsoleAuthAdminEndpoints;\nthe actual dispatch/delivery pipeline lives in the `Praxy.Webhooks` hosted services and\nnever routes through HTTP."
       },
       "WebhookResponse": {
         "required": [

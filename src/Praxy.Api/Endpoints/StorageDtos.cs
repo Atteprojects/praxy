@@ -36,14 +36,13 @@ public sealed record BucketResponse(
 /// file was actually written with, not what config currently says — the distinction matters the
 /// first time an operator changes <c>Praxy:Storage:ChunkSizeBytes</c>.
 /// </summary>
+/// <param name="Permissions">
+/// The file's own grants, named <c>$permissions</c> to match a row's — same grammar, same meaning,
+/// and empty whenever the bucket has <c>file_security</c> off, because nothing consults them then.
+/// </param>
 public sealed record FileResponse(
     string Id, string BucketId, string Name, string MimeType, long SizeBytes,
     int ChunkSizeBytes, int ChunkCount, string Checksum, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    /// <summary>
-    /// The file's own grants, named <c>$permissions</c> to match a row's — same grammar, same
-    /// meaning, and empty whenever the bucket has <c>file_security</c> off, because nothing
-    /// consults them then.
-    /// </summary>
     [property: JsonPropertyName("$permissions")] IReadOnlyList<string> Permissions)
 {
     public static FileResponse From(StoredFile f, IReadOnlyList<string>? permissions = null) => new(

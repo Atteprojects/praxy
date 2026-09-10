@@ -1,5 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <!-- Feeds the `///` comments already on endpoint handlers and DTOs into the OpenAPI document
+         (.NET 10's Microsoft.AspNetCore.OpenApi reads them via a source generator).
+
+         The two suppressions are deliberate: this is switched on to publish the comments that exist,
+         not to mandate exhaustive documentation. CS1591 would demand a comment on every public
+         member; CS1573 would demand that documenting one record parameter means documenting all of
+         them, which turns a single useful note into eleven filler ones. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Npgsql.DependencyInjection" Version="10.0.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
