@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Praxy.Api.Infrastructure;
@@ -82,8 +83,16 @@ public static class AccountEndpoints
         // Both legs of the OAuth dance answer with a 302 to the provider / the app's redirect URL —
         // there is no JSON body to describe on either.
         api.MapGet("/v1/account/sessions/oauth2/{provider}", OAuthStart).RequireRateLimiting("auth")
+            .WithQueryParameters(
+                new QueryParameterDoc("project", JsonSchemaType.String, "Project id. Required here because the redirect leaves no header to carry it."),
+                new QueryParameterDoc("success", JsonSchemaType.String, "URL to redirect to after a successful sign-in."),
+                new QueryParameterDoc("failure", JsonSchemaType.String, "URL to redirect to when the provider denies or errors."))
             .Produces(StatusCodes.Status302Found);
         api.MapGet("/v1/account/sessions/oauth2/callback/{provider}/{projectId}", OAuthCallback)
+            .WithQueryParameters(
+                new QueryParameterDoc("code", JsonSchemaType.String, "Authorization code from the provider."),
+                new QueryParameterDoc("state", JsonSchemaType.String, "Opaque state minted by the start endpoint, echoed back by the provider."),
+                new QueryParameterDoc("error", JsonSchemaType.String, "Set instead of `code` when the provider denies the request."))
             .Produces(StatusCodes.Status302Found);
     }
 

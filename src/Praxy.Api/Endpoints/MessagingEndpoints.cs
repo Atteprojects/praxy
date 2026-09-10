@@ -145,6 +145,7 @@ public static class MessagingEndpoints
             .Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/messages", ListMessages)
+            .WithPagination()
             .Produces<MessageListResponse>();
         admin.MapPost("/messages", CreateMessage)
             .Produces<MessageResponse>(StatusCodes.Status201Created);

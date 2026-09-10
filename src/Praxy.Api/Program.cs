@@ -406,6 +406,8 @@ try
     builder.Services.AddOpenApi(o =>
     {
         o.AddOperationTransformer<OpenApiOperationIds>();
+    o.AddOperationTransformer<OpenApiXmlSummaries>();
+    o.AddOperationTransformer<OpenApiQueryParameters>();
         o.AddOperationTransformer<OpenApiErrorResponses>();
         o.AddDocumentTransformer<OpenApiErrorResponses>();
         o.AddDocumentTransformer<OpenApiServers>();

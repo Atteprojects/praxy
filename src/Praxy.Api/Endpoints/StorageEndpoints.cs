@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Praxy.Api.Infrastructure;
 using Praxy.Auth;
 using Praxy.Core;
@@ -30,20 +31,21 @@ public static class StorageEndpoints
         group.MapGet("/buckets", ListBuckets).Produces<BucketListResponse>();
         group.MapGet("/buckets/{bucketId}", GetBucket).Produces<BucketResponse>();
         group.MapPatch("/buckets/{bucketId}", UpdateBucket).Produces<BucketResponse>();
-        group.MapDelete("/buckets/{bucketId}", DeleteBucket).Produces(StatusCodes.Status204NoContent);
+        group.MapDelete("/buckets/{bucketId}", DeleteBucket).Produces(StatusCodes.Status204NoContent).WithForce("Deletes the bucket and every file in it. Without it a non-empty bucket is a 409.");
 
         group.MapGet("/buckets/{bucketId}/permissions", GetPermissions).Produces<BucketPermissionsResponse>();
         group.MapPatch("/buckets/{bucketId}/permissions", UpdatePermissions).Produces<BucketPermissionsResponse>();
 
         // ---- files: permission-gated, open to sessions and guests ----
         group.MapPost("/buckets/{bucketId}/files", CreateFile)
+            .WithQueryParameters(new QueryParameterDoc("permissions", JsonSchemaType.Array, "Per-file permission strings, repeated once each. Only meaningful when the bucket has file_security enabled."))
             .Produces<FileResponse>(StatusCodes.Status201Created)
             // The body is the file's raw bytes, not JSON. `*/*` is deliberate: the request's
             // Content-Type is *data* here (it becomes the stored file's mime type), and naming a
             // concrete type instead makes it an endpoint-matching constraint — an upload of a PNG
             // would 404 rather than reach the handler.
             .Accepts<Stream>("*/*");
-        group.MapGet("/buckets/{bucketId}/files", ListFiles).Produces<FileListResponse>();
+        group.MapGet("/buckets/{bucketId}/files", ListFiles).Produces<FileListResponse>().WithPagination();
         group.MapGet("/buckets/{bucketId}/files/{fileId}", GetFile).Produces<FileResponse>();
         group.MapGet("/buckets/{bucketId}/files/{fileId}/download", DownloadFile)
             // `Produces<Stream>`, not a bare `Produces(200, contentType: …)`: without a response

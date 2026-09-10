@@ -147,7 +147,14 @@ String _method(Operation op, ServiceSpec spec) {
   }
   if (op.queryParameters.isNotEmpty) {
     final entries = op.queryParameters
-        .map((q) => "if (${_camel(q.name)} != null) '${q.name}': ['\${${_camel(q.name)}}']")
+        .map((q) {
+          final name = _camel(q.name);
+          // A String needs no interpolation at all, and a non-String needs no braces around a
+          // bare identifier. Both are analyzer lints, and generated code that trips them is
+          // noise every reader has to learn to ignore.
+          final value = _dartType(q.schema, spec) == 'String' ? name : "'\$$name'";
+          return "if ($name != null) '${q.name}': [$value]";
+        })
         .join(', ');
     args.write(', query: {$entries}');
   }

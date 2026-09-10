@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
 using Praxy.Persistence;
@@ -31,6 +32,7 @@ public static class AuditEndpoints
     public static void Map(IEndpointRouteBuilder api)
     {
         api.MapGet("/v1/console/projects/{projectId}/audit", ListProjectAudit)
+            .WithAuditFilters()
             .AddEndpointFilter<RequireOperatorFilter>()
             .AddEndpointFilter<ConsoleProjectFilter>()
             .Produces<AuditLogListResponse>();
@@ -39,6 +41,7 @@ public static class AuditEndpoints
         // is single-operator by construction (claim is one-shot, there is no invite endpoint), so any
         // signed-in operator seeing the whole instance log is not a privilege split worth building yet.
         api.MapGet("/v1/console/audit", ListInstanceAudit)
+            .WithAuditFilters()
             .AddEndpointFilter<RequireOperatorFilter>()
             .Produces<AuditLogListResponse>();
     }

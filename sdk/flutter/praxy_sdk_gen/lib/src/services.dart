@@ -32,12 +32,5 @@ const services = <ServiceSpec>[
       'SessionListResponse': 'SessionList',
     },
     generateModels: {'AppUserListResponse': 'AppUserList'},
-    documentGaps: {
-      'users.list':
-          '`limit`, `offset` and `search` query parameters are not described, so this '
-          'method cannot page or filter and always returns the server default page. '
-          '`UsersServerEndpoints.List` reads them from `HttpContext` rather than '
-          'binding them, which makes them invisible to OpenAPI generation.',
-    },
   ),
 ];

@@ -50,10 +50,21 @@ public sealed class OpenApiOperationIds : IOpenApiOperationTransformer
         if (method.Name.AsSpan().ContainsAny('<', '>') || method.Name.Contains("b__", StringComparison.Ordinal))
             return Task.CompletedTask;
 
-        var resource = ResourceName(method.DeclaringType?.Name);
-        var action = CamelCase(TrimAsyncSuffix(method.Name));
-        operation.OperationId = resource is null ? action : $"{resource}.{action}";
+        operation.OperationId = Compute(method.DeclaringType?.Name, method.Name);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The id for a handler, from its declaring type and method name. Public so
+    /// <c>OpenApiDocumentTests</c> can go from a handler it found in the source back to the
+    /// operation that handler produces — the two must agree, and the only way to guarantee that is
+    /// for both to call this rather than for the test to reimplement the rules.
+    /// </summary>
+    public static string Compute(string? declaringTypeName, string methodName)
+    {
+        var resource = ResourceName(declaringTypeName);
+        var action = CamelCase(TrimAsyncSuffix(methodName));
+        return resource is null ? action : $"{resource}.{action}";
     }
 
     /// <summary>

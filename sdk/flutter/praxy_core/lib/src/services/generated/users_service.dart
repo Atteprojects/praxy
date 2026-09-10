@@ -17,6 +17,7 @@ final class UsersService {
 
   final Praxy _client;
 
+  /// Creates an app user directly, without the sign-up flow or an email verification step.
   Future<AppUser> create({required String email, String? password, String? name}) async => AppUser.fromJson(
     requireJson(
       await _client.request(
@@ -28,26 +29,43 @@ final class UsersService {
     ),
   );
 
+  /// Deletes an app user and everything scoped to them, including their sessions.
   Future<void> delete(String userId) async {
     await _client.request(method: 'DELETE', path: '/v1/users/$userId');
   }
 
+  /// Revokes every session an app user holds, signing them out everywhere.
   Future<void> deleteAllSessions(String userId) async {
     await _client.request(method: 'DELETE', path: '/v1/users/$userId/sessions');
   }
 
+  /// Revokes one of an app user's sessions.
   Future<void> deleteSession(String userId, String sessionId) async {
     await _client.request(method: 'DELETE', path: '/v1/users/$userId/sessions/$sessionId');
   }
 
+  /// Fetches one app user by id.
   Future<AppUser> get(String userId) async => AppUser.fromJson(
     requireJson(await _client.request(method: 'GET', path: '/v1/users/$userId'), '/v1/users/{userId}'),
   );
 
-  /// Known gap in the OpenAPI document this is generated from: `limit`, `offset` and `search` query parameters are not described, so this method cannot page or filter and always returns the server default page. `UsersServerEndpoints.List` reads them from `HttpContext` rather than binding them, which makes them invisible to OpenAPI generation.
-  Future<AppUserList> list() async =>
-      AppUserList.fromJson(requireJson(await _client.request(method: 'GET', path: '/v1/users'), '/v1/users'));
+  /// Lists the project's app users, newest first.
+  Future<AppUserList> list({int? limit, int? offset, String? search}) async => AppUserList.fromJson(
+    requireJson(
+      await _client.request(
+        method: 'GET',
+        path: '/v1/users',
+        query: {
+          if (limit != null) 'limit': ['$limit'],
+          if (offset != null) 'offset': ['$offset'],
+          if (search != null) 'search': [search],
+        },
+      ),
+      '/v1/users',
+    ),
+  );
 
+  /// Lists an app user's active sessions.
   Future<SessionList> listSessions(String userId) async => SessionList.fromJson(
     requireJson(
       await _client.request(method: 'GET', path: '/v1/users/$userId/sessions'),
@@ -55,6 +73,7 @@ final class UsersService {
     ),
   );
 
+  /// Mirrors the console's change-email: the address moves and verified-ness resets with it. A collision inside the project is the existing user_already_exists, not a 500.
   Future<AppUser> updateEmail(String userId, {required String email}) async => AppUser.fromJson(
     requireJson(
       await _client.request(method: 'PATCH', path: '/v1/users/$userId/email', body: {'email': email}),
@@ -62,6 +81,7 @@ final class UsersService {
     ),
   );
 
+  /// Replaces an app user's labels wholesale. Labels are the operator-assigned strings the permission engine can grant roles from.
   Future<AppUser> updateLabels(String userId, {required List<String> labels}) async => AppUser.fromJson(
     requireJson(
       await _client.request(method: 'PATCH', path: '/v1/users/$userId/labels', body: {'labels': labels}),
@@ -69,6 +89,7 @@ final class UsersService {
     ),
   );
 
+  /// Changes an app user's display name.
   Future<AppUser> updateName(String userId, {required String name}) async => AppUser.fromJson(
     requireJson(
       await _client.request(method: 'PATCH', path: '/v1/users/$userId/name', body: {'name': name}),
@@ -76,6 +97,7 @@ final class UsersService {
     ),
   );
 
+  /// Sets a password without the old one — and revokes every session, as the console does.
   Future<AppUser> updatePassword(String userId, {required String password}) async => AppUser.fromJson(
     requireJson(
       await _client.request(
@@ -87,6 +109,7 @@ final class UsersService {
     ),
   );
 
+  /// Enables or disables an app user. A disabled user keeps their data but cannot authenticate.
   Future<AppUser> updateStatus(String userId, {required bool status}) async => AppUser.fromJson(
     requireJson(
       await _client.request(method: 'PATCH', path: '/v1/users/$userId/status', body: {'status': status}),
@@ -94,6 +117,7 @@ final class UsersService {
     ),
   );
 
+  /// Marks an app user's email verified or unverified without sending them anything.
   Future<AppUser> updateVerification(String userId, {required bool emailVerified}) async => AppUser.fromJson(
     requireJson(
       await _client.request(

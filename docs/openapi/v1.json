@@ -66,6 +66,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Public: an invitee has no operator session yet. Organization and user ids come from the emailed link (wire-encoded, unguessable) — a malformed one gets the exact same error as a wrong secret, never a distinct 404, so this endpoint has a single uniform failure shape.",
         "operationId": "consoleOrganizations.acceptInvite",
         "parameters": [
           {
@@ -169,6 +170,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Project id. Required here because the redirect leaves no header to carry it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "success",
+            "in": "query",
+            "description": "URL to redirect to after a successful sign-in.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "failure",
+            "in": "query",
+            "description": "URL to redirect to when the provider denies or errors.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -246,6 +271,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Authorization code from the provider.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Opaque state minted by the start endpoint, echoed back by the provider.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "Set instead of `code` when the provider denies the request.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -271,6 +320,64 @@
           "AuditEndpoints"
         ],
         "operationId": "audit.listProjectAudit",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Exact audit action to filter by, e.g. `users.create`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Exact operator id to filter by.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "description": "Exact resource identifier to filter by, e.g. `user/<id>`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "ISO-8601 lower bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "ISO-8601 upper bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -301,6 +408,64 @@
           "AuditEndpoints"
         ],
         "operationId": "audit.listInstanceAudit",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Exact audit action to filter by, e.g. `users.create`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Exact operator id to filter by.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "description": "Exact resource identifier to filter by, e.g. `user/<id>`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "ISO-8601 lower bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "ISO-8601 upper bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -333,6 +498,24 @@
         "summary": "WebSocket endpoint (upgrade required)",
         "description": "Upgrades to a WebSocket carrying the message-mode protocol (connected/subscribe/unsubscribe/ping/event). Authenticate with a session token, an API key, or a single-use ticket from POST /v1/realtime/ticket. A plain GET without an upgrade header is rejected.",
         "operationId": "realtime.handleSocket",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Project id. Required because a WebSocket upgrade carries no custom headers from a browser.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "description": "Single-use realtime ticket from `POST /v1/realtime/ticket`, authenticating the socket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "101": {
             "description": "Switching Protocols"
@@ -385,7 +568,18 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "summary": "Caddy calls GET /v1/sites/_ask-tls?domain=<host> before issuing each on-demand cert, treating any 2xx as authorization to proceed. Returns 204 (no body — there is nothing to say beyond the status) for a hostname that parses as either the production shape (<key>.<projectId>.{Domain}, requiring the site's active deployment to be ready) or a preview shape (<deploymentId>.<key>.<projectId>.{Domain}, Phase 2 — requiring only that specific deployment to belong to the site and be ready, active or not) AND resolves to a real, enabled site — anything else is 404. All the checks matter: skipping the enabled/ready check would let an operator who disabled a site (or a deployment that never finished building) still have Caddy mint it a public cert; skipping the DB lookup entirely (accepting any hostname merely shaped like either pattern) turns this into an open oracle for anyone who points DNS at the box, which can also burn through Let's Encrypt's rate limits. Deliberately does not distinguish its failure reasons in the response — a 404 here must not become a way to enumerate which site keys, deployment ids, or registered custom domains exist. A hostname that doesn't parse against at all falls through to a exact match (Sites Phase 3) before giving up — this is the more security-sensitive half of that phase: it's the only thing standing between the box and answering an on-demand-TLS \"ask\" for any hostname an attacker points DNS at, not just within the built-in wildcard suffix, so it gets exactly the same enabled + ready-active- deployment strictness as the built-in production path, no preview-URL equivalent.",
         "operationId": "sites.askTls",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "description": "The hostname Caddy is asking about, supplied by its on-demand TLS ask endpoint.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -411,7 +605,18 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "summary": "The GitHub App's own \"Setup URL\" — GitHub redirects the operator's browser here once they finish the installation flow on github.com, carrying installation_id as a query param. No session, no state param to check: the only thing this can do is look up an installation id GitHub itself supplied and, only if GitHub's own JWT-authenticated API confirms it actually belongs to this App, upsert a row — there's no forgeable action beyond that to protect against.",
         "operationId": "vcs.installCallback",
+        "parameters": [
+          {
+            "name": "installation_id",
+            "in": "query",
+            "description": "GitHub App installation id, supplied by GitHub on the post-install redirect.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "302": {
             "description": "Found"
@@ -434,6 +639,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "summary": "GitHub's webhook delivery target. The raw body is read in full and verified against X-Hub-Signature-256 before anything parses it as JSON — letting ASP.NET Core's model binding deserialize first would consume (and potentially re-encode) the stream before the HMAC could be computed against the exact bytes GitHub signed, the landmine docs/handoff/sites-phase-4-prompt.md calls out explicitly.",
         "operationId": "vcs.webhook",
         "responses": {
           "204": {
@@ -516,6 +722,7 @@
         "tags": [
           "ConsoleAuthEndpoints"
         ],
+        "summary": "First account wins the instance. Closed (409) forever after.",
         "operationId": "consoleAuth.claim",
         "requestBody": {
           "content": {
@@ -755,6 +962,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Name only — an organization's id never changes, same as a project's. Owner only.",
         "operationId": "consoleOrganizations.update",
         "parameters": [
           {
@@ -803,6 +1011,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Empty-only, no force escape hatch — deliberately (organizations-phase-1-prompt.md): cascading through projects into databases, buckets, functions and sites is exactly the kind of implicit destruction the engine refuses everywhere else, and unlike a schema change there is no case where \"delete this org and everything in it\" is the obvious intent. An operator also always keeps at least one organization — deleting the last one would produce an account that can do nothing and has no way back. Owner only.",
         "operationId": "consoleOrganizations.delete",
         "parameters": [
           {
@@ -836,6 +1045,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Any confirmed member can see the roster — membership-only, same as reading the org itself.",
         "operationId": "consoleOrganizations.listMembers",
         "parameters": [
           {
@@ -874,6 +1084,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Owner only. Emails an acceptance link built from the caller's own url (the console's origin).",
         "operationId": "consoleOrganizations.inviteMember",
         "parameters": [
           {
@@ -960,6 +1171,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Owner/member only, no custom roles — a fixed decision, not an oversight. Owner only to call.",
         "operationId": "consoleOrganizations.updateMemberRole",
         "parameters": [
           {
@@ -1016,6 +1228,7 @@
         "tags": [
           "ConsoleOrganizationEndpoints"
         ],
+        "summary": "Self-removal (leaving) is always allowed; removing anyone else takes the owner role. Either way the last owner cannot go.",
         "operationId": "consoleOrganizations.removeMember",
         "parameters": [
           {
@@ -1163,6 +1376,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "summary": "Name only — is the wire-visible id, chosen at creation, and never changes.",
         "operationId": "projects.update",
         "requestBody": {
           "content": {
@@ -1201,7 +1415,18 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "summary": "The single most destructive console operation, so it gets every guard the codebase has: force-gated like every other destructive delete, and physical Postgres schemas plus running function containers are torn down explicitly first — neither has an FK relationship to the project row, so db.Projects.Remove(project)'s cascade would silently orphan them on disk (schemas) or leave them running with no database row to ever evict them (containers). Runs as several transactions, not one: and already each atomically commit their own metadata-plus-DDL (or metadata-plus-container-evict) work, one resource at a time. Wrapping all of that plus the final project-row delete in one outer transaction would mean one lock spanning every `DROP SCHEMA` in the project — and worse, a delete interrupted partway through would leave nothing retryable, since the whole thing rolls back together. Several transactions means an interrupted delete is safely resumable: call DELETE again with force=true, and the databases/functions already removed simply no longer appear in the list this loops over.",
         "operationId": "projects.delete",
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Deletes the project and every resource inside it. Without it a project holding resources is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -1224,6 +1449,7 @@
         "tags": [
           "ProjectEndpoints"
         ],
+        "summary": "Org-level quotas reached through a project (roadmap Phase 9): this project's usage against the effective limits (org override, else instance default). The console shows the owning organization on its home screen, but quotas still have no org-id entry point.",
         "operationId": "projects.getQuotas",
         "responses": {
           "200": {
@@ -1614,6 +1840,7 @@
         "tags": [
           "AccountEndpoints"
         ],
+        "summary": "The universal token→session converging point (OAuth today, magic-url/OTP later).",
         "operationId": "accounts.exchangeToken",
         "requestBody": {
           "content": {
@@ -2497,6 +2724,7 @@
         "tags": [
           "TeamEndpoints"
         ],
+        "summary": "Invitation acceptance — authenticated by the emailed secret, not by a session.",
         "operationId": "teams.acceptMembership",
         "parameters": [
           {
@@ -2591,7 +2819,34 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Lists the project's app users, newest first.",
         "operationId": "users.list",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-sensitive substring match on email or name. Blank or whitespace is ignored.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -2619,6 +2874,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Creates an app user directly, without the sign-up flow or an email verification step.",
         "operationId": "users.create",
         "requestBody": {
           "content": {
@@ -2659,6 +2915,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Fetches one app user by id.",
         "operationId": "users.get",
         "parameters": [
           {
@@ -2697,6 +2954,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Deletes an app user and everything scoped to them, including their sessions.",
         "operationId": "users.delete",
         "parameters": [
           {
@@ -2730,6 +2988,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Enables or disables an app user. A disabled user keeps their data but cannot authenticate.",
         "operationId": "users.updateStatus",
         "parameters": [
           {
@@ -2780,6 +3039,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Replaces an app user's labels wholesale. Labels are the operator-assigned strings the permission engine can grant roles from.",
         "operationId": "users.updateLabels",
         "parameters": [
           {
@@ -2830,6 +3090,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Mirrors the console's change-email: the address moves and verified-ness resets with it. A collision inside the project is the existing user_already_exists, not a 500.",
         "operationId": "users.updateEmail",
         "parameters": [
           {
@@ -2880,6 +3141,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Changes an app user's display name.",
         "operationId": "users.updateName",
         "parameters": [
           {
@@ -2930,6 +3192,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Sets a password without the old one — and revokes every session, as the console does.",
         "operationId": "users.updatePassword",
         "parameters": [
           {
@@ -2980,6 +3243,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Marks an app user's email verified or unverified without sending them anything.",
         "operationId": "users.updateVerification",
         "parameters": [
           {
@@ -3030,6 +3294,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Lists an app user's active sessions.",
         "operationId": "users.listSessions",
         "parameters": [
           {
@@ -3068,6 +3333,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Revokes every session an app user holds, signing them out everywhere.",
         "operationId": "users.deleteAllSessions",
         "parameters": [
           {
@@ -3101,6 +3367,7 @@
         "tags": [
           "UsersServerEndpoints"
         ],
+        "summary": "Revokes one of an app user's sessions.",
         "operationId": "users.deleteSession",
         "parameters": [
           {
@@ -3143,6 +3410,32 @@
           "ConsoleAuthAdminEndpoints"
         ],
         "operationId": "consoleAuthAdmin.listUsers",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-sensitive substring match on email or name. Blank or whitespace is ignored.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -3381,6 +3674,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "summary": "The reason this surface exists: a user who mistyped their address at signup can be fixed instead of deleted. Verified-ness resets with the address — users/verified is a permission role, so it may only survive on an address someone has actually proved they own.",
         "operationId": "consoleAuthAdmin.updateUserEmail",
         "parameters": [
           {
@@ -3481,6 +3775,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "summary": "Its own audit action rather than a generic update: setting someone else's password is the single most security-relevant thing on this surface, and it revokes every live session.",
         "operationId": "consoleAuthAdmin.updateUserPassword",
         "parameters": [
           {
@@ -3579,6 +3874,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "summary": "Resends the verification mail. The redirect URL is a request field because only the caller knows where the app handles verification — the console has no way to guess a path, and inventing one is not an option: the URL is checked against the project's platform allowlist (architecture.md §11), which is what stops this endpoint from minting phishing links.",
         "operationId": "consoleAuthAdmin.sendUserVerification",
         "parameters": [
           {
@@ -3951,6 +4247,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "summary": "Console adds are server semantics: the member lands confirmed, no invite email.",
         "operationId": "consoleAuthAdmin.addTeamMember",
         "parameters": [
           {
@@ -4001,6 +4298,7 @@
         "tags": [
           "ConsoleAuthAdminEndpoints"
         ],
+        "summary": "Mirrors the client-facing PATCH /v1/teams/{teamId}/memberships/{membershipId} (TeamEndpoints.UpdateMembershipRoles), but without that handler's app-user ownerOnly gate: an operator reaching this route already passed plus , the same standing every other console admin write on this surface (add/remove a member, delete the team itself) already acts on with no further per-membership check — operators aren't team members with an \"owner\" role of their own, they're privileged relative to every app user in the project, so re-deriving team ownership here would check something that doesn't apply to them.",
         "operationId": "consoleAuthAdmin.updateTeamMembershipRoles",
         "parameters": [
           {
@@ -4531,6 +4829,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Drops the database and everything in it even when tables still exist. Without it a non-empty database is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -4761,6 +5067,14 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Drops the table even when other tables reference it, cascading those relationship columns. Without it a referenced table is a 409.",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -5147,6 +5461,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Drops the column even when it is indexed or referenced. Without it a column still in use is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5384,6 +5706,14 @@
             "name": "databaseId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tableId",
+            "in": "query",
+            "description": "Only jobs for this table. Omit for every job in the database.",
             "schema": {
               "type": "string"
             }
@@ -5725,6 +6055,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Drops the database and everything in it even when tables still exist. Without it a non-empty database is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5955,6 +6293,14 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Drops the table even when other tables reference it, cascading those relationship columns. Without it a referenced table is a 409.",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -6341,6 +6687,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Drops the column even when it is indexed or referenced. Without it a column still in use is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -6578,6 +6932,14 @@
             "name": "databaseId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tableId",
+            "in": "query",
+            "description": "Only jobs for this table. Omit for every job in the database.",
             "schema": {
               "type": "string"
             }
@@ -6865,6 +7227,38 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "queries[]",
+            "in": "query",
+            "description": "Query DSL clauses, repeated once per clause, e.g. `queries[]=equal(\"status\",\"done\")`.",
+            "schema": {
+              "type": "array"
+            }
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "description": "Same as `queries[]`, for clients that repeat a bare parameter name. Only consulted when `queries[]` is absent.",
+            "schema": {
+              "type": "array"
+            }
+          },
+          {
+            "name": "total",
+            "in": "query",
+            "description": "Whether to compute the total row count. Defaults to true; pass `false` to skip the count on a large table.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "expand",
+            "in": "query",
+            "description": "Comma-separated relationship columns to embed in each row.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6954,6 +7348,14 @@
             "name": "rowId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expand",
+            "in": "query",
+            "description": "Comma-separated relationship columns to embed in the row.",
             "schema": {
               "type": "string"
             }
@@ -7280,6 +7682,38 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "queries[]",
+            "in": "query",
+            "description": "Query DSL clauses, repeated once per clause, e.g. `queries[]=equal(\"status\",\"done\")`.",
+            "schema": {
+              "type": "array"
+            }
+          },
+          {
+            "name": "queries",
+            "in": "query",
+            "description": "Same as `queries[]`, for clients that repeat a bare parameter name. Only consulted when `queries[]` is absent.",
+            "schema": {
+              "type": "array"
+            }
+          },
+          {
+            "name": "total",
+            "in": "query",
+            "description": "Whether to compute the total row count. Defaults to true; pass `false` to skip the count on a large table.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "expand",
+            "in": "query",
+            "description": "Comma-separated relationship columns to embed in each row.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -7333,6 +7767,14 @@
             "name": "rowId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expand",
+            "in": "query",
+            "description": "Comma-separated relationship columns to embed in the row.",
             "schema": {
               "type": "string"
             }
@@ -7770,6 +8212,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -7965,6 +8423,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "summary": "Base images are an operator config knob (Praxy:Functions:DartBaseImage/NodeBaseImage, self-host.md documents both), not a hardcoded constant — the console's runtime picker calls this instead of assuming the upstream defaults, so a self-hoster who pinned a different tag sees their actual pin, not a stale guess.",
         "operationId": "functions.listRuntimes",
         "responses": {
           "200": {
@@ -7995,6 +8454,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "summary": "Creates a function from a bundled starter () and deploys its tar as the first deployment in one call — the console's \"Create function\" modal offers this alongside the manual path, mirroring SiteEndpoints.CreateDeploymentFromStarterTemplate except a function doesn't exist yet to deploy onto, so create and deploy happen together here.",
         "operationId": "functions.createFunctionFromTemplate",
         "requestBody": {
           "content": {
@@ -8610,6 +9070,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -8639,6 +9115,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "summary": "The console's \"Run\" / test-invoke button — always as trigger \"http\", never scoped to an app user (operators aren't app users, so no JWT is minted for it).",
         "operationId": "functions.consoleInvoke",
         "parameters": [
           {
@@ -8647,6 +9124,14 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "async",
+            "in": "query",
+            "description": "Queue the invocation and return immediately with its execution row. Defaults to false (wait for the result).",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -8737,6 +9222,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "summary": "Data-plane invocation: app-user sessions, JWTs and API keys. Sync unless ?async=true.",
         "operationId": "functions.invoke",
         "parameters": [
           {
@@ -8745,6 +9231,14 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "async",
+            "in": "query",
+            "description": "Queue the invocation and return immediately with its execution row. Defaults to false (wait for the result).",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -8831,6 +9325,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "summary": "The broad execution list Appwrite's execution.read implies — every execution of the function, not just the caller's own. Deliberately key-only (no app-user/JWT path): an app user listing every execution of a function it can merely invoke would be the same cross-caller leak 's own-execution default exists to prevent. A key only gets here because an operator explicitly granted it this scope.",
         "operationId": "functions.listDataPlaneExecutions",
         "parameters": [
           {
@@ -8839,6 +9334,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -8907,6 +9418,7 @@
         "tags": [
           "FunctionEndpoints"
         ],
+        "summary": "The data plane's own execution read — the other half of async invocation. Default scope is \"your own execution only\": a caller may read an execution whose stored matches their own , nothing wider. The looser alternative — anyone holding the function's execute role may read any execution of it — was rejected: two unrelated app users who both satisfy execute(\"users\") on a public function would otherwise be able to read each other's request bodies, response bodies and logs. Own-execution-only never crosses that line. A key explicitly holding (or bypass) gets the wider read Appwrite's equivalent scope implies — any execution of the function, not just its own — because that grant is an operator's own deliberate choice on a key they issued, not something an app-facing execute role can trigger on someone else's behalf. A caller who fails the check gets the same a nonexistent id would produce — never a distinguishable 401 — so this endpoint cannot be used to probe whether a given execution id exists, the same \"don't confirm existence\" instinct permission-filtered row reads already follow. A guest can never read anything back here: returns null for an unauthenticated caller because unauthenticated callers are indistinguishable from each other — there is no \"this guest\" to match against a stored \"guest\" string, so a guest-triggered execution is unrecoverable through this endpoint by design, not by omission.",
         "operationId": "functions.getDataPlaneExecution",
         "parameters": [
           {
@@ -10640,6 +11152,24 @@
           "MessagingEndpoints"
         ],
         "operationId": "messaging.listMessages",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -11414,6 +11944,7 @@
         "tags": [
           "SiteEndpoints"
         ],
+        "summary": "Deploys the bundled Next.js starter template () as this site's first deployment — lets a brand-new user see a real, working site with one click instead of needing their own Next.js app ready first. Goes through the exact same build/activate pipeline as a real upload; the only difference is where the tar bytes come from.",
         "operationId": "sites.createDeploymentFromStarterTemplate",
         "parameters": [
           {
@@ -11558,6 +12089,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -11897,6 +12444,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Deletes the bucket and every file in it. Without it a non-empty bucket is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -12126,6 +12681,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "permissions",
+            "in": "query",
+            "description": "Per-file permission strings, repeated once each. Only meaningful when the bucket has file_security enabled.",
+            "schema": {
+              "type": "array"
+            }
           }
         ],
         "requestBody": {
@@ -12209,6 +12772,22 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
@@ -12796,6 +13375,7 @@
         "tags": [
           "StorageEndpoints"
         ],
+        "summary": "Gated on update for the file itself, not on a bucket-management scope — which is the difference between this and the bucket permission matrix above. Re-sharing a file you own is an end-user action; reconfiguring the bucket is not.",
         "operationId": "storage.updateFilePermissions",
         "parameters": [
           {
@@ -13113,6 +13693,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Deletes the bucket and every file in it. Without it a non-empty bucket is a 409.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -13234,6 +13822,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Items to skip, 0-100000. Outside that range it is clamped, never rejected.",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -13271,6 +13875,14 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "permissions",
+            "in": "query",
+            "description": "Per-file permission strings, repeated once each. Only meaningful when the bucket has file_security enabled.",
+            "schema": {
+              "type": "array"
             }
           }
         ],
@@ -13791,6 +14403,7 @@
         "tags": [
           "VcsEndpoints"
         ],
+        "summary": "The console's \"Disconnect\" action on an installation row — the only way to remove one today, since nothing reacts to an operator uninstalling the App directly on GitHub's side (that leaves a stale row here until this same action clears it by hand). Uninstalls the App from GitHub's side too, not just this row — see .",
         "operationId": "vcs.removeInstallation",
         "parameters": [
           {

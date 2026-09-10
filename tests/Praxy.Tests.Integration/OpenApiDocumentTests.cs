@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Praxy.Api.Infrastructure;
 using Praxy.Tests.Integration.Infrastructure;
 
 namespace Praxy.Tests.Integration;
@@ -9,7 +10,7 @@ namespace Praxy.Tests.Integration;
 /// phases, which nobody noticed because nothing asserted on it. These tests are the ratchet: a new
 /// endpoint that forgets its response type fails here rather than shipping undocumented.
 /// </summary>
-public class OpenApiDocumentTests(PostgresContainerFixture pg) : AuthTestBase(pg)
+public partial class OpenApiDocumentTests(PostgresContainerFixture pg) : AuthTestBase(pg)
 {
     /// <summary>The document is dev-only by design, so the test host has to ask for Development.</summary>
     protected override IDictionary<string, string?>? ExtraSettings => new Dictionary<string, string?>(
@@ -19,6 +20,179 @@ public class OpenApiDocumentTests(PostgresContainerFixture pg) : AuthTestBase(pg
     };
 
     private static readonly string[] HttpMethods = ["get", "post", "put", "patch", "delete"];
+
+    /// <summary>
+    /// Operation summaries may only ever increase in coverage.
+    ///
+    /// <para>Summaries come from a plain <c>/// &lt;summary&gt;</c> on the handler, lifted into the
+    /// document by <c>OpenApiXmlSummaries</c>. .NET's own XML support does not do this: it
+    /// documents public DTOs, and every handler here is <c>private static</c>, which is why the
+    /// count sat at 1 of 290 until that transformer existed.</para>
+    ///
+    /// <para>A budget rather than a list of exemptions. An allow-list of a couple of hundred
+    /// undocumented operations is a file nobody reads and everybody appends to; a number that may
+    /// only go down is one line, and it fails the moment a new endpoint ships without a summary.
+    /// When you document more, lower it — that is the ratchet turning.</para>
+    /// </summary>
+    [Fact]
+    public async Task No_more_operations_lack_a_summary_than_the_current_budget()
+    {
+        const int budget = 246;
+
+        var doc = await DocumentAsync();
+        var undocumented = Operations(doc)
+            .Where(o => !o.Op.TryGetProperty("summary", out var s) || string.IsNullOrWhiteSpace(s.GetString()))
+            .Select(o => o.Op.TryGetProperty("operationId", out var id) ? id.GetString()! : $"{o.Method} {o.Path}")
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(
+            undocumented.Count <= budget,
+            $"{undocumented.Count} operations have no summary, budget is {budget}. Add a "
+            + "/// <summary> to the handler method.\nFirst few:\n  "
+            + string.Join("\n  ", undocumented.Take(10)));
+    }
+
+    /// <summary>
+    /// Every query-string key a handler reads must be documented as a parameter on its operation.
+    ///
+    /// <para>The gap this locks shut: .NET documents only parameters the framework binds, and these
+    /// handlers read theirs straight out of <c>HttpContext.Request.Query</c>. The result was a
+    /// document describing no query parameters at all — and a generated SDK whose
+    /// <c>users.list()</c> could not page, faithfully, because the document said there was nothing
+    /// to pass. <c>OpenApiQueryParameters</c> declares them; without this test, the declaration and
+    /// the handler drift the first time someone adds a filter.</para>
+    ///
+    /// <para>This reads the endpoint sources rather than the compiled assembly because the fact
+    /// being checked — "this code reads this query key" — exists only in the source. A handler is
+    /// matched to its operation through <c>OpenApiOperationIds.Compute</c>, the same derivation the
+    /// document itself uses, so the two cannot disagree about which operation a method produces.</para>
+    /// </summary>
+    [Fact]
+    public async Task Every_query_parameter_a_handler_reads_is_documented()
+    {
+        var doc = await DocumentAsync();
+        var documented = Operations(doc)
+            .Where(o => o.Op.TryGetProperty("operationId", out _))
+            .ToDictionary(
+                o => o.Op.GetProperty("operationId").GetString()!,
+                o => o.Op.TryGetProperty("parameters", out var ps)
+                    ? ps.EnumerateArray()
+                        .Where(p => p.GetProperty("in").GetString() == "query")
+                        .Select(p => p.GetProperty("name").GetString()!)
+                        .ToHashSet(StringComparer.Ordinal)
+                    : []);
+
+        var missing = new List<string>();
+        foreach (var (operationId, keys) in QueryKeysByHandler())
+        {
+            if (!documented.TryGetValue(operationId, out var declared))
+                continue; // Not an operation — a helper, or a handler this class does not map.
+            foreach (var key in keys.Where(k => !declared.Contains(k)))
+                missing.Add($"{operationId} reads ?{key}= but does not document it");
+        }
+
+        Assert.True(
+            missing.Count == 0,
+            "Undocumented query parameters — declare them with .WithPagination()/.WithSearch()/"
+            + $".WithQueryParameters(...) on the endpoint mapping:\n  {string.Join("\n  ", missing)}");
+    }
+
+    /// <summary>
+    /// Every query key each handler reads, <em>including through the helpers it calls</em>.
+    ///
+    /// <para>The indirection is the whole point. These files do not read
+    /// <c>Request.Query["limit"]</c> in the handler; they call a private
+    /// <c>ListParams(HttpContext)</c> that does. A version of this check that only looked at the
+    /// handler's own body attributed those keys to <c>ListParams</c> — which is not an operation,
+    /// so they were skipped — and it passed happily with every <c>.WithPagination()</c> deleted.
+    /// Verified by deleting one: the check named nothing. So calls are followed transitively.</para>
+    /// </summary>
+    private static IEnumerable<(string OperationId, HashSet<string> Keys)> QueryKeysByHandler()
+    {
+        var direct = new Dictionary<(string Type, string Method), HashSet<string>>();
+        var calls = new Dictionary<(string Type, string Method), HashSet<(string, string)>>();
+
+        foreach (var file in Directory.EnumerateFiles(EndpointsDirectory(), "*.cs"))
+        {
+            var typeName = Path.GetFileNameWithoutExtension(file);
+            (string, string)? current = null;
+
+            foreach (var line in File.ReadAllLines(file))
+            {
+                var signature = MethodSignature().Match(line);
+                if (signature.Success)
+                {
+                    current = (typeName, signature.Groups["name"].Value);
+                    direct.TryAdd(current.Value, []);
+                    calls.TryAdd(current.Value, []);
+                    continue;
+                }
+                if (current is not { } method)
+                    continue;
+
+                foreach (System.Text.RegularExpressions.Match read in QueryRead().Matches(line))
+                    direct[method].Add(read.Groups["key"].Value);
+                foreach (System.Text.RegularExpressions.Match call in MethodCall().Matches(line))
+                {
+                    var qualifier = call.Groups["type"].Success ? call.Groups["type"].Value : typeName;
+                    calls[method].Add((qualifier, call.Groups["name"].Value));
+                }
+            }
+        }
+
+        foreach (var method in direct.Keys)
+        {
+            var keys = Reachable(method, direct, calls, []);
+            if (keys.Count > 0)
+                yield return (OpenApiOperationIds.Compute(method.Type, method.Method), keys);
+        }
+    }
+
+    /// <summary>Keys a method reads directly or through anything it calls; cycle-safe via <paramref name="seen"/>.</summary>
+    private static HashSet<string> Reachable(
+        (string Type, string Method) method,
+        Dictionary<(string, string), HashSet<string>> direct,
+        Dictionary<(string, string), HashSet<(string, string)>> calls,
+        HashSet<(string, string)> seen)
+    {
+        if (!seen.Add(method) || !direct.TryGetValue(method, out var own))
+            return [];
+
+        var keys = new HashSet<string>(own, StringComparer.Ordinal);
+        foreach (var callee in calls[method])
+            keys.UnionWith(Reachable(callee, direct, calls, seen));
+        return keys;
+    }
+
+    /// <summary>
+    /// The endpoint sources, found by walking up from the test assembly to the repository root.
+    /// Fails loudly rather than silently finding nothing: a test that reads zero files passes
+    /// trivially, which is the one outcome that would hide the very drift it exists to catch.
+    /// </summary>
+    private static string EndpointsDirectory()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Praxy.sln")))
+            directory = directory.Parent;
+
+        Assert.NotNull(directory);
+        var endpoints = Path.Combine(directory!.FullName, "src", "Praxy.Api", "Endpoints");
+        Assert.True(Directory.Exists(endpoints), $"Endpoint sources not found at {endpoints}.");
+        Assert.NotEmpty(Directory.GetFiles(endpoints, "*.cs"));
+        return endpoints;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^\s*(?:private|internal|public)\s+(?:static\s+)?(?:async\s+)?[\w<>?,\s\[\]().]+?\s(?<name>\w+)\s*\(")]
+    private static partial System.Text.RegularExpressions.Regex MethodSignature();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?:Request\.Query|\bq)\[""(?<key>[^""]+)""\]")]
+    private static partial System.Text.RegularExpressions.Regex QueryRead();
+
+    /// <summary>A call to <c>Helper(</c> or <c>OtherEndpoints.Helper(</c>, used to follow indirection.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?:(?<type>[A-Z]\w*)\.)?\b(?<name>[A-Z]\w*)\s*\(")]
+    private static partial System.Text.RegularExpressions.Regex MethodCall();
 
     private async Task<JsonElement> DocumentAsync()
     {

@@ -47,6 +47,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Public: an invitee has no operator session yet. Organization and user ids come from the emailed link (wire-encoded, unguessable) — a malformed one gets the exact same error as a wrong secret, never a distinct 404, so this endpoint has a single uniform failure shape. */
         post: operations["consoleOrganizations.acceptInvite"];
         delete?: never;
         options?: never;
@@ -161,6 +162,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Caddy calls GET /v1/sites/_ask-tls?domain=<host> before issuing each on-demand cert, treating any 2xx as authorization to proceed. Returns 204 (no body — there is nothing to say beyond the status) for a hostname that parses as either the production shape (<key>.<projectId>.{Domain}, requiring the site's active deployment to be ready) or a preview shape (<deploymentId>.<key>.<projectId>.{Domain}, Phase 2 — requiring only that specific deployment to belong to the site and be ready, active or not) AND resolves to a real, enabled site — anything else is 404. All the checks matter: skipping the enabled/ready check would let an operator who disabled a site (or a deployment that never finished building) still have Caddy mint it a public cert; skipping the DB lookup entirely (accepting any hostname merely shaped like either pattern) turns this into an open oracle for anyone who points DNS at the box, which can also burn through Let's Encrypt's rate limits. Deliberately does not distinguish its failure reasons in the response — a 404 here must not become a way to enumerate which site keys, deployment ids, or registered custom domains exist. A hostname that doesn't parse against at all falls through to a exact match (Sites Phase 3) before giving up — this is the more security-sensitive half of that phase: it's the only thing standing between the box and answering an on-demand-TLS "ask" for any hostname an attacker points DNS at, not just within the built-in wildcard suffix, so it gets exactly the same enabled + ready-active- deployment strictness as the built-in production path, no preview-URL equivalent. */
         get: operations["sites.askTls"];
         put?: never;
         post?: never;
@@ -177,6 +179,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The GitHub App's own "Setup URL" — GitHub redirects the operator's browser here once they finish the installation flow on github.com, carrying installation_id as a query param. No session, no state param to check: the only thing this can do is look up an installation id GitHub itself supplied and, only if GitHub's own JWT-authenticated API confirms it actually belongs to this App, upsert a row — there's no forgeable action beyond that to protect against. */
         get: operations["vcs.installCallback"];
         put?: never;
         post?: never;
@@ -195,6 +198,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** GitHub's webhook delivery target. The raw body is read in full and verified against X-Hub-Signature-256 before anything parses it as JSON — letting ASP.NET Core's model binding deserialize first would consume (and potentially re-encode) the stream before the HMAC could be computed against the exact bytes GitHub signed, the landmine docs/handoff/sites-phase-4-prompt.md calls out explicitly. */
         post: operations["vcs.webhook"];
         delete?: never;
         options?: never;
@@ -243,6 +247,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** First account wins the instance. Closed (409) forever after. */
         post: operations["consoleAuth.claim"];
         delete?: never;
         options?: never;
@@ -324,9 +329,11 @@ export interface paths {
         get: operations["consoleOrganizations.get"];
         put?: never;
         post?: never;
+        /** Empty-only, no force escape hatch — deliberately (organizations-phase-1-prompt.md): cascading through projects into databases, buckets, functions and sites is exactly the kind of implicit destruction the engine refuses everywhere else, and unlike a schema change there is no case where "delete this org and everything in it" is the obvious intent. An operator also always keeps at least one organization — deleting the last one would produce an account that can do nothing and has no way back. Owner only. */
         delete: operations["consoleOrganizations.delete"];
         options?: never;
         head?: never;
+        /** Name only — an organization's id never changes, same as a project's. Owner only. */
         patch: operations["consoleOrganizations.update"];
         trace?: never;
     };
@@ -337,8 +344,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Any confirmed member can see the roster — membership-only, same as reading the org itself. */
         get: operations["consoleOrganizations.listMembers"];
         put?: never;
+        /** Owner only. Emails an acceptance link built from the caller's own url (the console's origin). */
         post: operations["consoleOrganizations.inviteMember"];
         delete?: never;
         options?: never;
@@ -356,9 +365,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Self-removal (leaving) is always allowed; removing anyone else takes the owner role. Either way the last owner cannot go. */
         delete: operations["consoleOrganizations.removeMember"];
         options?: never;
         head?: never;
+        /** Owner/member only, no custom roles — a fixed decision, not an oversight. Owner only to call. */
         patch: operations["consoleOrganizations.updateMemberRole"];
         trace?: never;
     };
@@ -388,9 +399,11 @@ export interface paths {
         get: operations["projects.get"];
         put?: never;
         post?: never;
+        /** The single most destructive console operation, so it gets every guard the codebase has: force-gated like every other destructive delete, and physical Postgres schemas plus running function containers are torn down explicitly first — neither has an FK relationship to the project row, so db.Projects.Remove(project)'s cascade would silently orphan them on disk (schemas) or leave them running with no database row to ever evict them (containers). Runs as several transactions, not one: and already each atomically commit their own metadata-plus-DDL (or metadata-plus-container-evict) work, one resource at a time. Wrapping all of that plus the final project-row delete in one outer transaction would mean one lock spanning every `DROP SCHEMA` in the project — and worse, a delete interrupted partway through would leave nothing retryable, since the whole thing rolls back together. Several transactions means an interrupted delete is safely resumable: call DELETE again with force=true, and the databases/functions already removed simply no longer appear in the list this loops over. */
         delete: operations["projects.delete"];
         options?: never;
         head?: never;
+        /** Name only — is the wire-visible id, chosen at creation, and never changes. */
         patch: operations["projects.update"];
         trace?: never;
     };
@@ -401,6 +414,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Org-level quotas reached through a project (roadmap Phase 9): this project's usage against the effective limits (org override, else instance default). The console shows the owning organization on its home screen, but quotas still have no org-id entry point. */
         get: operations["projects.getQuotas"];
         put?: never;
         post?: never;
@@ -531,6 +545,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The universal token→session converging point (OAuth today, magic-url/OTP later). */
         post: operations["accounts.exchangeToken"];
         delete?: never;
         options?: never;
@@ -727,6 +742,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Invitation acceptance — authenticated by the emailed secret, not by a session. */
         patch: operations["teams.acceptMembership"];
         trace?: never;
     };
@@ -737,8 +753,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Lists the project's app users, newest first. */
         get: operations["users.list"];
         put?: never;
+        /** Creates an app user directly, without the sign-up flow or an email verification step. */
         post: operations["users.create"];
         delete?: never;
         options?: never;
@@ -753,9 +771,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Fetches one app user by id. */
         get: operations["users.get"];
         put?: never;
         post?: never;
+        /** Deletes an app user and everything scoped to them, including their sessions. */
         delete: operations["users.delete"];
         options?: never;
         head?: never;
@@ -775,6 +795,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Enables or disables an app user. A disabled user keeps their data but cannot authenticate. */
         patch: operations["users.updateStatus"];
         trace?: never;
     };
@@ -791,6 +812,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Replaces an app user's labels wholesale. Labels are the operator-assigned strings the permission engine can grant roles from. */
         patch: operations["users.updateLabels"];
         trace?: never;
     };
@@ -807,6 +829,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Mirrors the console's change-email: the address moves and verified-ness resets with it. A collision inside the project is the existing user_already_exists, not a 500. */
         patch: operations["users.updateEmail"];
         trace?: never;
     };
@@ -823,6 +846,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Changes an app user's display name. */
         patch: operations["users.updateName"];
         trace?: never;
     };
@@ -839,6 +863,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Sets a password without the old one — and revokes every session, as the console does. */
         patch: operations["users.updatePassword"];
         trace?: never;
     };
@@ -855,6 +880,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Marks an app user's email verified or unverified without sending them anything. */
         patch: operations["users.updateVerification"];
         trace?: never;
     };
@@ -865,9 +891,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Lists an app user's active sessions. */
         get: operations["users.listSessions"];
         put?: never;
         post?: never;
+        /** Revokes every session an app user holds, signing them out everywhere. */
         delete: operations["users.deleteAllSessions"];
         options?: never;
         head?: never;
@@ -884,6 +912,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Revokes one of an app user's sessions. */
         delete: operations["users.deleteSession"];
         options?: never;
         head?: never;
@@ -967,6 +996,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** The reason this surface exists: a user who mistyped their address at signup can be fixed instead of deleted. Verified-ness resets with the address — users/verified is a permission role, so it may only survive on an address someone has actually proved they own. */
         patch: operations["consoleAuthAdmin.updateUserEmail"];
         trace?: never;
     };
@@ -999,6 +1029,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Its own audit action rather than a generic update: setting someone else's password is the single most security-relevant thing on this surface, and it revokes every live session. */
         patch: operations["consoleAuthAdmin.updateUserPassword"];
         trace?: never;
     };
@@ -1011,6 +1042,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resends the verification mail. The redirect URL is a request field because only the caller knows where the app handles verification — the console has no way to guess a path, and inventing one is not an option: the URL is checked against the project's platform allowlist (architecture.md §11), which is what stops this endpoint from minting phishing links. */
         post: operations["consoleAuthAdmin.sendUserVerification"];
         delete?: never;
         options?: never;
@@ -1107,6 +1139,7 @@ export interface paths {
         };
         get: operations["consoleAuthAdmin.listTeamMemberships"];
         put?: never;
+        /** Console adds are server semantics: the member lands confirmed, no invite email. */
         post: operations["consoleAuthAdmin.addTeamMember"];
         delete?: never;
         options?: never;
@@ -1127,6 +1160,7 @@ export interface paths {
         delete: operations["consoleAuthAdmin.deleteTeamMembership"];
         options?: never;
         head?: never;
+        /** Mirrors the client-facing PATCH /v1/teams/{teamId}/memberships/{membershipId} (TeamEndpoints.UpdateMembershipRoles), but without that handler's app-user ownerOnly gate: an operator reaching this route already passed plus , the same standing every other console admin write on this surface (add/remove a member, delete the team itself) already acts on with no further per-membership check — operators aren't team members with an "owner" role of their own, they're privileged relative to every app user in the project, so re-deriving team ownership here would check something that doesn't apply to them. */
         patch: operations["consoleAuthAdmin.updateTeamMembershipRoles"];
         trace?: never;
     };
@@ -1857,6 +1891,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Base images are an operator config knob (Praxy:Functions:DartBaseImage/NodeBaseImage, self-host.md documents both), not a hardcoded constant — the console's runtime picker calls this instead of assuming the upstream defaults, so a self-hoster who pinned a different tag sees their actual pin, not a stale guess. */
         get: operations["functions.listRuntimes"];
         put?: never;
         post?: never;
@@ -1875,6 +1910,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Creates a function from a bundled starter () and deploys its tar as the first deployment in one call — the console's "Create function" modal offers this alongside the manual path, mirroring SiteEndpoints.CreateDeploymentFromStarterTemplate except a function doesn't exist yet to deploy onto, so create and deploy happen together here. */
         post: operations["functions.createFunctionFromTemplate"];
         delete?: never;
         options?: never;
@@ -2019,6 +2055,7 @@ export interface paths {
         };
         get: operations["functions.listExecutions"];
         put?: never;
+        /** The console's "Run" / test-invoke button — always as trigger "http", never scoped to an app user (operators aren't app users, so no JWT is minted for it). */
         post: operations["functions.consoleInvoke"];
         delete?: never;
         options?: never;
@@ -2049,8 +2086,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The broad execution list Appwrite's execution.read implies — every execution of the function, not just the caller's own. Deliberately key-only (no app-user/JWT path): an app user listing every execution of a function it can merely invoke would be the same cross-caller leak 's own-execution default exists to prevent. A key only gets here because an operator explicitly granted it this scope. */
         get: operations["functions.listDataPlaneExecutions"];
         put?: never;
+        /** Data-plane invocation: app-user sessions, JWTs and API keys. Sync unless ?async=true. */
         post: operations["functions.invoke"];
         delete?: never;
         options?: never;
@@ -2065,6 +2104,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The data plane's own execution read — the other half of async invocation. Default scope is "your own execution only": a caller may read an execution whose stored matches their own , nothing wider. The looser alternative — anyone holding the function's execute role may read any execution of it — was rejected: two unrelated app users who both satisfy execute("users") on a public function would otherwise be able to read each other's request bodies, response bodies and logs. Own-execution-only never crosses that line. A key explicitly holding (or bypass) gets the wider read Appwrite's equivalent scope implies — any execution of the function, not just its own — because that grant is an operator's own deliberate choice on a key they issued, not something an app-facing execute role can trigger on someone else's behalf. A caller who fails the check gets the same a nonexistent id would produce — never a distinguishable 401 — so this endpoint cannot be used to probe whether a given execution id exists, the same "don't confirm existence" instinct permission-filtered row reads already follow. A guest can never read anything back here: returns null for an unauthenticated caller because unauthenticated callers are indistinguishable from each other — there is no "this guest" to match against a stored "guest" string, so a guest-triggered execution is unrecoverable through this endpoint by design, not by omission. */
         get: operations["functions.getDataPlaneExecution"];
         put?: never;
         post?: never;
@@ -2515,6 +2555,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Deploys the bundled Next.js starter template () as this site's first deployment — lets a brand-new user see a real, working site with one click instead of needing their own Next.js app ready first. Goes through the exact same build/activate pipeline as a real upload; the only difference is where the tar bytes come from. */
         post: operations["sites.createDeploymentFromStarterTemplate"];
         delete?: never;
         options?: never;
@@ -2679,6 +2720,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Gated on update for the file itself, not on a bucket-management scope — which is the difference between this and the bucket permission matrix above. Re-sharing a file you own is an end-user action; reconfiguring the bucket is not. */
         patch: operations["storage.updateFilePermissions"];
         trace?: never;
     };
@@ -2868,6 +2910,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** The console's "Disconnect" action on an installation row — the only way to remove one today, since nothing reacts to an operator uninstalling the App directly on GitHub's side (that leaves a stale row here until this same action clears it by hand). Uninstalls the App from GitHub's side too, not just this row — see . */
         delete: operations["vcs.removeInstallation"];
         options?: never;
         head?: never;
@@ -4371,7 +4414,14 @@ export interface operations {
     };
     "accounts.oAuthStart": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project id. Required here because the redirect leaves no header to carry it. */
+                project?: string;
+                /** @description URL to redirect to after a successful sign-in. */
+                success?: string;
+                /** @description URL to redirect to when the provider denies or errors. */
+                failure?: string;
+            };
             header?: never;
             path: {
                 provider: string;
@@ -4417,7 +4467,14 @@ export interface operations {
     };
     "accounts.oAuthCallback": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Authorization code from the provider. */
+                code?: string;
+                /** @description Opaque state minted by the start endpoint, echoed back by the provider. */
+                state?: string;
+                /** @description Set instead of `code` when the provider denies the request. */
+                error?: string;
+            };
             header?: never;
             path: {
                 provider: string;
@@ -4447,7 +4504,22 @@ export interface operations {
     };
     "audit.listProjectAudit": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+                /** @description Exact audit action to filter by, e.g. `users.create`. */
+                action?: string;
+                /** @description Exact operator id to filter by. */
+                actor?: string;
+                /** @description Exact resource identifier to filter by, e.g. `user/<id>`. */
+                resource?: string;
+                /** @description ISO-8601 lower bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected. */
+                from?: string;
+                /** @description ISO-8601 upper bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected. */
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4476,7 +4548,22 @@ export interface operations {
     };
     "audit.listInstanceAudit": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+                /** @description Exact audit action to filter by, e.g. `users.create`. */
+                action?: string;
+                /** @description Exact operator id to filter by. */
+                actor?: string;
+                /** @description Exact resource identifier to filter by, e.g. `user/<id>`. */
+                resource?: string;
+                /** @description ISO-8601 lower bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected. */
+                from?: string;
+                /** @description ISO-8601 upper bound on `createdAt`, inclusive. Unparseable values are ignored, not rejected. */
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4505,7 +4592,12 @@ export interface operations {
     };
     "realtime.handleSocket": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Project id. Required because a WebSocket upgrade carries no custom headers from a browser. */
+                project?: string;
+                /** @description Single-use realtime ticket from `POST /v1/realtime/ticket`, authenticating the socket. */
+                ticket?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4561,7 +4653,10 @@ export interface operations {
     };
     "sites.askTls": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The hostname Caddy is asking about, supplied by its on-demand TLS ask endpoint. */
+                domain?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4595,7 +4690,10 @@ export interface operations {
     };
     "vcs.installCallback": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description GitHub App installation id, supplied by GitHub on the post-install redirect. */
+                installation_id?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5233,7 +5331,10 @@ export interface operations {
     };
     "projects.delete": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Deletes the project and every resource inside it. Without it a project holding resources is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6341,7 +6442,14 @@ export interface operations {
     };
     "users.list": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+                /** @description Case-sensitive substring match on email or name. Blank or whitespace is ignored. */
+                search?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6763,7 +6871,14 @@ export interface operations {
     };
     "consoleAuthAdmin.listUsers": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+                /** @description Case-sensitive substring match on email or name. Blank or whitespace is ignored. */
+                search?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7840,7 +7955,10 @@ export interface operations {
     };
     "databases.deleteDatabase": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Drops the database and everything in it even when tables still exist. Without it a non-empty database is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -8002,7 +8120,10 @@ export interface operations {
     };
     "databases.deleteTable": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Drops the table even when other tables reference it, cascading those relationship columns. Without it a referenced table is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -8238,7 +8359,10 @@ export interface operations {
     };
     "databases.deleteColumn": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Drops the column even when it is indexed or referenced. Without it a column still in use is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -8438,7 +8562,10 @@ export interface operations {
     };
     "databases.listJobs": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only jobs for this table. Omit for every job in the database. */
+                tableId?: string;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -8658,7 +8785,10 @@ export interface operations {
     };
     "consoleDatabases.deleteDatabase": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Drops the database and everything in it even when tables still exist. Without it a non-empty database is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -8820,7 +8950,10 @@ export interface operations {
     };
     "consoleDatabases.deleteTable": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Drops the table even when other tables reference it, cascading those relationship columns. Without it a referenced table is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -9056,7 +9189,10 @@ export interface operations {
     };
     "consoleDatabases.deleteColumn": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Drops the column even when it is indexed or referenced. Without it a column still in use is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -9256,7 +9392,10 @@ export interface operations {
     };
     "consoleDatabases.listJobs": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only jobs for this table. Omit for every job in the database. */
+                tableId?: string;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -9383,7 +9522,16 @@ export interface operations {
     };
     "rows.listRows": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Query DSL clauses, repeated once per clause, e.g. `queries[]=equal("status","done")`. */
+                "queries[]"?: unknown[];
+                /** @description Same as `queries[]`, for clients that repeat a bare parameter name. Only consulted when `queries[]` is absent. */
+                queries?: unknown[];
+                /** @description Whether to compute the total row count. Defaults to true; pass `false` to skip the count on a large table. */
+                total?: boolean;
+                /** @description Comma-separated relationship columns to embed in each row. */
+                expand?: string;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -9485,7 +9633,10 @@ export interface operations {
     };
     "rows.getRow": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Comma-separated relationship columns to embed in the row. */
+                expand?: string;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -9637,7 +9788,16 @@ export interface operations {
     };
     "consoleRows.listRows": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Query DSL clauses, repeated once per clause, e.g. `queries[]=equal("status","done")`. */
+                "queries[]"?: unknown[];
+                /** @description Same as `queries[]`, for clients that repeat a bare parameter name. Only consulted when `queries[]` is absent. */
+                queries?: unknown[];
+                /** @description Whether to compute the total row count. Defaults to true; pass `false` to skip the count on a large table. */
+                total?: boolean;
+                /** @description Comma-separated relationship columns to embed in each row. */
+                expand?: string;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -9705,7 +9865,10 @@ export interface operations {
     };
     "consoleRows.getRow": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Comma-separated relationship columns to embed in the row. */
+                expand?: string;
+            };
             header?: never;
             path: {
                 databaseId: string;
@@ -10038,7 +10201,12 @@ export interface operations {
     };
     "webhooks.listDeliveries": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 webhookId: string;
@@ -10674,7 +10842,12 @@ export interface operations {
     };
     "functions.listExecutions": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 functionId: string;
@@ -10705,7 +10878,10 @@ export interface operations {
     };
     "functions.consoleInvoke": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Queue the invocation and return immediately with its execution row. Defaults to false (wait for the result). */
+                async?: boolean;
+            };
             header?: never;
             path: {
                 functionId: string;
@@ -10772,7 +10948,12 @@ export interface operations {
     };
     "functions.listDataPlaneExecutions": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 functionId: string;
@@ -10820,7 +11001,10 @@ export interface operations {
     };
     "functions.invoke": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Queue the invocation and return immediately with its execution row. Defaults to false (wait for the result). */
+                async?: boolean;
+            };
             header?: never;
             path: {
                 functionId: string;
@@ -12094,7 +12278,12 @@ export interface operations {
     };
     "messaging.listMessages": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12793,7 +12982,12 @@ export interface operations {
     };
     "sites.listRequests": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 siteId: string;
@@ -12968,7 +13162,10 @@ export interface operations {
     };
     "storage.deleteBucket": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Deletes the bucket and every file in it. Without it a non-empty bucket is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 bucketId: string;
@@ -13166,7 +13363,12 @@ export interface operations {
     };
     "storage.listFiles": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 bucketId: string;
@@ -13214,7 +13416,10 @@ export interface operations {
     };
     "storage.createFile": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Per-file permission strings, repeated once each. Only meaningful when the bucket has file_security enabled. */
+                permissions?: unknown[];
+            };
             header?: never;
             path: {
                 bucketId: string;
@@ -13779,7 +13984,10 @@ export interface operations {
     };
     "consoleStorage.deleteBucket": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Deletes the bucket and every file in it. Without it a non-empty bucket is a 409. */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 bucketId: string;
@@ -13909,7 +14117,12 @@ export interface operations {
     };
     "consoleStorage.listFiles": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum items to return, 1-100. Outside that range, or unparseable, falls back to 25. */
+                limit?: number;
+                /** @description Items to skip, 0-100000. Outside that range it is clamped, never rejected. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 bucketId: string;
@@ -13940,7 +14153,10 @@ export interface operations {
     };
     "consoleStorage.createFile": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Per-file permission strings, repeated once each. Only meaningful when the bucket has file_security enabled. */
+                permissions?: unknown[];
+            };
             header?: never;
             path: {
                 bucketId: string;

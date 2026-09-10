@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Praxy.Api.Infrastructure;
 using Praxy.Core;
@@ -60,6 +61,7 @@ public static class ProjectEndpoints
             .AddEndpointFilter<ConsoleProjectFilter>()
             .Produces<ProjectResponse>();
         projects.MapDelete("/{projectId}", Delete)
+            .WithForce("Deletes the project and every resource inside it. Without it a project holding resources is a 409.")
             .AddEndpointFilter<ConsoleProjectFilter>()
             .Produces(StatusCodes.Status204NoContent);
         projects.MapGet("/{projectId}/quotas", GetQuotas)

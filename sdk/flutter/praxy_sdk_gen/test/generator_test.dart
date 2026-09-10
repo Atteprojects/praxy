@@ -148,6 +148,13 @@ void main() {
 
     expect(generated, contains('final class UsersService'));
     expect(generated, contains('Future<AppUser> updateEmail(String userId, {required String email})'));
-    expect(generated, contains('Known gap in the OpenAPI document'));
+
+    // These two came from closing the document's own gaps, and are the reason to assert on the
+    // real document rather than only the fixture: `limit`/`offset`/`search` exist because the API
+    // now declares the query parameters its handler reads, and the doc comment exists because a
+    // `/// <summary>` on that handler is lifted into the document. Both would silently disappear
+    // if either mechanism regressed, and the generator would keep emitting valid-looking Dart.
+    expect(generated, contains('list({int? limit, int? offset, String? search})'));
+    expect(generated, contains("/// Lists the project's app users, newest first."));
   });
 }

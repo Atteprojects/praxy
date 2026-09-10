@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Praxy.Api.Infrastructure;
 using Praxy.Auth;
 using Praxy.Core;
@@ -152,10 +153,12 @@ public static class FunctionEndpoints
             .Produces<FunctionDeploymentResponse>();
 
         admin.MapGet("/{functionId}/executions", ListExecutions)
+            .WithPagination()
             .Produces<FunctionExecutionListResponse>();
         admin.MapGet("/{functionId}/executions/{executionId}", GetExecution)
             .Produces<FunctionExecutionResponse>();
         admin.MapPost("/{functionId}/executions", ConsoleInvoke)
+            .WithQueryParameters(new QueryParameterDoc("async", JsonSchemaType.Boolean, "Queue the invocation and return immediately with its execution row. Defaults to false (wait for the result)."))
             .Produces<FunctionExecutionResponse>();
 
         // Unauthenticated, top-level (not under /v1/console/projects/{projectId}/...): a template
@@ -173,6 +176,7 @@ public static class FunctionEndpoints
             .RequireRateLimiting("functions");
 
         dataPlane.MapPost("/{functionId}/executions", Invoke)
+            .WithQueryParameters(new QueryParameterDoc("async", JsonSchemaType.Boolean, "Queue the invocation and return immediately with its execution row. Defaults to false (wait for the result)."))
             .Produces<FunctionExecutionResponse>()
             .Produces<FunctionExecutionResponse>(StatusCodes.Status202Accepted);
         // The read half of async invocation: a 202 with nowhere to poll it afterward isn't a
@@ -181,6 +185,7 @@ public static class FunctionEndpoints
             .Produces<FunctionExecutionResponse>();
         // execution.read only — see ListDataPlaneExecutions.
         dataPlane.MapGet("/{functionId}/executions", ListDataPlaneExecutions)
+            .WithPagination()
             .Produces<FunctionExecutionListResponse>();
 
         // The server-side management surface: a functions.read/functions.write key manages

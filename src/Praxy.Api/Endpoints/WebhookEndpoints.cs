@@ -86,6 +86,7 @@ public static class WebhookEndpoints
             .Produces(StatusCodes.Status204NoContent);
 
         admin.MapGet("/{webhookId}/deliveries", ListDeliveries)
+            .WithPagination()
             .Produces<WebhookDeliveryListResponse>();
         admin.MapGet("/{webhookId}/deliveries/{deliveryId}", GetDelivery)
             .Produces<WebhookDeliveryDetailResponse>();
