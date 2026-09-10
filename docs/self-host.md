@@ -672,21 +672,26 @@ docker system df
 Bound it — after upgrading, keeping the recent layers so the *next* build stays fast:
 
 ```bash
-docker builder prune -f --keep-storage 10GB
+docker builder prune -f --keep-storage 5GB
 ```
 
-`--keep-storage` is the part that matters. A bare `docker builder prune -f` empties the cache
-entirely and makes your next upgrade rebuild everything from scratch. A ceiling evicts the oldest
-entries and keeps the hot ones.
+`--keep-storage` is the part that matters, and so is the number. A bare `docker builder prune -f`
+empties the cache entirely and makes your next upgrade rebuild everything from scratch. A ceiling
+instead evicts least-recently-used entries until the cache fits, which is exactly "drop the previous
+generation, keep the current one".
+
+Size it to **about one build generation** — roughly 5 GB for this project. A ceiling set comfortably
+above that looks safer and does nothing: measured on praxycore.dev, an upgrade took the cache from
+4.63 GB to 7.85 GB, so a 10 GB ceiling would have pruned zero bytes while the disk kept growing by
+about 3 GB per deploy. At 5 GB the same prune evicted the previous build's 2.18 GB `dotnet publish`
+mount and left the current one intact — 7.85 GB down to 5.66 GB, and the next upgrade still built
+from cache.
 
 If you upgrade regularly, put it on a timer instead of remembering:
 
 ```bash
-echo "0 4 * * * root docker builder prune -f --keep-storage 10GB" > /etc/cron.d/praxy-builder-prune
+echo "0 4 * * * root docker builder prune -f --keep-storage 5GB" > /etc/cron.d/praxy-builder-prune
 ```
-
-Pick a ceiling your disk can afford: roughly one build generation (about 5 GB for this project) is
-the minimum that still buys you a fast rebuild.
 
 ## Backup and restore
 
