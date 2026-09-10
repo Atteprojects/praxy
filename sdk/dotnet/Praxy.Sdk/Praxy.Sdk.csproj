@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Praxy.Sdk</PackageId>
+    <Description>Server-side .NET SDK for Praxy. Authenticates with a project API key; not for shipping inside a client application.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+</Project>

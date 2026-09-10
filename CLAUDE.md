@@ -385,6 +385,26 @@ Filled in as phases land — keep this section current.
   declared in the generator's `documentGaps` and lands in the generated doc comment rather than being
   emitted silently; a note that outlives its operation is a hard error. Operation summaries are still
   1 of 290 (XML docs reached schemas, not operations), so generated methods have no prose docs yet.
+- SDK generator, multi-language (2026-09-10): **one generator for every SDK**, at `sdk/generator` —
+  zero-dependency Node, no build step. `node sdk/generator/bin/generate.mjs [--target dart|csharp]`
+  from the repo root; `node --test sdk/generator/test/*.test.mjs` for its own tests. Replaced the
+  Dart-only `praxy_sdk_gen`, which is deleted. `src/spec.mjs` is the only part that knows OpenAPI;
+  a target under `src/targets/` owns only what the code looks like and where it goes, so **adding a
+  language is a file, not a program**. Hosted in Node because Node is on every CI runner: each
+  language's job runs the generator with nothing installed and formats only its own target — a
+  generator written in any target language would need that toolchain in every other language's job.
+  Each job has its own regenerate-and-diff gate (`git add --intent-to-add` first, since `git diff`
+  ignores untracked files), and both the `api` and `flutter` path filters now watch
+  `sdk/generator/**` and `docs/openapi/v1.json`.
+- **`sdk/dotnet` — the .NET server SDK** (`Praxy.Sdk`, plus `Praxy.Sdk.Tests`), both in `Praxy.sln`,
+  so the API job already builds and tests them. API-key auth only, no session constructor: unlike
+  `praxy_core` it has no client half to serve, so the safest shape is the only shape. Error
+  hierarchy mirrors the Dart and JS SDKs class for class. **The landmine it hit:**
+  `JsonIgnoreCondition.WhenWritingNull` applies to a type's *properties*, not to the dictionary
+  *entries* a generated request body is built from — so an unset optional parameter serialized as an
+  explicit `null` instead of being omitted, which the API reads differently. `PraxyClient.StripNulls`
+  fixes it in one place; caught only by a test asserting a field's **absence**, never its value.
+  Dart gets this free from its `?name` spread.
 
 ## Session end — handoff protocol
 

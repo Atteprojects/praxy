@@ -49,8 +49,13 @@ yarn-error.log*
 # state, uncommitted since the package was created, despite being the documented codegen command.
 # The directory itself has to be re-included, not just its contents: git does not descend into an
 # excluded directory, so a negation on the files inside would never be consulted.
+# Each entry is a directory of *source* that happens to be named bin/. They are listed
+# individually rather than as `sdk/**/bin/` because sdk/dotnet/*/bin/ genuinely is .NET build
+# output and must stay ignored — a blanket negation here would start committing DLLs.
 !sdk/flutter/*/bin/
 !sdk/flutter/*/bin/**
+!sdk/generator/bin/
+!sdk/generator/bin/**
 .dart_tool/
 .packages
 .pub-cache/
