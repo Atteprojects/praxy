@@ -102,3 +102,12 @@ dart test praxy_core praxy_codegen && flutter test praxy_flutter example
 npm ci --prefix sdk/js && npm run build --prefix sdk/js   # Next.js/React SDK — npm workspace
 npm run test --prefix sdk/js && npm run typecheck --prefix sdk/js
 ```
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+Permissive on purpose: self-host it, modify it, build a product on it, commercially or otherwise.
+The only obligations are the usual ones — keep the copyright and license notices, state your
+changes, and don't use the project's trademarks to imply endorsement. Apache-2.0 also grants an
+explicit patent licence, which BSD and MIT do not.
