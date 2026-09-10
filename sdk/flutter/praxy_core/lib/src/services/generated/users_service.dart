@@ -1,8 +1,8 @@
 // GENERATED — do not edit by hand.
 //
-// Produced by `dart run praxy_sdk_gen` from docs/openapi/v1.json. Edit the API's
-// endpoint definitions (or the generator) and regenerate; `check:sdk-gen` fails the
-// build if this file and the document disagree.
+// Produced by `node sdk/generator/bin/generate.mjs` from docs/openapi/v1.json. Edit the API's
+// endpoint definitions (or the generator) and regenerate; CI fails the build if this file and the
+// document disagree.
 
 import '../../client.dart';
 import '../../json_utils.dart';
@@ -10,8 +10,9 @@ import '../../models.dart';
 
 /// Server-side app-user administration (`/v1/users`) — the surface an API key reaches and an end-user session never should. Create, inspect, update and delete a project's app users, and revoke their sessions.
 ///
-/// Requires a client constructed with an `apiKey`; every method here needs the
-/// `users.read`/`users.write` key scopes. GENERATED from the OpenAPI document.
+/// Requires a client authenticated with an API key; every method here needs the `users.read`/`users.write` key scopes.
+///
+/// GENERATED from the OpenAPI document — see sdk/generator.
 final class UsersService {
   const UsersService(this._client);
 

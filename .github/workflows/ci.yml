@@ -39,6 +39,11 @@ jobs:
             api:
               - 'src/**'
               - 'tests/**'
+              # Praxy.Sdk lives in the solution and its generated surface comes from the document,
+              # so both the SDK itself and the generator belong to this job's blast radius.
+              - 'sdk/dotnet/**'
+              - 'sdk/generator/**'
+              - 'docs/openapi/v1.json'
               - 'Praxy.sln'
               - 'Directory.Build.props'
               - '.github/workflows/ci.yml'
@@ -51,6 +56,8 @@ jobs:
               - '.github/workflows/ci.yml'
             flutter:
               - 'sdk/flutter/**'
+              # The generator emits into praxy_core, so a change to it can make that output stale.
+              - 'sdk/generator/**'
               # praxy_core's generated server surface is derived from this snapshot, exactly like
               # the console's types above — a backend PR that changes it must run the staleness
               # check even when it touches nothing under sdk/flutter/.
@@ -77,6 +84,17 @@ jobs:
         if: needs.changes.outputs.api == 'true'
         run: dotnet restore Praxy.sln
 
+      # Praxy.Sdk's service surface is generated from docs/openapi/v1.json. Same regenerate-and-diff
+      # gate the Dart target gets, run here because this is the job with the .NET toolchain — the
+      # generator itself is zero-dependency Node, so it needs nothing installed.
+      - name: Check the generated C# surface is current
+        if: needs.changes.outputs.api == 'true'
+        run: |
+          node sdk/generator/bin/generate.mjs --target csharp
+          git add --intent-to-add sdk/dotnet/Praxy.Sdk/Services/Generated
+          git diff --exit-code -- sdk/dotnet/Praxy.Sdk/Services/Generated \
+            || { echo "::error::Praxy.Sdk's generated services are stale. Run 'node sdk/generator/bin/generate.mjs' and commit."; exit 1; }
+
       - name: Build
         if: needs.changes.outputs.api == 'true'
         run: dotnet build Praxy.sln --no-restore --configuration Release
@@ -89,7 +107,7 @@ jobs:
 
       - name: No API changes
         if: needs.changes.outputs.api != 'true'
-        run: echo "No changes under src/, tests/, Praxy.sln or Directory.Build.props — nothing to build."
+        run: echo "No changes under src/, tests/, sdk/dotnet/, sdk/generator/ or the solution — nothing to build."
 
   console:
     name: Build console
@@ -149,7 +167,7 @@ jobs:
 
       - name: Test pure-Dart packages
         if: needs.changes.outputs.flutter == 'true'
-        run: dart test praxy_core praxy_codegen praxy_sdk_gen
+        run: dart test praxy_core praxy_codegen
         working-directory: sdk/flutter
 
       # `dart test` only ever loads `lib/`, so a package's CLI entry point can be missing from the
@@ -164,18 +182,23 @@ jobs:
 
       # Same gate, same reasoning as the console's `check:api-types`: regenerate into the working
       # tree and diff, so the check can never disagree with what a real regeneration would write.
-      # This one also covers praxy_sdk_gen's own entry point, since it runs the CLI.
-      - name: Check the generated SDK surface is current
+      # The generator is zero-dependency Node, which every runner already has, so this job needs no
+      # extra toolchain to run it — and it formats only the Dart it just wrote, with the Dart that
+      # is installed here.
+      - name: Check the generated Dart surface is current
         if: needs.changes.outputs.flutter == 'true'
         run: |
-          dart run praxy_sdk_gen
+          node sdk/generator/bin/generate.mjs --target dart
           # --intent-to-add first: `git diff` does not report untracked files, so without it a
           # newly registered service whose generated file was never committed would regenerate
           # here and sail through the check while missing from the repo entirely.
-          git add --intent-to-add praxy_core/lib/src/services/generated
-          git diff --exit-code -- praxy_core/lib/src/services/generated \
-            || { echo "::error::praxy_core's generated services are stale. Run 'dart run praxy_sdk_gen' from sdk/flutter/ and commit."; exit 1; }
-        working-directory: sdk/flutter
+          git add --intent-to-add sdk/flutter/praxy_core/lib/src/services/generated
+          git diff --exit-code -- sdk/flutter/praxy_core/lib/src/services/generated \
+            || { echo "::error::praxy_core's generated services are stale. Run 'node sdk/generator/bin/generate.mjs' and commit."; exit 1; }
+
+      - name: Test the SDK generator
+        if: needs.changes.outputs.flutter == 'true'
+        run: node --test sdk/generator/test/*.test.mjs
 
       - name: Test Flutter packages
         if: needs.changes.outputs.flutter == 'true'

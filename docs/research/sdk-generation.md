@@ -104,6 +104,25 @@ that proves insufficient.
 - **Generated code the compiler trusts is more dangerous than hand-written code it doesn't.** Carried
   forward verbatim from the console initiative.
 
+## One generator, not one per language
+
+**Decided 2026-09-10, on the owner's call**, because a .NET server SDK was next and more languages
+are wanted after it. The generator lives at `sdk/generator`: `src/spec.mjs` turns the document into
+a language-neutral IR, and each `src/targets/<lang>.mjs` owns only what the code looks like and
+where it goes. Adding a language is a file, not a program.
+
+The earlier reasoning — that at two languages a shared core costs more than the ~150 duplicated
+lines of parsing — was right about two languages and wrong about the destination. Above two, every
+target otherwise has to rediscover this document's quirks independently, and they are exactly the
+quirks that produce a *plausible but wrong* SDK: `WhenWritingNull`, the `["integer","string"]`
+union, `Row`'s real nulls. One IR means one answer to each.
+
+**Hosted in Node, deliberately, and with zero dependencies.** Node is preinstalled on every CI
+runner, so each language's job runs the generator with nothing installed and formats only its own
+target with the formatter that job already has. A generator hosted in any one target language would
+have needed that toolchain in every other language's job — .NET inside the Flutter job, Dart inside
+the API job.
+
 ## Phasing
 
 - **Phase 1 — make the document generator-grade.** `.WithName()`/`.WithSummary()`/`.WithDescription()`
